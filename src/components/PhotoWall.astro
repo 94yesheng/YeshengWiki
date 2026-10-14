@@ -5,11 +5,14 @@
  * 「照片墙」是照片页的基本单位：可以只有一张照片，也可以有很多张。
  * 标题、时间、地点、记录都属于这面墙；单张照片只有可选的说明。
  *
+ * 【照片不做任何裁切或拉伸】每张照片保持原始宽高比。多张照片时靠 flex 的
+ * 比例分配排成"对齐的行"（justified rows）：每张的 flex-basis 与 flex-grow
+ * 都按自己的宽高比来给，于是同一行被拉伸到等高、整行填满容器宽度，而比例不变。
+ * 宽高比通过内联的 --ar 传给 CSS。
+ *
  * 图片走 astro:assets 的 Image 组件：
- *   · widths + sizes 让浏览器按屏宽取合适尺寸（手机不下大图 —— 主机带宽只有 8Mbps，
- *     一页几十张原图会直接吃满）
+ *   · widths + sizes 让浏览器按屏宽取合适尺寸（手机不下大图 —— 主机带宽只有 8Mbps）
  *   · loading="lazy" 让视口外的照片推迟加载
- *   · 不传 height，保持原始比例；网格里的统一裁切交给 CSS 的 .photo-frame
  */
 import { Image } from 'astro:assets';
 import type { PhotoWall as Wall } from '../utils/photos';
@@ -39,18 +42,23 @@ const single = wall.photos.length === 1;
     wall.photos.length > 0 ? (
       <div class:list={['wall-photos', single && 'wall-photos--single']}>
         {wall.photos.map((photo) => (
-          <figure class:list={['photo', photo.portrait && 'photo--portrait']}>
-            <div class="photo-frame">
-              <Image
-                src={photo.image}
-                alt={photo.caption || wall.title}
-                widths={[320, 480, 720, 1080]}
-                sizes={single ? '(max-width: 34rem) 92vw, 42rem' : '(max-width: 34rem) 45vw, (max-width: 68rem) 30vw, 20rem'}
-                loading="lazy"
-                decoding="async"
-              />
-            </div>
-            {photo.caption && <figcaption class="photo-meta"><span class="photo-caption">{photo.caption}</span></figcaption>}
+          <figure
+            class="photo"
+            style={`--ar: ${(photo.image.width / photo.image.height).toFixed(4)}`}
+          >
+            <Image
+              src={photo.image}
+              alt={photo.caption || wall.title}
+              widths={[480, 720, 1080, 1600]}
+              sizes="(max-width: 34rem) 92vw, (max-width: 68rem) 45vw, 30rem"
+              loading="lazy"
+              decoding="async"
+            />
+            {photo.caption && (
+              <figcaption class="photo-meta">
+                <span class="photo-caption">{photo.caption}</span>
+              </figcaption>
+            )}
           </figure>
         ))}
       </div>

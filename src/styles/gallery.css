@@ -79,23 +79,44 @@
   text-indent: 2em;
 }
 
+/* --------------------------------------------------------------------------
+   墙里的照片 —— 不裁切、不拉伸，保持原始宽高比
+   多张时用 flex 的"对齐行"：每张的基准宽度和拉伸权重都按自己的宽高比给，
+   于是同一行会被拉到等高、整行填满容器宽度，而每张的比例不变。
+   宽高比由组件内联成 --ar 传进来。
+   -------------------------------------------------------------------------- */
+
 .wall-photos {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr));
-  gap: var(--space-5);
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
   margin-top: var(--space-5);
 }
 
-@media (max-width: 34rem) {
-  .wall-photos {
-    grid-template-columns: 1fr 1fr;
-    gap: var(--space-3);
-  }
+/* 末尾补位：吃掉最后一行的剩余空间，免得末行被拉伸撑大 */
+.wall-photos::after {
+  content: "";
+  flex: 10000 1 0;
 }
 
-/* 只放一张的墙不要铺满整屏，收在阅读宽度里 */
-.wall-photos--single {
-  grid-template-columns: minmax(0, 42rem);
+.wall-photos .photo {
+  /* 越横（--ar 越大）的照片，基准宽度与拉伸权重越大 —— 这样行内高度才拉得齐 */
+  flex: calc(var(--ar) * 100) 1 calc(var(--ar) * 17rem);
+  /* 极横的全景图不至于把同行挤没 */
+  min-width: min(100%, calc(var(--ar) * 10rem));
+}
+
+/* 只放一张的墙：按原比例显示，只做"不超出"的约束，不铺满整屏 */
+.wall-photos--single { display: block; }
+
+.wall-photos--single .photo { max-width: min(100%, 52rem); }
+
+.wall-photos--single img {
+  width: auto;
+  height: auto;
+  max-width: 100%;
+  /* 竖幅长图不至于高过一整屏 */
+  max-height: 78vh;
 }
 
 .wall-empty {
@@ -110,38 +131,23 @@
    -------------------------------------------------------------------------- */
 
 .photo {
-  display: block;
-  background: var(--paper);
-  border: 1px solid var(--line);
-  border-radius: 3px;
-  overflow: hidden;
+  margin: 0; /* figure 默认带外边距，网格自己控制间距 */
   transition: transform var(--dur-base) var(--ease),
               box-shadow var(--dur-base) ease;
 }
 
 .photo:hover {
-  transform: translateY(-4px);
-  box-shadow: 0 14px 32px -18px rgba(20, 30, 26, 0.4);
+  transform: translateY(-3px);
+  box-shadow: 0 16px 34px -20px rgba(20, 30, 26, 0.45);
 }
 
-.photo-frame {
-  aspect-ratio: 4 / 3;
-  overflow: hidden;
-  background: #e8e8e5;
-}
-
-.photo-frame img {
+/* 照片本身：铺满所在格子的宽度，高度按原比例走 —— 不裁切也不拉伸 */
+.wall-photos img {
   display: block;
   width: 100%;
-  height: 100%;
-  object-fit: cover;
-  transition: transform var(--dur-slow) var(--ease);
+  height: auto;
+  border-radius: 3px;
 }
-
-.photo:hover .photo-frame img { transform: scale(1.05); }
-
-/* 竖构图不加裁切，避免把人拍丢 */
-.photo--portrait .photo-frame { aspect-ratio: 3 / 4; }
 
 .photo-meta {
   padding: var(--space-3) var(--space-4);
