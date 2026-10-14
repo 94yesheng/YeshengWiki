@@ -1,0 +1,160 @@
+/* ==========================================================================
+   照片区 —— 样板 B 的语言
+   同一套站点骨架，但这里换成：画布底色、无衬线小标签、大图主导、悬停动效
+   ========================================================================== */
+
+/* 照片页的区块直接挂在 <main> 下，本身就是整屏宽，
+   所以这里铺底色不需要任何负边距技巧 */
+.gallery-page {
+  margin-top: var(--space-6);
+  padding: var(--space-7) 0 var(--space-8);
+  background: var(--canvas);
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+}
+
+/* --------------------------------------------------------------------------
+   年份分隔 —— 沿用文章区的编年手法，保持全站一致
+   -------------------------------------------------------------------------- */
+
+.gallery-year + .gallery-year { margin-top: var(--space-8); }
+
+.gallery-year-mark {
+  display: flex;
+  align-items: center;
+  gap: var(--space-5);
+  margin: 0 0 var(--space-5);
+  font-family: var(--kai);
+  font-size: 0.9375rem;
+  font-weight: 400;
+  letter-spacing: 0.3em;
+  color: var(--muted);
+}
+
+.gallery-year-mark::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--line);
+}
+
+/* --------------------------------------------------------------------------
+   照片网格
+   -------------------------------------------------------------------------- */
+
+.gallery-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr));
+  gap: var(--space-5);
+}
+
+@media (max-width: 34rem) {
+  .gallery-grid {
+    grid-template-columns: 1fr 1fr;
+    gap: var(--space-3);
+  }
+}
+
+/* --------------------------------------------------------------------------
+   单张照片
+   -------------------------------------------------------------------------- */
+
+.photo {
+  display: block;
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  overflow: hidden;
+  transition: transform var(--dur-base) var(--ease),
+              box-shadow var(--dur-base) ease;
+}
+
+.photo:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 14px 32px -18px rgba(20, 30, 26, 0.4);
+}
+
+.photo-frame {
+  aspect-ratio: 4 / 3;
+  overflow: hidden;
+  background: #e8e8e5;
+}
+
+.photo-frame img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform var(--dur-slow) var(--ease);
+}
+
+.photo:hover .photo-frame img { transform: scale(1.05); }
+
+/* 竖构图不加裁切，避免把人拍丢 */
+.photo--portrait .photo-frame { aspect-ratio: 3 / 4; }
+
+.photo-meta {
+  padding: var(--space-3) var(--space-4);
+  font-family: var(--sans);
+  font-size: var(--text-xs);
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-3);
+  align-items: baseline;
+}
+
+.photo-caption {
+  color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.photo-date { flex: none; font-variant-numeric: tabular-nums; }
+
+/* 墨绿：照片区的识别色，用在悬停态和强调处 */
+.photo:hover .photo-caption { color: var(--pine); }
+
+/* --------------------------------------------------------------------------
+   照片页的空状态
+   -------------------------------------------------------------------------- */
+
+.gallery-empty {
+  padding: var(--space-9) 0;
+  text-align: center;
+  color: var(--muted);
+  font-family: var(--sans);
+  font-size: var(--text-sm);
+  letter-spacing: 0.08em;
+}
+
+.gallery-empty a {
+  color: var(--pine);
+  border-bottom: 1px solid currentColor;
+}
+
+/* --------------------------------------------------------------------------
+   照片详情（点击单张后）
+   -------------------------------------------------------------------------- */
+
+.photo-single { padding: var(--space-7) 0 0; }
+
+.photo-single img {
+  width: 100%;
+  height: auto;
+  border-radius: 3px;
+}
+
+.photo-single .photo-single-meta {
+  margin: var(--space-5) 0 0;
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+  font-family: var(--sans);
+  font-size: var(--text-sm);
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}

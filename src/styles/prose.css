@@ -1,0 +1,238 @@
+/* ==========================================================================
+   文章正文 —— 样板 A 的书籍排版
+   要点：首行缩进两字符、段间不加空隙、行高给足（中文比西文需要更多呼吸）
+   ========================================================================== */
+
+.prose {
+  font-family: var(--song);
+  font-size: var(--text-base);
+  line-height: 1.95;
+}
+
+/* 段落：缩进两字符，段间不留空隙 —— 这是中文印刷品的做法，
+   和网页上常见的「不缩进 + 段间距」是两套习惯。 */
+.prose > p {
+  margin: 0;
+  text-indent: 2em;
+}
+
+.prose > p.center {
+  text-align: center;
+  text-indent: 0;
+  margin: var(--space-6) 0;
+}
+
+/* 分隔符：用中文书籍里的「＊ ＊ ＊」，比一条横线更贴题 */
+.prose > hr {
+  border: 0;
+  margin: var(--space-7) 0;
+  text-align: center;
+}
+
+.prose > hr::before {
+  content: "＊ ＊ ＊";
+  font-size: var(--text-xs);
+  letter-spacing: 0.5em;
+  text-indent: 0.5em;
+  color: var(--rule);
+}
+
+/* --------------------------------------------------------------------------
+   标题：书籍里标题不缩进，且和上下文拉开距离
+   -------------------------------------------------------------------------- */
+
+.prose h2,
+.prose h3,
+.prose h4 {
+  font-family: var(--kai);
+  font-weight: 400;
+  text-indent: 0;
+  line-height: 1.5;
+  letter-spacing: 0.03em;
+}
+
+.prose h2 {
+  font-size: var(--text-lg);
+  margin: var(--space-7) 0 var(--space-4);
+  padding-bottom: var(--space-2);
+  border-bottom: 1px solid var(--rule);
+}
+
+.prose h3 {
+  font-size: var(--text-md);
+  margin: var(--space-6) 0 var(--space-3);
+}
+
+.prose h4 {
+  font-size: var(--text-base);
+  margin: var(--space-5) 0 var(--space-2);
+  color: var(--muted);
+}
+
+/* --------------------------------------------------------------------------
+   列表
+   -------------------------------------------------------------------------- */
+
+.prose ul,
+.prose ol {
+  margin: 0 0 var(--space-4);
+  padding-left: 1.6em;
+}
+
+.prose li { margin: var(--space-1) 0; }
+
+.prose li > p { text-indent: 0; }
+
+/* --------------------------------------------------------------------------
+   引用
+   -------------------------------------------------------------------------- */
+
+.prose blockquote {
+  margin: var(--space-5) 0;
+  padding: 0 0 0 var(--space-5);
+  border-left: 2px solid var(--rule);
+  color: var(--muted);
+}
+
+.prose blockquote > p { text-indent: 0; }
+
+/* --------------------------------------------------------------------------
+   图片
+   -------------------------------------------------------------------------- */
+
+.prose figure {
+  margin: var(--space-6) 0;
+  text-indent: 0;
+}
+
+.prose figure img {
+  width: 100%;
+  height: auto;
+  border-radius: 1px;
+}
+
+.prose figcaption {
+  margin-top: var(--space-2);
+  font-size: var(--text-sm);
+  color: var(--muted);
+  text-align: center;
+  letter-spacing: 0.06em;
+}
+
+.prose > p > img { text-indent: 0; }
+
+/* 两张并排 */
+.prose .photos-2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-4);
+  margin: var(--space-6) 0;
+}
+
+.prose .photos-2 figure { margin: 0; }
+
+@media (max-width: 34rem) {
+  .prose .photos-2 { grid-template-columns: 1fr; }
+}
+
+/* --------------------------------------------------------------------------
+   代码 —— 技术类文章需要
+   -------------------------------------------------------------------------- */
+
+.prose code,
+.prose pre {
+  font-family: ui-monospace, "Cascadia Mono", "JetBrains Mono", Consolas,
+               "Noto Sans Mono CJK SC", monospace;
+}
+
+.prose :not(pre) > code {
+  font-size: 0.875em;
+  background: #f4f3f0;
+  padding: 0.12em 0.4em;
+  border-radius: 2px;
+  text-indent: 0;
+}
+
+.prose pre {
+  margin: var(--space-5) 0;
+  padding: var(--space-4) var(--space-5);
+  background: #f7f6f4;
+  border: 1px solid var(--rule);
+  border-radius: 3px;
+  overflow-x: auto;
+  font-size: 0.8125rem;
+  line-height: 1.75;
+  text-indent: 0;
+  -webkit-overflow-scrolling: touch;
+}
+
+.prose pre code {
+  background: none;
+  padding: 0;
+  font-size: inherit;
+}
+
+/* --------------------------------------------------------------------------
+   表格
+   -------------------------------------------------------------------------- */
+
+.prose table {
+  width: 100%;
+  margin: var(--space-5) 0;
+  border-collapse: collapse;
+  font-size: var(--text-sm);
+}
+
+.prose th,
+.prose td {
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--rule);
+  text-align: left;
+}
+
+.prose th {
+  font-weight: 700;
+  border-bottom-color: var(--ink);
+}
+
+/* --------------------------------------------------------------------------
+   链接与强调
+   -------------------------------------------------------------------------- */
+
+.prose a {
+  background-image: linear-gradient(var(--seal), var(--seal));
+  background-repeat: no-repeat;
+  background-position: 0 100%;
+  background-size: 100% 1px;
+  transition: color var(--dur-fast) ease, background-size var(--dur-fast) ease;
+}
+
+.prose a:hover {
+  color: var(--seal);
+  background-size: 100% 2px;
+}
+
+.prose strong { font-weight: 700; }
+
+.prose del,
+.prose s {
+  color: var(--muted);
+  text-decoration-thickness: 1px;
+}
+
+/* --------------------------------------------------------------------------
+   嵌入内容（音乐播放器、视频等）
+   -------------------------------------------------------------------------- */
+
+.prose .embed {
+  margin: var(--space-6) 0;
+  display: flex;
+  justify-content: center;
+  text-indent: 0;
+}
+
+.prose .embed iframe {
+  border: 0;
+  display: block;
+  max-width: 100%;
+}

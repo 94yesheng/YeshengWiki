@@ -1,0 +1,60 @@
+---
+interface Props {
+  name: string;
+  url: string;
+  description?: string;
+}
+
+const { name, url, description } = Astro.props;
+
+let host = '';
+try {
+  host = new URL(url).hostname.replace(/^www\./, '');
+} catch {
+  host = url;
+}
+---
+
+<a class="link-card" href={url} target="_blank" rel="noopener noreferrer">
+  <span class="link-name">{name}</span>
+  {description && <span class="link-desc">{description}</span>}
+  <span class="link-host">{host}</span>
+</a>
+
+<style>
+  .link-card {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    padding: var(--space-4) var(--space-5);
+    border: 1px solid var(--rule);
+    border-radius: 3px;
+    transition: border-color var(--dur-fast) ease, transform var(--dur-fast) var(--ease);
+  }
+
+  .link-card:hover {
+    border-color: var(--seal);
+    transform: translateY(-2px);
+  }
+
+  .link-name {
+    font-family: var(--kai);
+    font-size: var(--text-md);
+    letter-spacing: 0.06em;
+  }
+
+  .link-card:hover .link-name { color: var(--seal); }
+
+  .link-desc {
+    font-size: var(--text-sm);
+    line-height: 1.7;
+    color: var(--muted);
+  }
+
+  .link-host {
+    font-size: var(--text-xs);
+    letter-spacing: 0.08em;
+    color: var(--rule);
+    font-variant-numeric: tabular-nums;
+  }
+</style>

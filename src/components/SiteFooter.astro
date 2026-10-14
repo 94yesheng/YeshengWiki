@@ -1,0 +1,15 @@
+---
+import { site } from '../site.config';
+import { chineseYear } from '../utils/date';
+
+const year = chineseYear(new Date().getFullYear());
+---
+
+<footer class="site-foot">
+  <div class="wrap site-foot-inner">
+    <span>© {year} {site.author}</span>
+    <span>
+      <a href="/rss.xml">RSS</a>
+    </span>
+  </div>
+</footer>

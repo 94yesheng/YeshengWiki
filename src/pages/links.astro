@@ -1,0 +1,60 @@
+---
+import { getCollection } from 'astro:content';
+import BaseLayout from '../layouts/BaseLayout.astro';
+import LinkCard from '../components/LinkCard.astro';
+
+const links = (await getCollection('links')).sort((a, b) =>
+  a.data.name.localeCompare(b.data.name, 'zh-Hans-CN')
+);
+---
+
+<BaseLayout title="友链" description="常看的博客和网站。">
+  <div class="wrap wrap--wide">
+    <div class="section-head">
+      <h1>友链</h1>
+      <p class="note">共 {links.length} 个</p>
+    </div>
+
+    {
+      links.length > 0 ? (
+        <div class="link-grid">
+          {links.map((link) => (
+            <LinkCard
+              name={link.data.name}
+              url={link.data.url}
+              description={link.data.description}
+            />
+          ))}
+        </div>
+      ) : (
+        <p class="empty">
+          还没有添加友链。在 <code>src/content/links.json</code> 里加一条就会出现在这里。
+        </p>
+      )
+    }
+  </div>
+</BaseLayout>
+
+<style>
+  .link-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(16rem, 1fr));
+    gap: var(--space-4);
+  }
+
+  .empty {
+    padding: var(--space-7) 0;
+    border-top: 1px solid var(--rule);
+    color: var(--muted);
+    font-size: var(--text-sm);
+    letter-spacing: 0.06em;
+  }
+
+  .empty code {
+    font-family: ui-monospace, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f4f3f0;
+    padding: 0.12em 0.4em;
+    border-radius: 2px;
+  }
+</style>

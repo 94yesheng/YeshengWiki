@@ -1,0 +1,84 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ChronicleList from '../../components/ChronicleList.astro';
+import TagChips from '../../components/TagChips.astro';
+import { getPublishedPosts, collectTags } from '../../utils/posts';
+
+const posts = await getPublishedPosts();
+const tags = collectTags(posts);
+---
+
+<BaseLayout title="文章" description="按时间排列的全部文章，可以用标签筛选。">
+  <div class="wrap">
+    <div class="section-head">
+      <h1>文章</h1>
+      <p class="note">共 {posts.length} 篇</p>
+    </div>
+
+    <TagChips tags={tags} />
+
+    <ChronicleList posts={posts} filterable />
+
+    <p class="empty" data-empty hidden>没有这个标签的文章。</p>
+  </div>
+</BaseLayout>
+
+<style>
+  .empty {
+    padding: var(--space-7) 0;
+    color: var(--muted);
+    font-size: var(--text-sm);
+    letter-spacing: 0.1em;
+  }
+</style>
+
+<script>
+  /**
+   * 标签筛选。
+   * 没有这段脚本时页面照常工作 —— 所有文章都在，只是不能筛。
+   */
+  const chips = Array.from(document.querySelectorAll<HTMLElement>('[data-tag-filter] .chip'));
+  const entries = Array.from(document.querySelectorAll<HTMLElement>('[data-entry]'));
+  const sections = Array.from(document.querySelectorAll<HTMLElement>('[data-year-section]'));
+  const emptyHint = document.querySelector<HTMLElement>('[data-empty]');
+
+  function apply(rawTag: string) {
+    const tag = rawTag.trim();
+    let shown = 0;
+
+    for (const entry of entries) {
+      const tags = (entry.dataset.tags ?? '').split(',').filter(Boolean);
+      const match = !tag || tags.includes(tag);
+      entry.hidden = !match;
+      if (match) shown += 1;
+    }
+
+    // 整年都没有匹配项时，连年份标题一起收起来
+    for (const section of sections) {
+      section.hidden = !section.querySelector('[data-entry]:not([hidden])');
+    }
+
+    if (emptyHint) emptyHint.hidden = shown > 0;
+
+    for (const chip of chips) {
+      chip.classList.toggle('chip--active', (chip.dataset.tag ?? '') === tag);
+    }
+  }
+
+  function applyFromHash() {
+    apply(decodeURIComponent(location.hash.replace(/^#/, '')));
+  }
+
+  for (const chip of chips) {
+    chip.addEventListener('click', (event) => {
+      event.preventDefault();
+      const tag = chip.dataset.tag ?? '';
+      const url = tag ? `#${encodeURIComponent(tag)}` : location.pathname;
+      history.replaceState(null, '', url);
+      apply(tag);
+    });
+  }
+
+  window.addEventListener('hashchange', applyFromHash);
+  if (location.hash) applyFromHash();
+</script>

@@ -1,0 +1,118 @@
+---
+import { render } from 'astro:content';
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import { getPublishedPosts, type Post } from '../../utils/posts';
+import { chineseFullDate, readingTime } from '../../utils/date';
+import { cjkSpacing } from '../../utils/typography';
+import '../../styles/prose.css';
+
+export async function getStaticPaths() {
+  const posts = await getPublishedPosts();
+  return posts.map((post) => ({
+    // 用 [...slug] 而不是 [slug]，这样以后文章放进子目录也能对上。
+    // 个别情况下 id 会带着 .md 后缀，这里统一剥掉。
+    params: { slug: post.id.replace(/\.mdx?$/, '') },
+    props: { post },
+  }));
+}
+
+interface Props {
+  post: Post;
+}
+
+const { post } = Astro.props;
+const { Content } = await render(post);
+const { chars, minutes } = readingTime(post.body ?? '');
+---
+
+<BaseLayout title={post.data.title} description={post.data.description}>
+  <article class="wrap article">
+    <p class="dateline">{chineseFullDate(post.data.pubDate)}</p>
+
+    <h1 class="article-title">{cjkSpacing(post.data.title)}</h1>
+
+    <p class="article-meta">
+      {chars} 字 · 约 {minutes} 分钟
+      {
+        post.data.updatedDate && (
+          <>
+            <span class="dot">·</span>
+            修订于 {chineseFullDate(post.data.updatedDate)}
+          </>
+        )
+      }
+    </p>
+
+    <div class="prose">
+      <Content />
+    </div>
+
+    <nav class="article-end">
+      <a href="/posts/">← 全部文章</a>
+    </nav>
+  </article>
+</BaseLayout>
+
+<style>
+  .article { padding-top: var(--space-8); }
+
+  /* 题头：一条短朱红横线领着日期，和列表页的日期栏呼应 */
+  .dateline {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    margin: 0 0 var(--space-4);
+    font-family: var(--kai);
+    font-size: var(--text-sm);
+    letter-spacing: 0.18em;
+    color: var(--seal);
+  }
+
+  .dateline::before {
+    content: "";
+    width: 1.75rem;
+    height: 1px;
+    background: var(--seal);
+    flex: none;
+  }
+
+  .article-title {
+    margin: 0 0 var(--space-4);
+    font-family: var(--kai);
+    font-size: var(--text-2xl);
+    font-weight: 400;
+    line-height: 1.5;
+    letter-spacing: 0.03em;
+  }
+
+  .article-meta {
+    margin: 0 0 var(--space-7);
+    padding-bottom: var(--space-5);
+    border-bottom: 1px solid var(--rule);
+    font-size: var(--text-xs);
+    letter-spacing: 0.14em;
+    color: var(--muted);
+  }
+
+  .article-meta .dot { margin: 0 0.5em; color: var(--rule); }
+
+  .article-end {
+    margin-top: var(--space-8);
+    padding-top: var(--space-5);
+    border-top: 1px solid var(--rule);
+    font-size: var(--text-sm);
+    letter-spacing: 0.12em;
+  }
+
+  .article-end a {
+    color: var(--muted);
+    transition: color var(--dur-fast) ease;
+  }
+
+  .article-end a:hover { color: var(--seal); }
+
+  @media (max-width: 34rem) {
+    .article { padding-top: var(--space-7); }
+    .article-title { font-size: var(--text-xl); }
+  }
+</style>

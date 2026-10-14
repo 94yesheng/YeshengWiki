@@ -3,6 +3,10 @@ dist/
 # generated types
 .astro/
 
+# 开发过程中的临时产物与设计样板，不进仓库
+.work/
+mockups/
+
 # dependencies
 node_modules/
 

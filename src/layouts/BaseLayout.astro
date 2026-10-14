@@ -1,0 +1,72 @@
+---
+import '../styles/tokens.css';
+import '../styles/base.css';
+import SiteHeader from '../components/SiteHeader.astro';
+import SiteFooter from '../components/SiteFooter.astro';
+import { site } from '../site.config';
+import { cjkSpacing } from '../utils/typography';
+
+interface Props {
+  /** 页面标题，会拼成「标题 —— 站名」 */
+  title?: string;
+  description?: string;
+  /** 照片页那种深色画布，需要整屏铺底 */
+  bodyClass?: string;
+}
+
+const { title, description, bodyClass } = Astro.props;
+
+const pageTitle = cjkSpacing(
+  title ? `${title} —— ${site.title}` : `${site.title} —— ${site.tagline}`
+);
+const pageDesc = description ?? site.description;
+const canonical = new URL(Astro.url.pathname, Astro.site);
+---
+
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{pageTitle}</title>
+    <meta name="description" content={pageDesc} />
+    <link rel="canonical" href={canonical} />
+
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link
+      rel="alternate"
+      type="application/rss+xml"
+      title={site.title}
+      href={new URL('/rss.xml', Astro.site)}
+    />
+
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content={site.title} />
+    <meta property="og:title" content={pageTitle} />
+    <meta property="og:description" content={pageDesc} />
+    <meta property="og:url" content={canonical} />
+    <meta name="twitter:card" content="summary" />
+
+    <meta name="generator" content={Astro.generator} />
+  </head>
+
+  <body class={bodyClass}>
+    <SiteHeader />
+    <main>
+      <slot />
+    </main>
+    <SiteFooter />
+  </body>
+</html>
+
+<style>
+  /* 页脚是 flex 布局，里面再套一层 wrap 让它和正文对齐 */
+  :global(.site-foot-inner) {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: var(--space-4);
+    flex-wrap: wrap;
+    width: 100%;
+  }
+</style>

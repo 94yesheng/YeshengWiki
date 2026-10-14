@@ -1,0 +1,40 @@
+---
+import { Image } from 'astro:assets';
+import type { Photo } from '../utils/photos';
+import { dottedDate, isoDate } from '../utils/date';
+import { cjkSpacing } from '../utils/typography';
+
+interface Props {
+  photos: Photo[];
+}
+
+const { photos } = Astro.props;
+---
+
+<div class="gallery-grid">
+  {
+    photos.map((photo) => (
+      <figure class:list={['photo', { 'photo--portrait': photo.portrait }]}>
+        <div class="photo-frame">
+          <Image
+            src={photo.image}
+            alt={photo.caption}
+            widths={[320, 640, 960]}
+            sizes="(max-width: 34rem) 50vw, 280px"
+            loading="lazy"
+            decoding="async"
+            format="webp"
+          />
+        </div>
+        <figcaption class="photo-meta">
+          <span class="photo-caption">{cjkSpacing(photo.caption)}</span>
+          {photo.date && (
+            <time class="photo-date" datetime={isoDate(photo.date)}>
+              {dottedDate(photo.date)}
+            </time>
+          )}
+        </figcaption>
+      </figure>
+    ))
+  }
+</div>

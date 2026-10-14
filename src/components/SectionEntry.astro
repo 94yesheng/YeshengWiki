@@ -1,0 +1,71 @@
+---
+/**
+ * 主页上的子页入口。
+ * 加一个新板块 = 在 site.config.ts 的 home.sections 里加一行 + 建对应页面，
+ * 不需要动这个组件，也不需要动主页。
+ */
+interface Props {
+  href: string;
+  title: string;
+  desc: string;
+}
+
+const { href, title, desc } = Astro.props;
+---
+
+<a class="section-entry" href={href}>
+  <h2 class="section-entry-title">{title}</h2>
+  <p class="section-entry-desc">{desc}</p>
+  <span class="section-entry-arrow" aria-hidden="true">→</span>
+</a>
+
+<style>
+  .section-entry {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    align-items: baseline;
+    gap: 0.4rem var(--space-4);
+    padding: var(--space-5) 0;
+    border-top: 1px solid var(--rule);
+    transition: padding-left var(--dur-fast) var(--ease);
+  }
+
+  .section-entry:hover { padding-left: var(--space-3); }
+
+  /* 必须显式指定行列：描述那一行跨两列，会自动占满整行，
+     若不写死行列，箭头就会被挤到第三行去 */
+  .section-entry-title {
+    grid-column: 1;
+    grid-row: 1;
+    margin: 0;
+    font-family: var(--kai);
+    font-size: var(--text-lg);
+    font-weight: 400;
+    letter-spacing: 0.12em;
+    transition: color var(--dur-fast) ease;
+  }
+
+  .section-entry:hover .section-entry-title { color: var(--seal); }
+
+  .section-entry-desc {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    margin: 0;
+    font-size: var(--text-sm);
+    line-height: 1.75;
+    color: var(--muted);
+  }
+
+  .section-entry-arrow {
+    grid-column: 2;
+    grid-row: 1;
+    font-size: var(--text-sm);
+    color: var(--rule);
+    transition: color var(--dur-fast) ease, transform var(--dur-fast) var(--ease);
+  }
+
+  .section-entry:hover .section-entry-arrow {
+    color: var(--seal);
+    transform: translateX(3px);
+  }
+</style>

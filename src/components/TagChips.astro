@@ -1,0 +1,76 @@
+---
+import type { TagInfo } from '../utils/posts';
+
+/**
+ * 标签筛选条。
+ *
+ * 设计取舍：不生成 p/posts/tag/技术/ 这类独立页面，而是在文章页做客户端筛选。
+ * 理由有两个 —— 中文标签会产生非 ASCII 的目录名，部分主机处理有风险；
+ * 而且文章本来就已经全在页面上，客户端筛选是即时的。
+ *
+ * 渐进增强：这里渲染成 <a href="#标签">，没有 JS 时点击只是跳锚点，
+ * 所有文章依然完整可见，不会白屏。
+ */
+interface Props {
+  tags: TagInfo[];
+}
+
+const { tags } = Astro.props;
+---
+
+{
+  tags.length > 0 && (
+    <nav class="chips" data-tag-filter aria-label="按标签筛选">
+      <a href="#" class="chip chip--active" data-tag="">
+        全部
+      </a>
+      {tags.map((t) => (
+        <a
+          href={`#${encodeURIComponent(t.tag)}`}
+          class="chip"
+          data-tag={t.tag}
+        >
+          {t.tag}
+          <span class="chip-count">{t.count}</span>
+        </a>
+      ))}
+    </nav>
+  )
+}
+
+<style>
+  .chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2) var(--space-5);
+    margin: 0 0 var(--space-6);
+  }
+
+  .chip {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 0.35em;
+    padding: 0.15rem 0;
+    font-size: var(--text-sm);
+    letter-spacing: 0.08em;
+    color: var(--muted);
+    border-bottom: 1px solid transparent;
+    transition: color var(--dur-fast) ease, border-color var(--dur-fast) ease;
+  }
+
+  .chip:hover {
+    color: var(--ink);
+    border-bottom-color: var(--rule);
+  }
+
+  .chip--active {
+    color: var(--seal);
+    border-bottom-color: var(--seal);
+  }
+
+  .chip-count {
+    font-size: var(--text-xs);
+    opacity: 0.6;
+    font-variant-numeric: tabular-nums;
+  }
+</style>
