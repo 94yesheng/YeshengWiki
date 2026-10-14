@@ -7,6 +7,12 @@ dist/
 .work/
 mockups/
 
+# 后台程序本体：由 scripts/copy-cms.mjs 从 node_modules/@sveltia/cms 复制而来
+# （npm run dev / build 之前自动执行）。不入库的原因：约 2.5MB，每次升级 Sveltia
+# 都会往 git 历史里再塞一份。字体与配置文件是本项目自己的，仍然入库。
+public/admin/sveltia-cms.js
+public/admin/chunks/
+
 # dependencies
 node_modules/
 

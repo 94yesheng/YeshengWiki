@@ -7,8 +7,10 @@
     "node": ">=22.12.0"
   },
   "scripts": {
+    "predev": "node scripts/copy-cms.mjs",
     "dev": "astro dev",
     "start": "astro dev",
+    "prebuild": "node scripts/copy-cms.mjs",
     "build": "astro build",
     "preview": "astro preview",
     "check": "astro check",
@@ -21,6 +23,7 @@
   },
   "devDependencies": {
     "@astrojs/check": "^0.9.10",
+    "@sveltia/cms": "^0.238.0",
     "typescript": "^6.0.3"
   }
 }

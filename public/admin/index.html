@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <!--
+      不要收录：后台页面。这里刻意不用 robots.txt 的 Disallow —— robots.txt 本身是公开
+      文件，写上去等于给扫描器指路。noindex 元标签足够（后台登录后才有内容，且没有任何
+      敏感信息在页面里）。
+    -->
+    <meta name="robots" content="noindex, nofollow" />
+    <title>后台 · 夜笙的小世界</title>
+    <style>
+      /* 只用来做加载前的兜底观感，Sveltia 挂载后会接管整个 body */
+      body {
+        margin: 0;
+        display: grid;
+        place-items: center;
+        min-height: 100vh;
+        background: #f5f5f4;
+        color: #8a857d;
+        font: 14px/1.6 system-ui, "Microsoft YaHei", sans-serif;
+      }
+    </style>
+  </head>
+  <body>
+    <p>正在载入后台…</p>
+    <noscript>后台需要 JavaScript 才能运行，请启用后刷新。</noscript>
+
+    <!--
+      程序本体由 scripts/copy-cms.mjs 从 node_modules 复制到同目录（npm run dev / build
+      之前自动执行），不走 CDN —— 本机网络对 jsdelivr 不可靠，而且这一步也让后台不依赖
+      任何第三方。配置读同目录的 config.yml。
+    -->
+    <script src="/admin/sveltia-cms.js"></script>
+  </body>
+</html>

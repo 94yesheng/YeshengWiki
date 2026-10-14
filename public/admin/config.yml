@@ -1,0 +1,186 @@
+# 网页后台（Sveltia CMS）配置 —— 线上入口 https://www.yesheng.wiki/admin/
+#
+# 这个文件会随站点公开部署，所以里面只能放**公开安全**的信息：
+# 仓库名、分支、路径。绝不要写 Client Secret、个人访问令牌、FTP 密码。
+# 登录凭据由你在后台登录页现场提供（Sign In with Token）。
+#
+# 改完内容后的链路：保存 → 往仓库提交一次 commit → GitHub Actions 自动构建
+# → 把 dist/ 传到虚拟主机 → 几十秒后线上更新。服务器端始终只有静态文件。
+
+backend:
+  name: github
+  repo: 94yesheng/YeshengWiki
+  # branch 省略 = 用仓库默认分支（main）
+
+# ---------- 媒体库 ----------
+# 照片页靠文件名解析日期与说明（见 src/utils/photos.ts），所以媒体库指向照片目录。
+media_folder: /src/assets/photos
+public_folder: /src/assets/photos
+
+# 必须关闭：照片的元数据编码在文件名里（2026-03-09-说明.jpg），
+# slug 化会把中文说明转写或剥掉，也会动到日期前缀。
+slugify_filename: false
+
+collections:
+  # ---------- 文章 ----------
+  - name: posts
+    label: 文章
+    label_singular: 一篇文章
+    folder: /src/content/posts
+    extension: md
+    format: frontmatter
+    # 文章配图与照片分开放：正文里插入的图片走这里
+    media_folder: /src/assets/posts
+    # 相对路径 —— Astro 的正文图片需要相对于 .md 文件的写法（../../assets/posts/x.png），
+    # 绝对路径写进去会 404
+    public_folder: ../../assets/posts
+    slug:
+      template: '{{slug}}'
+      editable: true
+      hint: 英文小写加连字符，决定文章网址，例如 ji-bao
+    # 字段顺序与原 frontmatter 保持一致，避免保存时把字段顺序打乱造成无意义的 diff
+    fields:
+      - name: title
+        label: 标题
+        widget: string
+
+      # 日期：绝不要加 format 选项。Sveltia 侧配了 format 会进入严格模式，
+      # 既有值不匹配时会显示空白，并可能被静默保存成空（数据丢失）。
+      # 用 date_format + time_format:false，落盘即 2026-03-09 这种裸写法。
+      - name: pubDate
+        label: 日期
+        widget: datetime
+        date_format: YYYY-MM-DD
+        time_format: false
+        picker_utc: true
+        hint: 决定文章在时间轴上的位置
+
+      - name: description
+        label: 摘要
+        widget: text
+        required: false
+        hint: 只用于 RSS 和搜索引擎，列表页不显示
+
+      # tags 是纯字符串数组（["技术","工具"]），所以**不要**写 field/fields ——
+      # 不指定字段的 list 才是字符串列表，指定了就会变成对象数组，与 schema 不符
+      - name: tags
+        label: 标签
+        widget: list
+        default: []
+        hint: 每项一个标签，用于文章页的标签筛选
+
+      - name: updatedDate
+        label: 修订日期
+        widget: datetime
+        date_format: YYYY-MM-DD
+        time_format: false
+        picker_utc: true
+        required: false
+        hint: 留空则不显示"修订于"
+
+      - name: draft
+        label: 草稿
+        widget: boolean
+        required: false
+        default: false
+        hint: 打开后不会出现在列表、RSS 和站点地图里
+
+      - name: body
+        label: 正文
+        widget: markdown
+
+  # ---------- 友链 ----------
+  - name: links
+    label: 友链
+    files:
+      - name: links
+        label: 友链列表
+        file: /src/content/links.json
+        fields:
+          - name: links
+            label: 友链
+            widget: list
+            summary: '{{fields.name}}'
+            fields:
+              - name: id
+                label: 标识
+                widget: string
+                hint: 英文小写，唯一即可
+              - name: name
+                label: 名称
+                widget: string
+              - name: url
+                label: 链接
+                widget: string
+                pattern: ['^https?://.+', '需要以 http:// 或 https:// 开头']
+              - name: description
+                label: 描述
+                widget: string
+                required: false
+
+  # ---------- 站点与主页 ----------
+  - name: site
+    label: 站点
+    files:
+      - name: site-data
+        label: 站点信息与主页文案
+        file: /src/site.data.json
+        fields:
+          - name: site
+            label: 站点信息
+            widget: object
+            fields:
+              - name: url
+                label: 站点地址
+                widget: string
+                hint: 换域名时必须改这里（RSS 与站点地图靠它拼链接）
+              - name: title
+                label: 站名
+                widget: string
+              - name: tagline
+                label: 副标题
+                widget: string
+              - name: description
+                label: 默认描述
+                widget: text
+                hint: 搜索引擎与社交分享用
+              - name: author
+                label: 作者
+                widget: string
+              - name: nav
+                label: 主导航
+                widget: list
+                summary: '{{fields.label}} → {{fields.href}}'
+                fields:
+                  - name: href
+                    label: 路径
+                    widget: string
+                  - name: label
+                    label: 名称
+                    widget: string
+
+          - name: home
+            label: 主页
+            widget: object
+            fields:
+              # 同 tags：纯字符串数组，不指定字段
+              - name: intro
+                label: 自我介绍
+                widget: list
+                default: []
+                hint: 每个段落一项
+              - name: sections
+                label: 子页入口
+                widget: list
+                summary: '{{fields.title}}'
+                hint: 顺序即主页上的显示顺序，可拖动排序
+                fields:
+                  - name: href
+                    label: 路径
+                    widget: string
+                  - name: title
+                    label: 标题
+                    widget: string
+                  - name: desc
+                    label: 描述
+                    widget: text
