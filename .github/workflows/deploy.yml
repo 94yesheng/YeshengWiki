@@ -1,0 +1,71 @@
+# 提交即上线：把 dist/ 构建出来并传到虚拟主机
+#
+# 链路：后台保存 → 往仓库提交一次 commit → 这个工作流被触发 → 类型检查 → 构建
+# → 把 dist/ 通过 FTP 传到主机 → 几十秒后线上更新。
+#
+# 需要在仓库的 Settings → Secrets and variables → Actions 里配三个值（不要写进代码）：
+#   FTP_SERVER      FTP 服务器地址（主机商给你的，通常是个 IP 或 ftp.xxx.com）
+#   FTP_USERNAME    FTP 账号（建议在 cPanel 里单独建一个，只指向网站根目录）
+#   FTP_PASSWORD    该账号的密码
+#   FTP_SERVER_DIR  上传目标目录，**必须以斜杠结尾**，例如 ./ 或 /public_html/
+
+name: 构建并部署
+
+on:
+  push:
+    branches: [main]
+  # 也可以在 Actions 页面手动点一次
+  workflow_dispatch:
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    env:
+      # 把 secret 转成环境变量，才能在下面的 if 里判断"凭据配了没有" ——
+      # GitHub 不允许在 step 的 if 里直接用 secrets。
+      # 好处：还没配 FTP 信息时，这一步会跳过并给出警告，而不是整个流水线红掉，
+      # 你能先确认"类型检查 + 构建"是通的。
+      FTP_SERVER: ${{ secrets.FTP_SERVER }}
+
+    steps:
+      - name: 取出仓库
+        uses: actions/checkout@v4
+
+      - name: 装 Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: 安装依赖
+        run: npm ci
+
+      # 这一步很关键，别删：astro build 本身**不做类型检查**，它只把类型剥掉。
+      # 而网页后台可能把 site.data.json / frontmatter 写坏（比如漏掉必填字段），
+      # 只有类型检查能拦住 —— 拦住就等于没上线，放过去就等于把坏数据部署出去。
+      - name: 类型检查
+        run: npm run check
+
+      - name: 构建
+        run: npm run build
+
+      # 只传构建产物 dist/。绝不要开启 dangerous-clean-slate —— 那会先清空
+      # 服务器上的目标目录，把 cPanel 自带的东西（.htaccess、cgi-bin 之类）一起删掉。
+      - name: 上传到虚拟主机
+        if: env.FTP_SERVER != ''
+        uses: SamKirkland/FTP-Deploy-Action@v4.4.0
+        with:
+          server: ${{ secrets.FTP_SERVER }}
+          username: ${{ secrets.FTP_USERNAME }}
+          password: ${{ secrets.FTP_PASSWORD }}
+          # local-dir 与 server-dir 都必须以斜杠结尾（该 action v4 的要求）
+          local-dir: ./dist/
+          server-dir: ${{ secrets.FTP_SERVER_DIR }}
+
+      - name: 凭据未配置时的提示
+        if: env.FTP_SERVER == ''
+        run: |
+          echo "::warning::还没配置 FTP 凭据，本次只做了类型检查与构建，产物没有上传。"
+          echo "配好后到 Actions 页面重新运行一次即可上线。"
+          echo "需要配的四个值见 .github/workflows/deploy.yml 顶部注释与 后台说明.md。"
