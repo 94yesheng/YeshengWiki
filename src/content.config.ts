@@ -22,9 +22,15 @@ const posts = defineCollection({
 /**
  * 友链
  * 单独一个 JSON 文件，方便手工增删；以后接管理端也只需改写它
+ *
+ * 顶层是对象 `{ links: [...] }` 而不是数组：网页后台（Sveltia）的
+ * 「单文件集合」把字段映射到对象的属性上，根是数组就没有可映射的字段名。
+ * 所以用 parser 在读取时把 links 数组拆出来，schema 与消费方都不受影响。
  */
 const links = defineCollection({
-  loader: file('./src/content/links.json'),
+  loader: file('./src/content/links.json', {
+    parser: (text) => JSON.parse(text).links,
+  }),
   schema: z.object({
     id: z.string(),
     name: z.string(),

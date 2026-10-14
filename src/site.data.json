@@ -1,0 +1,28 @@
+{
+  "site": {
+    "url": "https://www.yesheng.wiki",
+    "title": "夜笙的小世界",
+    "tagline": "一个普通人的自述",
+    "description": "夜笙的个人博客：技术笔记与随笔。",
+    "author": "夜笙",
+    "nav": [
+      { "href": "/", "label": "主页" },
+      { "href": "/posts/", "label": "文章" },
+      { "href": "/photos/", "label": "照片" },
+      { "href": "/programs/", "label": "程序" },
+      { "href": "/links/", "label": "友链" }
+    ]
+  },
+  "home": {
+    "intro": [
+      "这里是夜笙的小世界。写点技术笔记，也写点没什么用但想记下来的事。",
+      "如果抵达不了人生的高度，那就尽可能的探索世界的广度吧。"
+    ],
+    "sections": [
+      { "href": "/posts/", "title": "文章", "desc": "按时间排列的长短文字，可以用标签筛。" },
+      { "href": "/photos/", "title": "照片", "desc": "随手拍下的东西，按时间倒着排。" },
+      { "href": "/programs/", "title": "程序", "desc": "做过的小工具与项目。这一页还在搭。" },
+      { "href": "/links/", "title": "友链", "desc": "常看的博客和网站。" }
+    ]
+  }
+}

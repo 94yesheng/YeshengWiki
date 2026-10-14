@@ -1,8 +1,10 @@
-[
-  {
-    "id": "example",
-    "name": "示例友链",
-    "url": "https://example.com",
-    "description": "这是一条示例，换成你常看的博客或网站。"
-  }
-]
+{
+  "links": [
+    {
+      "id": "example",
+      "name": "示例友链",
+      "url": "https://example.com",
+      "description": "这是一条示例，换成你常看的博客或网站。"
+    }
+  ]
+}
