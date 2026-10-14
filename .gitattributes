@@ -1,0 +1,22 @@
+# 换行符规则 —— 仓库内一律 LF
+#
+# 为什么需要这个文件：Windows 上 git 默认 core.autocrlf=true，会把仓库里的 LF
+# 在检出时转成 CRLF、提交时又转回去。而网页后台（Sveltia CMS）在浏览器里写入
+# 文件时用的是 LF，于是同一个文件在"后台改过"和"本地改过"之间会产生
+# 整文件级别的假 diff —— 明明只改了一行，git 却认为整个文件都变了。
+#
+# 把这里钉死成 eol=lf，并配合 `git config core.autocrlf false`，
+# 两边写出来的字节就一致了。
+
+* text=auto eol=lf
+
+# 二进制文件不做换行符转换
+*.png  binary
+*.jpg  binary
+*.jpeg binary
+*.gif  binary
+*.webp binary
+*.avif binary
+*.ico  binary
+*.woff binary
+*.woff2 binary
