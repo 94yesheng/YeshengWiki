@@ -80,36 +80,35 @@
 }
 
 /* --------------------------------------------------------------------------
-   墙里的照片 —— 不裁切、不拉伸，保持原始宽高比
-   多张时用 flex 的"对齐行"：每张的基准宽度和拉伸权重都按自己的宽高比给，
-   于是同一行会被拉到等高、整行填满容器宽度，而每张的比例不变。
-   宽高比由组件内联成 --ar 传进来。
+   墙里的照片 —— 不裁切、不拉伸，保持原始宽高比，整组居中
+   每张按自己的宽高比拿一个固定基准宽度（--ar × 17rem），所以同一行的照片高度
+   天然一致、整行排下来很齐；容器 justify-content: center 让不足一行的也居中，
+   而不是靠左留一块空。
+   注：早先是"每张按比例拉伸去填满整行"，那样"满行"和"整组居中"是冲突的 ——
+   要居中就只能放弃拉伸。代价很小：不拉伸时每张约 272px 高，拉伸后约 292px，
+   肉眼几乎看不出差别。
    -------------------------------------------------------------------------- */
 
 .wall-photos {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--space-3);
+  justify-content: center;
+  column-gap: var(--space-3);
+  row-gap: var(--space-4);
   margin-top: var(--space-5);
 }
 
-/* 末尾补位：吃掉最后一行的剩余空间，免得末行被拉伸撑大 */
-.wall-photos::after {
-  content: "";
-  flex: 10000 1 0;
-}
-
 .wall-photos .photo {
-  /* 越横（--ar 越大）的照片，基准宽度与拉伸权重越大 —— 这样行内高度才拉得齐 */
-  flex: calc(var(--ar) * 100) 1 calc(var(--ar) * 17rem);
-  /* 极横的全景图不至于把同行挤没 */
-  min-width: min(100%, calc(var(--ar) * 10rem));
+  flex: 0 1 auto;
+  width: calc(var(--ar) * 17rem);
+  max-width: 100%;
 }
 
-/* 只放一张的墙：按原比例显示，只做"不超出"的约束，不铺满整屏 */
-.wall-photos--single { display: block; }
-
-.wall-photos--single .photo { max-width: min(100%, 52rem); }
+/* 只放一张的墙：可以放得更大，同样居中 */
+.wall-photos--single .photo {
+  width: auto;
+  max-width: min(100%, 52rem);
+}
 
 .wall-photos--single img {
   width: auto;
@@ -156,7 +155,8 @@
   letter-spacing: 0.06em;
   color: var(--muted);
   display: flex;
-  justify-content: space-between;
+  justify-content: center;
+  text-align: center;
   gap: var(--space-3);
   align-items: baseline;
 }
