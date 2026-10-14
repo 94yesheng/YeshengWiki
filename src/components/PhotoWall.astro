@@ -35,6 +35,14 @@ const { wall } = Astro.props;
 const meta = [wall.date ? chineseFullDate(wall.date) : '', wall.place].filter(Boolean);
 const single = wall.photos.length === 1;
 
+/* 告诉浏览器每张图实际占多宽。
+   注意：sizes 不只是"下哪一档图"——对 width:auto 的图，它还会参与算出布局宽度。
+   单张的墙撑满内容区（65rem），所以这里必须照实写：写小了浏览器就会按那个宽度
+   渲染，照片看起来像被压过（踩过一次）。 */
+const sizes = single
+  ? '(max-width: 34rem) 100vw, 65rem'
+  : '(max-width: 34rem) 92vw, (max-width: 68rem) 45vw, 30rem';
+
 /* 覆盖层用的地址：取 1600px 那一档（和网格里 largest 的变体是同一个文件），
    原图比 1600 还小的就别放大，避免生成虚大的文件 */
 const bigSrcs = await Promise.all(
@@ -73,7 +81,7 @@ const bigSrcs = await Promise.all(
                 src={photo.image}
                 alt={photo.caption || wall.title}
                 widths={[480, 720, 1080, 1600]}
-                sizes="(max-width: 34rem) 92vw, (max-width: 68rem) 45vw, 30rem"
+                sizes={sizes}
                 loading="lazy"
                 decoding="async"
               />

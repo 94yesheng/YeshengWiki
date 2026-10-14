@@ -104,18 +104,18 @@
   max-width: 100%;
 }
 
-/* 只放一张的墙：可以放得更大，同样居中 */
+/* 只放一张的墙：固定宽度 = 照片组的宽度（撑满内容区），高度按原比例走 */
 .wall-photos--single .photo {
-  width: auto;
-  max-width: min(100%, 52rem);
+  width: 100%;
+  max-width: 100%;
 }
 
 .wall-photos--single img {
-  width: auto;
+  width: 100%;
   height: auto;
-  max-width: 100%;
-  /* 竖幅长图不至于高过一整屏 */
-  max-height: 78vh;
+  /* 竖幅长图限高：加 object-fit 后是被"按比例缩在里面"，不是压扁 */
+  max-height: 85vh;
+  object-fit: contain;
 }
 
 .wall-empty {
