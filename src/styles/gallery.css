@@ -188,3 +188,83 @@
   color: var(--pine);
   border-bottom: 1px solid currentColor;
 }
+
+/* --------------------------------------------------------------------------
+   点击放大 —— 覆盖层
+   照片本身是链接（没 JS 时点击就是浏览器打开图片），这里只管把它变得更好用
+   -------------------------------------------------------------------------- */
+
+.photo-link { display: block; border-radius: 3px; }
+
+/* 覆盖层打开时锁住页面滚动，免得背景跟着滑 */
+body.lightbox-open { overflow: hidden; }
+
+.lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-6) var(--space-7);
+  /* 0.97 而不是更透：照片页底下是亮色画布，太透会把画面上的字透上来 */
+  background: rgba(22, 22, 20, 0.97);
+  animation: lightbox-in var(--dur-base) var(--ease);
+}
+
+@keyframes lightbox-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+.lightbox img {
+  display: block;
+  width: auto;
+  height: auto;
+  max-width: 100%;
+  max-height: 86vh;
+  border-radius: 2px;
+}
+
+.lightbox button {
+  position: absolute;
+  padding: var(--space-3);
+  border: 0;
+  background: none;
+  cursor: pointer;
+  color: rgba(255, 255, 255, 0.72);
+  font: inherit;
+  font-size: 1.75rem;
+  line-height: 1;
+}
+
+.lightbox button:hover { color: #fff; }
+
+.lightbox-close { top: var(--space-2); right: var(--space-3); }
+.lightbox-nav[data-dir="prev"] { left: var(--space-2); top: 50%; transform: translateY(-50%); }
+.lightbox-nav[data-dir="next"] { right: var(--space-2); top: 50%; transform: translateY(-50%); }
+
+/* 底部一行：单张说明（若有）+ 第几张/共几张 */
+.lightbox-note {
+  position: absolute;
+  bottom: var(--space-4);
+  left: 50%;
+  transform: translateX(-50%);
+  margin: 0;
+  display: flex;
+  gap: var(--space-5);
+  align-items: baseline;
+  color: rgba(255, 255, 255, 0.62);
+  font-family: var(--sans);
+  font-size: var(--text-xs);
+  letter-spacing: 0.08em;
+}
+
+.lightbox-count { font-variant-numeric: tabular-nums; }
+
+@media (max-width: 34rem) {
+  /* 窄屏把箭头的可点区域留够（手指点得到），图片再收一点高度 */
+  .lightbox { padding: var(--space-5) 2.75rem; }
+  .lightbox img { max-height: 76vh; }
+  .lightbox button { font-size: 2rem; }
+}
