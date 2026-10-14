@@ -1,5 +1,12 @@
 {
   "extends": "astro/tsconfigs/strict",
   "include": [".astro/types.d.ts", "**/*"],
-  "exclude": ["dist"]
+
+  // 排除项及理由：
+  //   dist/    构建产物，每次重新生成
+  //   public/  原样复制的静态资源，不需要类型检查。特别是 public/admin/sveltia-cms.js
+  //            是 2.5MB 的压缩包（还有 chunks/），类型检查去解析它会直接把内存吃到
+  //            4GB 然后崩掉 —— 这个坑踩过一次，别再把它加回来
+  //   .work/   迁移时的一次性工具和临时产物，自带 node_modules
+  "exclude": ["dist", "public", ".work"]
 }

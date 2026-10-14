@@ -39,20 +39,70 @@
 }
 
 /* --------------------------------------------------------------------------
-   照片网格
+   一面照片墙
+   「照片墙」是照片页的基本单位：可以只有一张照片，也可以有很多张。
+   标题 / 时间 / 地点 / 记录属于这面墙，单张照片只有可选的说明。
    -------------------------------------------------------------------------- */
 
-.gallery-grid {
+.wall + .wall { margin-top: var(--space-8); }
+
+.wall-head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+}
+
+.wall-title {
+  margin: 0;
+  font-family: var(--kai);
+  font-size: var(--text-lg);
+  font-weight: 400;
+  letter-spacing: 0.04em;
+}
+
+.wall-meta {
+  margin: 0;
+  color: var(--muted);
+  font-family: var(--sans);
+  font-size: var(--text-xs);
+  letter-spacing: 0.08em;
+}
+
+/* 记录文字：沿用文章正文的书籍排版，宽度收在阅读舒适区 */
+.wall-note {
+  margin: var(--space-3) 0 0;
+  max-width: var(--measure);
+  font-family: var(--song);
+  font-size: var(--text-base);
+  line-height: 1.95;
+  text-indent: 2em;
+}
+
+.wall-photos {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr));
   gap: var(--space-5);
+  margin-top: var(--space-5);
 }
 
 @media (max-width: 34rem) {
-  .gallery-grid {
+  .wall-photos {
     grid-template-columns: 1fr 1fr;
     gap: var(--space-3);
   }
+}
+
+/* 只放一张的墙不要铺满整屏，收在阅读宽度里 */
+.wall-photos--single {
+  grid-template-columns: minmax(0, 42rem);
+}
+
+.wall-empty {
+  margin: var(--space-4) 0 0;
+  color: var(--muted);
+  font-family: var(--sans);
+  font-size: var(--text-xs);
 }
 
 /* --------------------------------------------------------------------------
@@ -112,8 +162,6 @@
   white-space: nowrap;
 }
 
-.photo-date { flex: none; font-variant-numeric: tabular-nums; }
-
 /* 墨绿：照片区的识别色，用在悬停态和强调处 */
 .photo:hover .photo-caption { color: var(--pine); }
 
@@ -133,28 +181,4 @@
 .gallery-empty a {
   color: var(--pine);
   border-bottom: 1px solid currentColor;
-}
-
-/* --------------------------------------------------------------------------
-   照片详情（点击单张后）
-   -------------------------------------------------------------------------- */
-
-.photo-single { padding: var(--space-7) 0 0; }
-
-.photo-single img {
-  width: 100%;
-  height: auto;
-  border-radius: 3px;
-}
-
-.photo-single .photo-single-meta {
-  margin: var(--space-5) 0 0;
-  display: flex;
-  justify-content: space-between;
-  gap: var(--space-4);
-  flex-wrap: wrap;
-  font-family: var(--sans);
-  font-size: var(--text-sm);
-  letter-spacing: 0.06em;
-  color: var(--muted);
 }

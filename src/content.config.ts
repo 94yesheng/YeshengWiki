@@ -40,8 +40,41 @@ const links = defineCollection({
 });
 
 /**
- * 照片不走内容集合，而是直接扫描图片目录。
- * 理由：照片会有几百张且持续增加，一张照片配一个 Markdown 文件维护成本太高。
- * 约定见 src/utils/photos.ts
+ * 照片墙
+ *
+ * 【为什么这里从"扫描图片目录"改成了内容集合】
+ * 早先的做法是扫描 src/assets/photos/，从**文件名**解析日期和说明。但照片墙需要
+ * 标题、地点、记录文字 —— 这些都塞不进文件名（不能含 `/`、长度有限，改一次等于
+ * 重命名文件）。而且"一面墙可以只有一张照片、也可以有很多张"这个**分组关系**
+ * 必须显式记录下来，光靠文件系统表达不了。所以改成数据文件。
+ *
+ * 【为什么一面墙一个文件，而不是一个大 JSON】
+ * 后台改一面墙就只动一个文件，diff 干净、不会和别的墙互相干扰；增删一面墙就是
+ * 增删一个文件。这和文章（一篇文章一个 .md）是同一套思路。
+ *
+ * 图片本身仍然放在 src/assets/photos/，靠 photos[].file 按文件名关联，
+ * 由 src/utils/photos.ts 解析回可用的图片对象。
  */
-export const collections = { posts, links };
+const photoWalls = defineCollection({
+  loader: glob({ pattern: '**/*.json', base: './src/content/photos' }),
+  schema: z.object({
+    title: z.string(),
+    /** 可留空：没标注时间的墙会排在时间轴最后 */
+    date: z
+      .union([z.literal(''), z.string().regex(/^\d{4}-\d{2}-\d{2}$/, '日期要写成 2024-07-17 这种格式')])
+      .optional(),
+    place: z.string().default(''),
+    note: z.string().default(''),
+    photos: z
+      .array(
+        z.object({
+          file: z.string(),
+          /** 单张的说明，可留空 */
+          caption: z.string().default(''),
+        })
+      )
+      .default([]),
+  }),
+});
+
+export const collections = { posts, links, photoWalls };

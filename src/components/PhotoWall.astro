@@ -1,0 +1,61 @@
+---
+/**
+ * 一面照片墙
+ *
+ * 「照片墙」是照片页的基本单位：可以只有一张照片，也可以有很多张。
+ * 标题、时间、地点、记录都属于这面墙；单张照片只有可选的说明。
+ *
+ * 图片走 astro:assets 的 Image 组件：
+ *   · widths + sizes 让浏览器按屏宽取合适尺寸（手机不下大图 —— 主机带宽只有 8Mbps，
+ *     一页几十张原图会直接吃满）
+ *   · loading="lazy" 让视口外的照片推迟加载
+ *   · 不传 height，保持原始比例；网格里的统一裁切交给 CSS 的 .photo-frame
+ */
+import { Image } from 'astro:assets';
+import type { PhotoWall as Wall } from '../utils/photos';
+import { chineseFullDate } from '../utils/date';
+import { cjkSpacing } from '../utils/typography';
+
+interface Props {
+  wall: Wall;
+}
+
+const { wall } = Astro.props;
+
+/** 时间与地点拼一行：二〇二四年七月十七日 · 重庆 */
+const meta = [wall.date ? chineseFullDate(wall.date) : '', wall.place].filter(Boolean);
+const single = wall.photos.length === 1;
+---
+
+<section class="wall">
+  <div class="wall-head">
+    <h3 class="wall-title">{cjkSpacing(wall.title)}</h3>
+    {meta.length > 0 && <p class="wall-meta">{meta.join(' · ')}</p>}
+  </div>
+
+  {wall.note && <p class="wall-note">{wall.note}</p>}
+
+  {
+    wall.photos.length > 0 ? (
+      <div class:list={['wall-photos', single && 'wall-photos--single']}>
+        {wall.photos.map((photo) => (
+          <figure class:list={['photo', photo.portrait && 'photo--portrait']}>
+            <div class="photo-frame">
+              <Image
+                src={photo.image}
+                alt={photo.caption || wall.title}
+                widths={[320, 480, 720, 1080]}
+                sizes={single ? '(max-width: 34rem) 92vw, 42rem' : '(max-width: 34rem) 45vw, (max-width: 68rem) 30vw, 20rem'}
+                loading="lazy"
+                decoding="async"
+              />
+            </div>
+            {photo.caption && <figcaption class="photo-meta"><span class="photo-caption">{photo.caption}</span></figcaption>}
+          </figure>
+        ))}
+      </div>
+    ) : (
+      <p class="wall-empty">这面墙还没有照片。</p>
+    )
+  }
+</section>
