@@ -1,0 +1,39 @@
+---
+/**
+ * 后台（/studio/）
+ *
+ * 【为什么是 Astro 页面而不是 public/ 下的一个静态文件】
+ *   · 直接复用站点的 tokens.css —— 后台和站点是同一套视觉，不是一个"外挂软件"
+ *   · <script> 走 Vite 打包，于是可以用 npm 包（YAML 解析），不用手动复制 dist
+ *   · 进类型检查（astro check）
+ *
+ * 【为什么不是 Sveltia 那套】Sveltia 仍然留在 /admin/ 作为备份，功能完整。这个自建的
+ * 后台是为了"按自己的习惯来"：界面与站点统一，而且保存时**只写改动的那个文件、
+ * frontmatter 里没动过的字段原样保留** —— 见 src/studio/frontmatter.ts。
+ *
+ * 【它不经过任何服务器】浏览器拿着你自己的访问令牌直接调 api.github.com。
+ * 所以这个页面只在你的浏览器里跑，站点服务器上没有多出任何可写入口。
+ * 页面带 noindex，并且从站点地图里排除（见 astro.config.mjs）。
+ */
+import '../styles/tokens.css';
+import '../styles/studio.css';
+---
+
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex, nofollow" />
+    <title>后台 · 夜笙的小世界</title>
+  </head>
+  <body class="st-body">
+    <header class="st-bar" id="st-bar"></header>
+    <main id="st-main"></main>
+    <div class="st-toast" id="st-toast" role="status" aria-live="polite"></div>
+
+    <script>
+      import '../studio/app';
+    </script>
+  </body>
+</html>

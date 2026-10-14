@@ -11,7 +11,10 @@ export default defineConfig({
   trailingSlash: 'always',
   build: { format: 'directory' },
 
-  integrations: [sitemap()],
+  integrations: [
+    // 后台不要进站点地图：它带 noindex，被搜索引擎收录没有意义
+    sitemap({ filter: (page) => !page.includes('/studio') && !page.includes('/admin') }),
+  ],
 
   // 纯静态站，不装任何 adapter
 });

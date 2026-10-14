@@ -19,11 +19,13 @@
   "dependencies": {
     "@astrojs/rss": "^4.0.19",
     "@astrojs/sitemap": "^3.7.4",
-    "astro": "^7.3.8"
+    "astro": "^7.3.8",
+    "js-yaml": "^5.4.3"
   },
   "devDependencies": {
     "@astrojs/check": "^0.9.10",
     "@sveltia/cms": "^0.238.0",
+    "@types/js-yaml": "^4.0.9",
     "typescript": "^6.0.3"
   }
 }
