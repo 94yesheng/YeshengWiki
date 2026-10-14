@@ -40,7 +40,7 @@ const single = wall.photos.length === 1;
    单张的墙撑满内容区（65rem），所以这里必须照实写：写小了浏览器就会按那个宽度
    渲染，照片看起来像被压过（踩过一次）。 */
 const sizes = single
-  ? '(max-width: 34rem) 100vw, 65rem'
+  ? '(max-width: 34rem) 100vw, 56rem'
   : '(max-width: 34rem) 92vw, (max-width: 68rem) 45vw, 30rem';
 
 /* 覆盖层用的地址：取 1600px 那一档（和网格里 largest 的变体是同一个文件），
