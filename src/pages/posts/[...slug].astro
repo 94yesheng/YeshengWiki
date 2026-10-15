@@ -27,8 +27,8 @@ const tags = post.data.tags;
 ---
 
 <BaseLayout title={post.data.title} description={post.data.description}>
-  <article class="wrap article">
-    <header class="article-head">
+  <article class="article">
+    <header class="article-head wrap">
       <p class="dateline">{chineseFullDate(post.data.pubDate)}</p>
       <h1 class="article-title">{cjkSpacing(post.data.title)}</h1>
     </header>
@@ -77,12 +77,9 @@ const tags = post.data.tags;
 </BaseLayout>
 
 <style>
-  /* 容器宽度用 .wrap 默认的 --shell（64rem）—— 不再卡回阅读宽。
-     选择器仍写成 .wrap.article（两个类）是为了稳赢 base.css 里的 .wrap，
-     不依赖样式注入顺序 */
-  .wrap.article {
-    padding-top: var(--space-7);
-  }
+  /* 这一页不再整体套 .wrap：题头留在 .wrap 里（占满 64rem），
+     正文区要**铺满整个视口宽**，这样左栏才有地方挪到两侧的空白里去 */
+  .article { padding-top: var(--space-7); }
 
   /* 题头：一条短朱红横线领着日期，和列表页的日期栏呼应 */
   .dateline {
@@ -113,17 +110,23 @@ const tags = post.data.tags;
     letter-spacing: 0.03em;
   }
 
-  /* ---------- 两栏 ---------- */
-
+  /* ---------- 正文居中，左栏在两侧空白里 ----------
+     三列 1fr / 正文 / 1fr：正文那一列居中（左右两个 1fr 必然相等），
+     左栏塞进左边那片空白、贴着正文的左边停住。这样正文是活动的阅读列，
+     元信息落在它外侧的留白中，不再和正文挤在同一行里。 */
   .article-body {
     display: grid;
-    grid-template-columns: 13rem 1fr;
-    gap: var(--space-8);
+    grid-template-columns: 1fr minmax(0, 40rem) 1fr;
+    gap: 0 var(--space-8);
+    padding: 0 var(--pad-x);
     /* 必须是 start：左栏拉满整列高度的话，sticky 就没有可粘的余地了 */
     align-items: start;
   }
 
   .article-rail {
+    grid-column: 1;
+    justify-self: end;   /* 贴到左边那片空白的右缘 */
+    width: 15rem;
     position: sticky;
     /* 顶栏是粘顶的，所以左栏要粘在它**下面**，不是 0 */
     top: calc(var(--nav-h) + var(--space-5));
@@ -133,13 +136,19 @@ const tags = post.data.tags;
     padding-top: var(--space-2);
   }
 
+  /* 正文落在中间那一列；min-width:0 免得长代码行把网格撑宽、把居中位置带偏 */
+  .article-body > .prose {
+    grid-column: 2;
+    min-width: 0;
+  }
+
   .rail-block { margin: 0; }
 
   .rail-k {
     margin: 0 0 0.25em;
     font-size: var(--text-xs);
     letter-spacing: 0.22em;
-    color: var(--rule);
+    color: var(--faint);
   }
 
   .rail-v {
@@ -168,7 +177,15 @@ const tags = post.data.tags;
   /* 窄屏塌成一栏（不专门做手机适配，只是别挤爆） */
   @media (max-width: 34rem) {
     .article-body { grid-template-columns: 1fr; gap: var(--space-6); }
-    .article-rail { position: static; flex-direction: row; flex-wrap: wrap; gap: var(--space-5); }
+    .article-rail {
+      grid-column: 1;
+      justify-self: stretch;
+      width: auto;
+      position: static;
+      flex-direction: row;
+      flex-wrap: wrap;
+      gap: var(--space-5);
+    }
     .article-title { font-size: var(--text-xl); }
   }
 </style>

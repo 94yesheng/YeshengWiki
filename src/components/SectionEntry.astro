@@ -54,8 +54,8 @@ const { href, title, desc, preview } = Astro.props;
               <Image
                 src={preview.cover}
                 alt=""
-                widths={[240, 400, 640]}
-                sizes="16rem"
+                widths={[240, 400, 640, 900]}
+                sizes="22rem"
                 loading="lazy"
                 decoding="async"
               />
@@ -101,7 +101,7 @@ const { href, title, desc, preview } = Astro.props;
 
   .section-entry-arrow {
     font-size: var(--text-md);
-    color: var(--rule);
+    color: var(--faint);
     transition: color var(--dur-fast) ease, transform var(--dur-fast) var(--ease);
   }
 
@@ -110,8 +110,10 @@ const { href, title, desc, preview } = Astro.props;
     transform: translateX(4px);
   }
 
+  /* 子内容往右缩两格 —— 像中文段首空两格那样，
+     标题留在左边、下面这块退进去，一眼能看出是从属关系 */
   .section-entry-desc {
-    margin: var(--space-4) 0 0;
+    margin: var(--space-4) 0 0 2em;
     font-size: var(--text-base);
     line-height: 1.75;
     color: var(--muted);
@@ -121,10 +123,10 @@ const { href, title, desc, preview } = Astro.props;
 
   .section-entry-preview {
     display: grid;
-    grid-template-columns: 16rem 1fr;
+    grid-template-columns: 22rem 1fr;
     gap: var(--space-6);
     align-items: center;
-    margin-top: var(--space-7);
+    margin: var(--space-7) 0 0 2em;
     padding-top: var(--space-6);
     border-top: 1px solid var(--rule);
   }
@@ -149,7 +151,12 @@ const { href, title, desc, preview } = Astro.props;
 
   .section-entry:hover .section-entry-cover :global(img) { transform: scale(1.04); }
 
-  .section-entry-info { min-width: 0; }
+  /* min-width:0 让它能在网格里正常收缩；右侧留白是用户要的
+     "省略号后的文段不要完全和右侧重叠" —— 文字别顶到块的右边界上 */
+  .section-entry-info {
+    min-width: 0;
+    padding-right: var(--space-8);
+  }
 
   .section-entry-meta {
     display: flex;
@@ -163,7 +170,7 @@ const { href, title, desc, preview } = Astro.props;
   }
 
   .section-entry-meta time { color: var(--seal); }
-  .section-entry-meta .dot { color: var(--rule); }
+  .section-entry-meta .dot { color: var(--faint); }
   .section-entry-meta span { color: var(--muted); }
 
   .section-entry-latest {
@@ -178,8 +185,9 @@ const { href, title, desc, preview } = Astro.props;
 
   .section-entry:hover .section-entry-latest { color: var(--seal); }
 
-  /* 一句话：description 是截断过的前缀，末句多半是断的 ——
-     这里再加一道两行截断，让断口落在省略号上，而不是明晃晃露在半句中间 */
+  /* 梗概是正文开头那一段，可能偏长 —— 三行之后由浏览器补省略号。
+     **不要自己拼 "…"**：换行位置是浏览器算的，手拼的省略号会对不上位置、
+     要么提前冒出来要么被裁掉。line-clamp 的省略号才是准的。 */
   .section-entry-text {
     margin: 0.4rem 0 0;
     font-size: var(--text-base);
@@ -187,8 +195,8 @@ const { href, title, desc, preview } = Astro.props;
     color: var(--muted);
     display: -webkit-box;
     -webkit-box-orient: vertical;
-    -webkit-line-clamp: 2;
-    line-clamp: 2;
+    -webkit-line-clamp: 3;
+    line-clamp: 3;
     overflow: hidden;
   }
 

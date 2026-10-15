@@ -3,6 +3,7 @@ import '../styles/tokens.css';
 import '../styles/base.css';
 import SiteHeader from '../components/SiteHeader.astro';
 import SiteFooter from '../components/SiteFooter.astro';
+import FloatingMenu from '../components/FloatingMenu.astro';
 import { site } from '../site.config';
 import { cjkSpacing } from '../utils/typography';
 
@@ -54,6 +55,39 @@ const canonical = new URL(Astro.url.pathname, Astro.site);
     <meta name="twitter:card" content="summary" />
 
     <meta name="generator" content={Astro.generator} />
+
+    <!-- 手机浏览器地址栏的颜色；下面的脚本会按最终主题改写它 -->
+    <meta name="theme-color" content="#ffffff" />
+
+    <!--
+      夜间模式的"定调"脚本 —— **必须在首次绘制之前同步跑完**。
+
+      为什么非得内联：Astro 打包出来的 <script> 是 type="module"，天然 defer，
+      要等 HTML 解析完才执行 —— 那时候浅色已经画上去了，用 localStorage 切深色
+      就会闪一下白（俗称 FOUC）。内联脚本在解析到这里时立刻执行，赶得上第一帧。
+
+      这是全项目唯一一处 is:inline。它只做一件事：把"跟随系统还是用户已选"
+      算成一个结果写进 <html data-theme>，CSS 那边就只需要认这一个值，
+      不用在 @media (prefers-color-scheme) 里把整套深色再抄一遍。
+
+      代价：禁用 JS 的访客永远是浅色（不做兜底媒体查询，那种重复不划算）。
+    -->
+    <script is:inline>
+      (function () {
+        var dark = false;
+        try {
+          var saved = localStorage.getItem('theme');
+          dark = saved
+            ? saved === 'dark'
+            : window.matchMedia('(prefers-color-scheme: dark)').matches;
+        } catch (e) {
+          /* 隐私模式读 localStorage 会抛异常 —— 那样就退回浅色 */
+        }
+        document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+        var meta = document.querySelector('meta[name="theme-color"]');
+        if (meta) meta.setAttribute('content', dark ? '#151412' : '#ffffff');
+      })();
+    </script>
   </head>
 
   <body class={bodyClass}>
@@ -62,6 +96,7 @@ const canonical = new URL(Astro.url.pathname, Astro.site);
       <slot />
     </main>
     <SiteFooter />
+    <FloatingMenu />
   </body>
 </html>
 

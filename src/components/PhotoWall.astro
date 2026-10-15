@@ -159,7 +159,9 @@ const bigSrcs = await Promise.all(
     box ??= build();
     document.body.classList.add(OPEN_CLASS);
     show(items.indexOf(a));
-    (box.querySelector('.lightbox-close') as HTMLElement).focus();
+    // preventScroll：不带这个参数的话，focus() 默认会把元素滚进视口 ——
+    // 主页开了滚动吸附，那一下会在吸附容器上引起一次意外的跳动
+    (box.querySelector('.lightbox-close') as HTMLElement).focus({ preventScroll: true });
   }
 
   function close() {

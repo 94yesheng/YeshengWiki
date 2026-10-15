@@ -12,7 +12,7 @@
 import BaseLayout from '../layouts/BaseLayout.astro';
 import SectionEntry from '../components/SectionEntry.astro';
 import { home, site } from '../site.config';
-import { getPostCover, getPublishedPosts } from '../utils/posts';
+import { getPostCover, getPostLead, getPublishedPosts } from '../utils/posts';
 import { getPhotoWalls } from '../utils/photos';
 import { chineseFullDate, chineseMonthDay } from '../utils/date';
 import { cjkSpacing } from '../utils/typography';
@@ -29,7 +29,9 @@ const postPreview = newestPost && {
   date: chineseMonthDay(newestPost.data.pubDate),
   extra: newestPost.data.tags.join(' · '),
   title: cjkSpacing(newestPost.data.title),
-  text: newestPost.data.description,
+  /* 用正文的开头，不用 frontmatter 的 description —— 后者是搬站时硬截断的
+     55 字，末句常常断在半句甚至没闭合的括号里。见 utils/posts.ts 的 getPostLead */
+  text: getPostLead(newestPost),
 };
 
 const wallPreview = newestWall && {

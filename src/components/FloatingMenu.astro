@@ -1,0 +1,179 @@
+---
+/**
+ * 右下角的圆形悬浮窗 —— 点一下展开，里面是「夜间模式」和「回到顶部」。
+ * 以后要加功能，就往 .fab-actions 里再塞一个 <button>，并在脚本里接上 data-action。
+ *
+ * 【挂在哪】BaseLayout 的 SiteFooter 之后，所以**所有访客页面**都有。
+ * 后台 /studio/ 是独立页面、不用 BaseLayout，所以不会有它 —— 那是另一个应用。
+ *
+ * 【脚本怎么写】跟 PhotoWall.astro 的灯箱同一套路：裸 <script>、没有 import、
+ * 不依赖 DOM 就绪（组件可能在页面里出现多次，但 Astro 打包后只执行一次）。
+ *
+ * 【z-index 必须低于灯箱】照片页的灯箱是 60（gallery.css），这里用 50 ——
+ * 否则看大图时右下角会压着一个圆按钮。
+ *
+ * 【图标】用 Unicode 字形 + aria-label，跟站里现有做法一致（灯箱的 × ‹ ›、
+ * 子页入口的 → 都是这么写的），不引入图标库。
+ */
+---
+
+<div class="fab" id="fab">
+  <div class="fab-actions" id="fab-actions" hidden>
+    <button type="button" class="fab-btn" data-action="theme" aria-label="切换到夜间模式">
+      <span data-theme-icon aria-hidden="true">☾</span>
+    </button>
+    <button type="button" class="fab-btn" data-action="top" aria-label="回到顶部">
+      <span aria-hidden="true">↑</span>
+    </button>
+  </div>
+
+  <button
+    type="button"
+    class="fab-btn fab-btn--main"
+    id="fab-main"
+    aria-expanded="false"
+    aria-controls="fab-actions"
+    aria-label="更多操作"
+  >
+    <span data-main-icon aria-hidden="true">+</span>
+  </button>
+</div>
+
+<style>
+  .fab {
+    position: fixed;
+    right: var(--space-5);
+    bottom: var(--space-5);
+    /* 低于照片灯箱的 60 —— 看大图时它必须在下面 */
+    z-index: 50;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--space-3);
+  }
+
+  .fab-actions {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+  }
+
+  .fab-btn {
+    width: 3rem;
+    height: 3rem;
+    padding: 0;
+    border: 1px solid var(--rule);
+    border-radius: 50%;
+    background: var(--paper);
+    color: var(--muted);
+    font-family: var(--kai);
+    font-size: var(--text-md);
+    line-height: 1;
+    cursor: pointer;
+    box-shadow: 0 6px 18px -10px rgba(0, 0, 0, 0.45);
+    transition: color var(--dur-fast) ease, border-color var(--dur-fast) ease,
+      transform var(--dur-fast) var(--ease);
+  }
+
+  /* 不要写 outline: none —— 全站唯一的 focus 样式是 base.css 里的 :focus-visible，
+     清掉它键盘用户就找不到焦点了 */
+  .fab-btn:hover {
+    color: var(--seal);
+    border-color: var(--seal);
+  }
+
+  .fab-btn:active { transform: scale(0.94); }
+
+  /* 主按钮比子按钮大一点、实心一点，一眼能看出是它 */
+  .fab-btn--main {
+    width: 3.5rem;
+    height: 3.5rem;
+    font-size: var(--text-lg);
+    color: var(--paper);
+    background: var(--ink);
+    border-color: var(--ink);
+  }
+
+  .fab-btn--main:hover {
+    color: var(--paper);
+    border-color: var(--seal);
+    background: var(--seal);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .fab-btn:active { transform: none; }
+  }
+</style>
+
+<script>
+  const fab = document.getElementById('fab');
+  if (fab) {
+    const main = fab.querySelector<HTMLButtonElement>('#fab-main');
+    const actions = fab.querySelector<HTMLElement>('#fab-actions');
+    const themeBtn = fab.querySelector<HTMLButtonElement>('[data-action="theme"]');
+    const icon = fab.querySelector<HTMLElement>('[data-theme-icon]');
+    const mainIcon = fab.querySelector<HTMLElement>('[data-main-icon]');
+
+    /** 深浅切换按钮的图标/文案要跟着当前主题走 */
+    const syncThemeBtn = () => {
+      const dark = document.documentElement.dataset.theme === 'dark';
+      if (icon) icon.textContent = dark ? '☀' : '☾';
+      themeBtn?.setAttribute('aria-label', dark ? '切换到白天模式' : '切换到夜间模式');
+    };
+
+    /** 手机浏览器地址栏的颜色跟着主题变 */
+    const syncThemeColor = () => {
+      const meta = document.querySelector('meta[name="theme-color"]');
+      if (meta) {
+        meta.setAttribute(
+          'content',
+          document.documentElement.dataset.theme === 'dark' ? '#151412' : '#ffffff'
+        );
+      }
+    };
+
+    syncThemeBtn();
+
+    const setOpen = (open: boolean, focusPanel = true) => {
+      if (!actions || !main || !mainIcon) return;
+      actions.hidden = !open;
+      main.setAttribute('aria-expanded', String(open));
+      mainIcon.textContent = open ? '×' : '+';
+      // 只在用户主动操作时搬焦点；首屏初始化时别去抢
+      if (focusPanel) {
+        (open ? actions.querySelector('button') : main)?.focus();
+      }
+    };
+
+    main?.addEventListener('click', () => {
+      // 展开状态 = 当前是收起的；!! 是因为新版 DOM 类型里 hidden 是 boolean | "until-found"
+      setOpen(!!actions?.hidden);
+    });
+
+    // Esc 收起并把焦点还回主按钮 —— 项目里灯箱有这个缺口的先例，这里补上
+    fab.addEventListener('keydown', (e) => {
+      if ((e as KeyboardEvent).key === 'Escape' && actions && !actions.hidden) {
+        setOpen(false);
+      }
+    });
+
+    themeBtn?.addEventListener('click', () => {
+      const root = document.documentElement;
+      const next = root.dataset.theme === 'dark' ? 'light' : 'dark';
+      root.dataset.theme = next;
+      try {
+        localStorage.setItem('theme', next);
+      } catch {
+        /* 隐私模式下 localStorage 会抛异常 —— 那样就只是记不住，功能不受影响 */
+      }
+      syncThemeBtn();
+      syncThemeColor();
+    });
+
+    fab.querySelector('[data-action="top"]')?.addEventListener('click', () => {
+      // 平滑与否交给 CSS 的 scroll-behavior（prefers-reduced-motion 时它自己会关掉）
+      window.scrollTo({ top: 0 });
+      setOpen(false, false);
+    });
+  }
+</script>

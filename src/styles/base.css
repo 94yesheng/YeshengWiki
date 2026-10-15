@@ -9,6 +9,19 @@ html {
   scroll-behavior: smooth;
 }
 
+/* 主页的滚动吸附：快到某一屏时自动对齐（proximity，不是 mandatory）。
+   【两个必须守住的点】
+   · scroll-padding-top 不能省 —— 顶栏是粘顶的、占掉 53px，
+     不写的话每一屏会吸到顶栏底下去
+   · **绝对不要给 html 加 overflow** —— 照片页灯箱靠
+     `body.lightbox-open { overflow: hidden }` 锁滚动，而那依赖"body 的 overflow
+     会传播到 viewport"这条规则；html 上一旦有了 overflow，传播就断了、灯箱锁不住。
+   用 :has() 只限定在主页：其它页面根本没有 .screen，写了也不生效，但不写更明确。 */
+html:has(body.home) {
+  scroll-snap-type: y proximity;
+  scroll-padding-top: var(--nav-h);
+}
+
 @media (prefers-reduced-motion: reduce) {
   html { scroll-behavior: auto; }
   *, *::before, *::after {
@@ -68,17 +81,20 @@ a { color: inherit; text-decoration: none; }
 
 /* --------------------------------------------------------------------------
    「整屏」区块 —— 主页一栏一屏用的
-   高度是 100vh 减去顶栏：顶栏是粘顶的，滚到哪儿都占着那一条，
-   所以每一屏真正能用的高度就是这些。内容垂直居中。
-   （不加 scroll-snap：那会让长内容很难滚，也容易和照片页的灯箱打架）
+   高度是 100vh 减去顶栏：顶栏是粘顶的、滚到哪儿都占着那一条，
+   所以每一屏真正能用的高度就是这些。
    -------------------------------------------------------------------------- */
 
 .screen {
   min-height: calc(100vh - var(--nav-h));
   display: grid;
   align-content: center;
-  padding: var(--space-8) 0;
+  /* 底下留一大截空白 —— 居中是在缩小后的内容盒里算的，所以整体会上移。
+     用户要的是"不要完全居中，偏上一些"：这样内容的中心大约落在 42% 而不是 50% */
+  padding: var(--space-8) 0 10vh;
   border-top: 1px solid var(--rule);
+  /* 吸附点：快到这一屏时自动对齐（配合 html 上的 scroll-snap-type） */
+  scroll-snap-align: start;
 }
 
 /* 必须显式给 100%：.wrap 带 margin:0 auto，而网格项上的 auto 外边距会让它按
@@ -116,7 +132,7 @@ a { color: inherit; text-decoration: none; }
 .site-nav a[aria-current="page"] { color: var(--seal); }
 
 .site-nav .sep {
-  color: var(--rule);
+  color: var(--faint);
   margin: 0 0.55em;
 }
 
