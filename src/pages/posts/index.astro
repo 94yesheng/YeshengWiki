@@ -2,13 +2,10 @@
 import BaseLayout from '../../layouts/BaseLayout.astro';
 import ChronicleList from '../../components/ChronicleList.astro';
 import TagChips from '../../components/TagChips.astro';
-import LatestPost from '../../components/LatestPost.astro';
 import { getPublishedPosts, collectTags } from '../../utils/posts';
 
 const posts = await getPublishedPosts();
 const tags = collectTags(posts);
-/* 时间最近的一篇 —— getPublishedPosts 已按 pubDate 倒序，所以就是第一篇 */
-const latest = posts[0];
 ---
 
 <BaseLayout title="文章" description="按时间排列的全部文章，可以用标签筛选。">
@@ -17,8 +14,6 @@ const latest = posts[0];
       <h1>文章</h1>
       <p class="note">共 {posts.length} 篇</p>
     </div>
-
-    {latest && <LatestPost post={latest} />}
 
     <TagChips tags={tags} />
 

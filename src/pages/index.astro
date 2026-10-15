@@ -2,12 +2,39 @@
 import BaseLayout from '../layouts/BaseLayout.astro';
 import SectionEntry from '../components/SectionEntry.astro';
 import { home } from '../site.config';
-import { getPublishedPosts } from '../utils/posts';
-import { chineseMonthDay, isoDate } from '../utils/date';
+import { getPostCover, getPublishedPosts } from '../utils/posts';
+import { getPhotoWalls } from '../utils/photos';
+import { chineseFullDate, chineseMonthDay, isoDate } from '../utils/date';
 import { cjkSpacing } from '../utils/typography';
 
 const posts = await getPublishedPosts();
 const latest = posts.slice(0, 4);
+
+/* 各栏「最新的一条」：文章栏放最新那篇文章，照片栏放最新的那面墙。
+   日期格式各随自己那个板块 —— 文章栏跟本页的「最近写的」用中文月日，
+   照片栏跟照片页用中文全日期。 */
+const newestPost = posts.length > 0 ? posts[0] : undefined;
+const newestWall = (await getPhotoWalls())[0];
+
+const postPreview = newestPost && {
+  cover: getPostCover(newestPost),
+  date: chineseMonthDay(newestPost.data.pubDate),
+  extra: newestPost.data.tags.join(' · '),
+  title: cjkSpacing(newestPost.data.title),
+  text: newestPost.data.description,
+};
+
+const wallPreview = newestWall && {
+  cover: newestWall.cover,
+  date: newestWall.date ? chineseFullDate(newestWall.date) : '',
+  extra: newestWall.place,
+  title: cjkSpacing(newestWall.title),
+  text: newestWall.note,
+};
+
+/** 只给这两栏配最新一条；程序、友链没有"条目"这个概念，保持纯文字那一行 */
+const previewFor = (href: string) =>
+  href === '/posts/' ? postPreview : href === '/photos/' ? wallPreview : undefined;
 ---
 
 <BaseLayout>
@@ -17,9 +44,12 @@ const latest = posts.slice(0, 4);
       {home.intro.map((paragraph) => <p>{paragraph}</p>)}
     </section>
 
-    <!-- 博客内容导览：加板块只需改 site.config.ts，这里不用动 -->
+    <!-- 博客内容导览：加板块只需改 site.config.ts，这里不用动。
+         文章栏和照片栏各带一条"最新"（封面 + 标题 + 梗概），见上面的 previewFor -->
     <section class="sections">
-      {home.sections.map((section) => <SectionEntry {...section} />)}
+      {home.sections.map((section) => (
+        <SectionEntry {...section} preview={previewFor(section.href)} />
+      ))}
     </section>
 
     {

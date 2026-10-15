@@ -3,20 +3,74 @@
  * 主页上的子页入口。
  * 加一个新板块 = 在 site.config.ts 的 home.sections 里加一行 + 建对应页面，
  * 不需要动这个组件，也不需要动主页。
+ *
+ * 【可选的最新一条】传 preview 就会在描述下面多出一块：左边封面、右边
+ * 「时间 · 标签 / 标题 / 一句话」。文章栏和照片栏用它把各自最新的一条亮出来；
+ * 没传（程序、友链）就还是纯文字那一行。
+ *
+ * preview 是**整块链接的一部分**，里面不再套 <a>（a 里嵌 a 是非法的），
+ * 点哪儿都进这个板块的主页 —— 最新那条就在那个列表的最上面。
  */
+import { Image } from 'astro:assets';
+import type { ImageMetadata } from 'astro';
+
+interface Preview {
+  /** 封面；没有就整块变单栏 */
+  cover: ImageMetadata | null;
+  /** 时间 —— 全站唯一的彩色（朱红）只留给时间用 */
+  date?: string;
+  /** 灰字的补充：标签 / 地点 */
+  extra?: string;
+  /** 最新那条的标题 */
+  title: string;
+  /** 一句话：梗概 / 记录文字 */
+  text?: string;
+}
+
 interface Props {
   href: string;
   title: string;
   desc: string;
+  preview?: Preview;
 }
 
-const { href, title, desc } = Astro.props;
+const { href, title, desc, preview } = Astro.props;
 ---
 
 <a class="section-entry" href={href}>
   <h2 class="section-entry-title">{title}</h2>
   <p class="section-entry-desc">{desc}</p>
   <span class="section-entry-arrow" aria-hidden="true">→</span>
+
+  {
+    preview && (
+      <div class:list={['section-entry-preview', !preview.cover && 'section-entry-preview--textonly']}>
+        {preview.cover && (
+          <div class="section-entry-cover">
+            <Image
+              src={preview.cover}
+              alt=""
+              widths={[240, 400, 640]}
+              sizes="14rem"
+              loading="lazy"
+              decoding="async"
+            />
+          </div>
+        )}
+        <div class="section-entry-info">
+          {(preview.date || preview.extra) && (
+            <p class="section-entry-meta">
+              {preview.date && <time>{preview.date}</time>}
+              {preview.date && preview.extra && <span class="dot">·</span>}
+              {preview.extra && <span>{preview.extra}</span>}
+            </p>
+          )}
+          <h3 class="section-entry-latest">{preview.title}</h3>
+          {preview.text && <p class="section-entry-text">{preview.text}</p>}
+        </div>
+      </div>
+    )
+  }
 </a>
 
 <style>
@@ -67,5 +121,85 @@ const { href, title, desc } = Astro.props;
   .section-entry:hover .section-entry-arrow {
     color: var(--seal);
     transform: translateX(3px);
+  }
+
+  /* ---------- 最新一条 ---------- */
+
+  .section-entry-preview {
+    grid-column: 1 / -1;
+    grid-row: 3;
+    display: grid;
+    grid-template-columns: 14rem 1fr;
+    gap: var(--space-5);
+    align-items: center;
+    margin-top: var(--space-4);
+  }
+
+  /* 没有封面就整块变单栏，不留一个空位 */
+  .section-entry-preview--textonly { grid-template-columns: 1fr; }
+
+  .section-entry-cover {
+    overflow: hidden;
+    border-radius: 2px;
+    /* 配图基本都是 16:9 的截图，用同一个比例就几乎不裁切 */
+    aspect-ratio: 16 / 9;
+  }
+
+  .section-entry-cover :global(img) {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+    transition: transform var(--dur-slow) var(--ease);
+  }
+
+  .section-entry:hover .section-entry-cover :global(img) { transform: scale(1.04); }
+
+  .section-entry-info { min-width: 0; }
+
+  .section-entry-meta {
+    display: flex;
+    align-items: baseline;
+    flex-wrap: wrap;
+    gap: 0.4em;
+    margin: 0 0 0.35rem;
+    font-family: var(--kai);
+    font-size: var(--text-xs);
+    letter-spacing: 0.1em;
+  }
+
+  .section-entry-meta time { color: var(--seal); }
+  .section-entry-meta .dot { color: var(--rule); }
+  .section-entry-meta span { color: var(--muted); }
+
+  .section-entry-latest {
+    margin: 0;
+    font-family: var(--kai);
+    font-size: var(--text-md);
+    font-weight: 400;
+    letter-spacing: 0.03em;
+    line-height: 1.5;
+    transition: color var(--dur-fast) var(--ease);
+  }
+
+  .section-entry:hover .section-entry-latest { color: var(--seal); }
+
+  /* 一句话：description 是截断过的前缀，末句多半是断的 ——
+     这里再加一道两行截断，让断口落在省略号上，而不是明晃晃露在半句中间 */
+  .section-entry-text {
+    margin: 0.35rem 0 0;
+    font-size: var(--text-sm);
+    line-height: 1.8;
+    color: var(--muted);
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    overflow: hidden;
+  }
+
+  /* 窄屏叠成上下（不专门做手机端适配，只是别挤爆） */
+  @media (max-width: 34rem) {
+    .section-entry-preview { grid-template-columns: 1fr; gap: var(--space-4); }
   }
 </style>

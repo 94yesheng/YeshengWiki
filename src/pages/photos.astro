@@ -1,17 +1,13 @@
 ---
 import BaseLayout from '../layouts/BaseLayout.astro';
 import PhotoWall from '../components/PhotoWall.astro';
-import LatestPost from '../components/LatestPost.astro';
 import { getPhotoWalls, groupWallsByYear } from '../utils/photos';
-import { getPublishedPosts } from '../utils/posts';
 import { chineseYear } from '../utils/date';
 import '../styles/gallery.css';
 
 const walls = await getPhotoWalls();
 const years = groupWallsByYear(walls);
 const photoCount = walls.reduce((sum, wall) => sum + wall.photos.length, 0);
-/* 照片页也推最新那篇文章 —— 让从照片进来的人看得到最近写了什么 */
-const latest = (await getPublishedPosts())[0];
 ---
 
 <BaseLayout title="照片" description="按时间排列的照片墙。">
@@ -20,8 +16,6 @@ const latest = (await getPublishedPosts())[0];
       <h1>照片</h1>
       <p class="note">{walls.length} 面墙 · 共 {photoCount} 张</p>
     </div>
-
-    {latest && <LatestPost post={latest} />}
   </div>
 
   <div class="gallery-page">
