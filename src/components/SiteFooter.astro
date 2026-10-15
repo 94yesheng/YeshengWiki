@@ -1,15 +1,21 @@
 ---
 import { site } from '../site.config';
 import { chineseYear } from '../utils/date';
+import DivergenceMeter from './DivergenceMeter.astro';
 
 const year = chineseYear(new Date().getFullYear());
 ---
 
 <footer class="site-foot">
-  <div class="wrap site-foot-inner">
-    <span>© {year} {site.author}</span>
-    <span>
-      <a href="/rss.xml">RSS</a>
-    </span>
+  <div class="wrap">
+    <div class="site-foot-inner">
+      <span>© {year} {site.author}</span>
+      <span>
+        <a href="/rss.xml">RSS</a>
+      </span>
+    </div>
+
+    <!-- 彩蛋：滚到页脚时数字乱跳一阵，然后定格在一个随机变动率上 -->
+    <DivergenceMeter />
   </div>
 </footer>

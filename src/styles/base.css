@@ -36,7 +36,10 @@ body {
   font-family: var(--song);
   font-size: var(--text-base);
   line-height: 1.95;
-  -webkit-font-smoothing: antialiased;
+  /* 【为什么没有 -webkit-font-smoothing】以前这里写着 antialiased —— 那在 macOS 上
+     是"更细腻"的意思，但在 **Windows 上恰恰相反**：它会把系统的 ClearType
+     （次像素抗锯齿）关掉、退回灰度抗锯齿，中文小字立刻发虚发毛。
+     字体渲染策略交给各平台自己的默认值，两边都不吃亏。 */
   text-rendering: optimizeLegibility;
 }
 
