@@ -1,0 +1,190 @@
+---
+/**
+ * 时间线 —— 文章列表页和照片页共用。
+ *
+ * 结构是三层：**年 → 月 → 条目**。年和月都是可点的按钮，点一下折叠/展开。
+ * 轴是左侧一条竖线，年月的节点（小圆点）钉在这条线上。
+ *
+ * 【叶子为什么是"传进来的组件"】
+ * 两页的条目长得完全不一样：文章页是一行「日 + 标题链接」，照片页是一整块
+ * 照片墙（标题、记录、一堆照片、点击放大）。所以这里只做骨架，
+ * 每条怎么渲染由调用方通过 `Item` 传进来 —— `<Item item={it.data} />`。
+ * 这样分组规则、轴线、折叠逻辑只有一份，叶子各管各的。
+ *
+ * 【折叠用 hidden 而不是动画】
+ * 项目里折叠有两种既有做法：`hidden`（瞬时）和 FloatingMenu 那套
+ * `data-open` + `visibility`（能动画）。这里用前者 —— 折一个"年"是整块消失，
+ * 和 <details> 的手感一样，没必要为它做高度动画。
+ * 靠的是 base.css 里那条全局的 `[hidden]{display:none!important}`。
+ */
+import type { TimelineYear } from '../utils/timeline';
+import { chineseMonth, chineseYear } from '../utils/date';
+
+interface Props {
+  years: TimelineYear<unknown>[];
+  /** 叶子组件：接收 `item`（分组前的原始数据），自己渲染一行/一块 */
+  Item: any;
+}
+
+const { years, Item } = Astro.props;
+
+---
+
+<div class="tl" data-timeline>
+  {
+    years.map((y) => {
+      const yearTotal = y.months.reduce((n, m) => n + m.items.length, 0);
+      return (
+        <section class="tl-year" data-year-section>
+          <button type="button" class="tl-year-head" aria-expanded="true">
+            <span class="tl-year-label">
+              {y.year === null ? '未标注时间' : chineseYear(y.year)}
+            </span>
+            <span class="tl-count">{yearTotal}</span>
+          </button>
+
+          <div class="tl-body">
+            {y.months.map((m) => (
+              <div class="tl-month" data-month-section>
+                {m.month !== null && (
+                  <button type="button" class="tl-month-head" aria-expanded="true">
+                    <span class="tl-month-label">{`${chineseMonth(m.month)}月`}</span>
+                    <span class="tl-count">{m.items.length}</span>
+                  </button>
+                )}
+                <div class="tl-items">
+                  {m.items.map((it) => (
+                    <Item item={it.data} />
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+      );
+    })
+  }
+</div>
+
+<style>
+  /* --------------------------------------------------------------------------
+     轴 —— 一条竖线，年月的节点钉在上面
+     -------------------------------------------------------------------------- */
+
+  .tl {
+    border-left: 1px solid var(--rule);
+    margin-left: 0.5rem;
+    padding-left: var(--space-5);
+  }
+
+  .tl-year + .tl-year { margin-top: var(--space-8); }
+  .tl-month + .tl-month { margin-top: var(--space-6); }
+
+  /* 年月都是按钮，但看上去要像标题而不是按钮 */
+  .tl-year-head,
+  .tl-month-head {
+    position: relative;
+    display: flex;
+    align-items: baseline;
+    gap: var(--space-3);
+    width: 100%;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    background: none;
+    font: inherit;
+    text-align: left;
+    color: inherit;
+    cursor: pointer;
+    transition: color var(--dur-fast) ease;
+  }
+
+  .tl-year-head:hover,
+  .tl-month-head:hover { color: var(--accent); }
+
+  /* 节点：钉在轴线上的小圆点。
+     轴线是 .tl 的左边框，而内容被 padding-left 往右推了 --space-5 ——
+     所以"从内容左边缘往左退 --space-5"就落在线上了，再退半个点宽让圆点居中。 */
+  .tl-year-head::before,
+  .tl-month-head::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: calc(-1 * var(--space-5) - 3.5px);
+    width: 6px;
+    height: 6px;
+    margin-top: -3px;
+    border-radius: 50%;
+    background: var(--rule);
+    transition: background-color var(--dur-fast) ease;
+  }
+
+  /* 年的节点大一点、用强调色（年也是"时间"，配得上那唯一的彩色）；
+     月的节点小一点、更淡，层级一眼分得开 */
+  .tl-year-head::before {
+    left: calc(-1 * var(--space-5) - 4.5px);
+    width: 8px;
+    height: 8px;
+    margin-top: -4px;
+    background: var(--accent);
+  }
+
+  .tl-year-head:hover::before,
+  .tl-month-head:hover::before { background: var(--accent); }
+
+  .tl-year-label {
+    font-family: var(--kai);
+    font-size: var(--text-lg);
+    letter-spacing: 0.16em;
+  }
+
+  .tl-month-label {
+    font-family: var(--kai);
+    font-size: var(--text-base);
+    letter-spacing: 0.12em;
+    color: var(--muted);
+  }
+
+  /* 条数：折起来之后还能看出里面有多少东西 */
+  .tl-count {
+    font-size: var(--text-xs);
+    letter-spacing: 0.08em;
+    color: var(--faint);
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* 月：再往右缩一层，层次就出来了 */
+  .tl-body { margin-top: var(--space-4); }
+  .tl-month-head { margin-bottom: var(--space-2); }
+  .tl-items { padding-left: var(--space-2); }
+
+  @media (max-width: 34rem) {
+    .tl { padding-left: var(--space-4); }
+    .tl-year-head::before { left: calc(-1 * var(--space-4) - 4.5px); }
+    .tl-month-head::before { left: calc(-1 * var(--space-4) - 3.5px); }
+  }
+</style>
+
+<script>
+  /**
+   * 折叠：点年折整年，点月折那个月。
+   *
+   * 状态只放在 DOM 上（`aria-expanded` + 面板的 `hidden`），不另存一份 ——
+   * 这样标签筛选那段脚本可以直接改同一组属性，两边不会各记一份、互相打架。
+   */
+  for (const root of document.querySelectorAll<HTMLElement>('[data-timeline]')) {
+    root.addEventListener('click', (event) => {
+      const head = (event.target as HTMLElement).closest<HTMLButtonElement>(
+        '.tl-year-head, .tl-month-head'
+      );
+      if (!head) return;
+
+      const panel = head.nextElementSibling as HTMLElement | null;
+      if (!panel) return;
+
+      const open = head.getAttribute('aria-expanded') !== 'false';
+      head.setAttribute('aria-expanded', String(!open));
+      panel.hidden = open;
+    });
+  }
+</script>

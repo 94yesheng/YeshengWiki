@@ -111,23 +111,3 @@ export async function getPhotoWalls(): Promise<PhotoWall[]> {
   });
 }
 
-/** 按年份分组，年份倒序；未标注时间的归到 null 组 —— 照片页的时间轴骨架 */
-export function groupWallsByYear(walls: PhotoWall[]): Array<{
-  year: number | null;
-  walls: PhotoWall[];
-}> {
-  const map = new Map<number | null, PhotoWall[]>();
-  for (const w of walls) {
-    const key = w.date ? w.date.getFullYear() : null;
-    const list = map.get(key);
-    if (list) list.push(w);
-    else map.set(key, [w]);
-  }
-  return [...map.entries()]
-    .sort((a, b) => {
-      if (a[0] === null) return 1;
-      if (b[0] === null) return -1;
-      return b[0] - a[0];
-    })
-    .map(([year, list]) => ({ year, walls: list }));
-}

@@ -1,11 +1,20 @@
 ---
+/**
+ * 文章列表 —— 左侧一条时间线：年 → 月 → 文章。
+ * 骨架在 Timeline.astro 里，这里只负责把文章分组、把叶子组件传进去。
+ */
 import BaseLayout from '../../layouts/BaseLayout.astro';
-import ChronicleList from '../../components/ChronicleList.astro';
+import Timeline from '../../components/Timeline.astro';
+import TimelinePost from '../../components/TimelinePost.astro';
 import TagChips from '../../components/TagChips.astro';
 import { getPublishedPosts, collectTags } from '../../utils/posts';
+import { groupByYearMonth } from '../../utils/timeline';
 
 const posts = await getPublishedPosts();
 const tags = collectTags(posts);
+
+/* 时间线要的是"带日期的条目"，把文章包一层再交给它分组 */
+const years = groupByYearMonth(posts.map((post) => ({ date: post.data.pubDate, data: post })));
 ---
 
 <BaseLayout title="文章" description="按时间排列的全部文章，可以用标签筛选。">
@@ -17,7 +26,7 @@ const tags = collectTags(posts);
 
     <TagChips tags={tags} />
 
-    <ChronicleList posts={posts} filterable />
+    <Timeline years={years} Item={TimelinePost} />
 
     <p class="empty" data-empty hidden>没有这个标签的文章。</p>
   </div>
@@ -34,13 +43,34 @@ const tags = collectTags(posts);
 
 <script>
   /**
-   * 标签筛选。
-   * 没有这段脚本时页面照常工作 —— 所有文章都在，只是不能筛。
+   * 标签筛选 —— 要和时间线的折叠配合。
+   *
+   * 【和折叠的分工】折叠状态只存在 DOM 上（`aria-expanded` + 面板的 `hidden`），
+   * 这里改的是同一组属性，两边不各记一份，就不会互相打架。
+   *
+   * 【三条规则】
+   *   1. 逐条按标签开关 hidden（老逻辑）
+   *   2. 月里没有可见条目就藏掉这个月；整年没有就藏掉整年
+   *   3. **筛选时把有命中的年月展开** —— 不然筛出来的东西可能正折着，等于白筛；
+   *      清空筛选时再全部展开，回到默认状态
+   *
+   * 没有这段脚本时页面照常工作 —— 全部文章都在，只是不能筛。
    */
   const chips = Array.from(document.querySelectorAll<HTMLElement>('[data-tag-filter] .chip'));
   const entries = Array.from(document.querySelectorAll<HTMLElement>('[data-entry]'));
-  const sections = Array.from(document.querySelectorAll<HTMLElement>('[data-year-section]'));
+  const years = Array.from(document.querySelectorAll<HTMLElement>('[data-year-section]'));
+  const months = Array.from(document.querySelectorAll<HTMLElement>('[data-month-section]'));
   const emptyHint = document.querySelector<HTMLElement>('[data-empty]');
+
+  /** 展开/收起一个年或月。用 :scope > 是因为未标注时间的月份**没有** head，
+      那时第一个子元素是条目容器，直接拿 firstElementChild 会拿错。 */
+  function setOpen(section: HTMLElement, open: boolean) {
+    const head = section.querySelector<HTMLElement>(':scope > .tl-year-head, :scope > .tl-month-head');
+    const panel = head?.nextElementSibling as HTMLElement | null;
+    if (!head || !panel) return;
+    head.setAttribute('aria-expanded', String(open));
+    panel.hidden = !open;
+  }
 
   function apply(rawTag: string) {
     const tag = rawTag.trim();
@@ -53,10 +83,20 @@ const tags = collectTags(posts);
       if (match) shown += 1;
     }
 
-    // 整年都没有匹配项时，连年份标题一起收起来
-    for (const section of sections) {
-      section.hidden = !section.querySelector('[data-entry]:not([hidden])');
+    for (const month of months) {
+      const has = month.querySelector('[data-entry]:not([hidden])');
+      month.hidden = !has;
+      if (has && tag) setOpen(month, true);
     }
+
+    for (const year of years) {
+      const has = year.querySelector('[data-entry]:not([hidden])');
+      year.hidden = !has;
+      if (has && tag) setOpen(year, true);
+    }
+
+    // 取消筛选 → 回到默认的"全部展开"
+    if (!tag) for (const section of [...years, ...months]) setOpen(section, true);
 
     if (emptyHint) emptyHint.hidden = shown > 0;
 

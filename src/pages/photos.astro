@@ -1,13 +1,20 @@
 ---
+/**
+ * 照片页 —— 和文章页共用同一条时间线（年 → 月 → 照片墙）。
+ * 时间线在这里**只做分组**：照片照旧铺在右边，点击放大那套完全不动。
+ */
 import BaseLayout from '../layouts/BaseLayout.astro';
-import PhotoWall from '../components/PhotoWall.astro';
-import { getPhotoWalls, groupWallsByYear } from '../utils/photos';
-import { chineseYear } from '../utils/date';
+import Timeline from '../components/Timeline.astro';
+import TimelineWall from '../components/TimelineWall.astro';
+import { getPhotoWalls } from '../utils/photos';
+import { groupByYearMonth } from '../utils/timeline';
 import '../styles/gallery.css';
 
 const walls = await getPhotoWalls();
-const years = groupWallsByYear(walls);
 const photoCount = walls.reduce((sum, wall) => sum + wall.photos.length, 0);
+
+/* 没标时间的墙 date 是 null，分组时会归到最后的"未标注时间"里 */
+const years = groupByYearMonth(walls.map((wall) => ({ date: wall.date, data: wall })));
 ---
 
 <BaseLayout title="照片" description="按时间排列的照片墙。">
@@ -21,23 +28,14 @@ const photoCount = walls.reduce((sum, wall) => sum + wall.photos.length, 0);
   <div class="gallery-page">
     <div class="wrap">
       {
-        walls.length === 0 && (
+        walls.length === 0 ? (
           <p class="gallery-empty">
             还没有照片墙。在 <code>src/content/photos/</code> 下新增一个数据文件即可，
             格式见同目录的 README。
           </p>
+        ) : (
+          <Timeline years={years} Item={TimelineWall} />
         )
-      }
-
-      {
-        years.map(({ year, walls: list }) => (
-          <section class="gallery-year">
-            <h2 class="gallery-year-mark">{year === null ? '未标注时间' : chineseYear(year)}</h2>
-            {list.map((wall) => (
-              <PhotoWall wall={wall} />
-            ))}
-          </section>
-        ))
       }
     </div>
   </div>

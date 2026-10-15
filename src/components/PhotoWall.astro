@@ -27,12 +27,14 @@ import { cjkSpacing } from '../utils/typography';
 
 interface Props {
   wall: Wall;
+  /** 在时间线里用：月和年已经单独成节点了，墙上再写一遍日期是重复，只留地点 */
+  hideDate?: boolean;
 }
 
-const { wall } = Astro.props;
+const { wall, hideDate = false } = Astro.props;
 
-/** 时间与地点拼一行：二〇二四年七月十七日 · 重庆 */
-const meta = [wall.date ? chineseFullDate(wall.date) : '', wall.place].filter(Boolean);
+/** 时间与地点拼一行：二〇二四年七月十七日 · 重庆（时间线里只剩地点） */
+const meta = [wall.date && !hideDate ? chineseFullDate(wall.date) : '', wall.place].filter(Boolean);
 const single = wall.photos.length === 1;
 
 /* 告诉浏览器每张图实际占多宽。

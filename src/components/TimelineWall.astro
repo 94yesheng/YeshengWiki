@@ -1,0 +1,20 @@
+---
+/**
+ * 时间线上的一个照片墙 —— 只是把 PhotoWall 包一层，做个名字适配。
+ *
+ * 为什么需要它：Timeline 统一给叶子传 `item`，而 PhotoWall 收的 prop 叫 `wall`。
+ * 与其把 PhotoWall 的接口改得跟着时间线走（照片墙本身和时间线没关系），
+ * 不如在这里对一下名字 —— 顺带把 `hideDate` 传进去：月和年已经单独成节点了，
+ * 墙上再写一遍日期是重复。
+ */
+import PhotoWall from './PhotoWall.astro';
+import type { PhotoWall as Wall } from '../utils/photos';
+
+interface Props {
+  item: Wall;
+}
+
+const { item } = Astro.props;
+---
+
+<PhotoWall wall={item} hideDate />

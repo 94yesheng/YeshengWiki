@@ -13,31 +13,6 @@
   border-bottom: 1px solid var(--line);
 }
 
-/* --------------------------------------------------------------------------
-   年份分隔 —— 沿用文章区的编年手法，保持全站一致
-   -------------------------------------------------------------------------- */
-
-.gallery-year + .gallery-year { margin-top: var(--space-8); }
-
-.gallery-year-mark {
-  display: flex;
-  align-items: center;
-  gap: var(--space-5);
-  margin: 0 0 var(--space-5);
-  font-family: var(--kai);
-  /* 和文章列表的年份标记对齐：楷体小字号有锯齿，抬到 22px */
-  font-size: var(--text-md);
-  font-weight: 400;
-  letter-spacing: 0.3em;
-  color: var(--muted);
-}
-
-.gallery-year-mark::after {
-  content: "";
-  flex: 1;
-  height: 1px;
-  background: var(--line);
-}
 
 /* --------------------------------------------------------------------------
    一面照片墙
