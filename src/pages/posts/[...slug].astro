@@ -79,11 +79,7 @@ const tags = post.data.tags;
 <style>
   /* 这一页不再整体套 .wrap：正文区要**铺满整个视口宽**，
      左栏才有地方挪到两侧的空白里去。题头自己定宽（见下），和正文列对齐 */
-  .article {
-    padding-top: var(--space-7);
-    /* 两侧那两条竖线的定位基准 */
-    position: relative;
-  }
+  .article { padding-top: var(--space-7); }
 
   /* 题头和正文**同宽**（50rem）—— 这样两侧的竖线才能把标题和正文一起框住。
      只加内边距是为了窄屏下不贴边；宽屏时内边距之外正好是 50rem */
@@ -134,6 +130,9 @@ const tags = post.data.tags;
     padding: 0 var(--pad-x);
     /* 必须是 start：左栏拉满整列高度的话，sticky 就没有可粘的余地了 */
     align-items: start;
+    /* 两侧竖线的定位基准。放在这一层（而不是 .article 上）是有意的：
+       竖线要**从标题以下才开始**，而 .article 把题头也包在里面 */
+    position: relative;
   }
 
   .article-rail {
@@ -182,13 +181,17 @@ const tags = post.data.tags;
       min-width: 0;
     }
 
-    /* 文章两侧那两条竖线 —— 把标题和正文一起框住。
-       用绝对定位而不是 border，是因为要跨过"题头"和"正文区"两块：
-       border 只能贴在某一个盒子上，那样两段线会断开。
-       位置 = 视口中心 ± (正文半宽 25rem + 2rem)。这 2rem 是往外的让位，
-       免得线贴到字上。只在宽屏版式里画：窄屏那套正文不是 50rem，线会穿进正文。 */
-    .article::before,
-    .article::after {
+    /* 正文两侧那两条竖线。
+       位置 = 视口中心 ± 30rem —— 正文半宽是 25rem，所以线离正文 5rem（80px）、
+       离左栏的右缘只剩 2.5rem。用户要的就是"离文章远一点、靠近元信息栏"。
+       从标题**以下**才开始（挂在 .article-body 上，不在 .article 上），
+       所以标题和日期是在两条线之外的。
+
+       用绝对定位而不是 border：这两条线要跨过好几个块（正文里有图、有引用、
+       有分隔符），border 只能贴在某一个盒子上。
+       只在宽屏版式里画 —— 窄屏那套正文不是 50rem 居中，线会穿进正文里。 */
+    .article-body::before,
+    .article-body::after {
       content: "";
       position: absolute;
       top: 0;
@@ -197,8 +200,8 @@ const tags = post.data.tags;
       background: var(--rule);   /* 最淡的一档，就是"不太明显" */
     }
 
-    .article::before { left: calc(50% - 27rem); }
-    .article::after { right: calc(50% - 27rem); }
+    .article-body::before { left: calc(50% - 30rem); }
+    .article-body::after { right: calc(50% - 30rem); }
   }
 
   .rail-block { margin: 0; }

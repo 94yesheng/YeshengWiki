@@ -103,3 +103,105 @@ const previewFor = (href: string) =>
 
   .hero-intro p:last-child { margin-bottom: 0; }
 </style>
+
+<script>
+  /**
+   * 主页的滚动吸附 —— **自己做，不用 CSS 的 scroll-snap-type**。
+   *
+   * 【为什么不用 CSS】scroll-snap 的对齐动作是浏览器内部实现的，**速度和缓动
+   * 没有任何属性可以调** —— 想"快一点、并且是非线性（先快后慢）"就做不到。
+   * 只有自己动 scrollTo 才控制得住。所以在 base.css 里把 scroll-snap-type 撤了。
+   *
+   * 【手感怎么定的】
+   *   · 时长 300ms —— 比浏览器默认那一下快一档，就是用户说的"稍微再快一些"
+   *   · easeOutCubic（1-(1-t)³）—— 非线性：起步快、接近目标时收住，
+   *     比线性自然得多，也不会有"撞上去"的顿感
+   *   · 阈值 0.45 屏 —— 离某一屏不到半屏就吸过去；离得远就让它自由滚，
+   *     不硬拽（这是 proximity 的手感，不是 mandatory）
+   *
+   * 【两个必须注意的】
+   *   · 动画里必须用 `behavior: 'instant'`。CSS 上有 `scroll-behavior: smooth`，
+   *     不加这个参数的话每一帧的 scrollTo 都会各自触发一次平滑滚动，互相打架。
+   *   · 用户在动画期间一动滚轮/触摸，立刻让位 —— 别和手指抢。
+   */
+  const screens = [...document.querySelectorAll<HTMLElement>('.screen')];
+
+  if (screens.length > 1 && !matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    const navH = document.querySelector<HTMLElement>('.site-nav-bar')?.offsetHeight ?? 0;
+
+    const DURATION = 300;
+    const THRESHOLD = 0.45;
+    const easeOutCubic = (t: number) => 1 - Math.pow(1 - t, 3);
+
+    let raf = 0;
+    let animating = false;
+
+    /** 某一屏对齐之后，页面应该停在的滚动位置 */
+    const targetOf = (el: HTMLElement) =>
+      el.getBoundingClientRect().top + window.scrollY - navH;
+
+    const animateTo = (target: number) => {
+      const start = window.scrollY;
+      const delta = target - start;
+      if (Math.abs(delta) < 2) return;
+
+      cancelAnimationFrame(raf);
+      animating = true;
+      const t0 = performance.now();
+
+      const step = (now: number) => {
+        const p = Math.min(1, (now - t0) / DURATION);
+        window.scrollTo({ top: start + delta * easeOutCubic(p), behavior: 'instant' });
+        if (p < 1) raf = requestAnimationFrame(step);
+        else animating = false;
+      };
+      raf = requestAnimationFrame(step);
+    };
+
+    /** 滚停之后看一眼：离哪一屏最近？够近就吸过去 */
+    const settle = () => {
+      if (animating) return;
+      const y = window.scrollY;
+      const range = window.innerHeight - navH;
+
+      let target: number | null = null;
+      let dist = Infinity;
+      for (const s of screens) {
+        const t = targetOf(s);
+        const d = Math.abs(y - t);
+        if (d < dist) {
+          dist = d;
+          target = t;
+        }
+      }
+      if (target !== null && dist > 2 && dist < range * THRESHOLD) animateTo(target);
+    };
+
+    // 用户一动就撒手，别和手指抢
+    const abort = () => {
+      cancelAnimationFrame(raf);
+      animating = false;
+    };
+    for (const ev of ['wheel', 'touchstart', 'keydown'] as const) {
+      window.addEventListener(ev, abort, { passive: true });
+    }
+
+    // 显式标成 boolean：不然 TS 会顺着这个别名把 else 分支收窄成 never
+    // （它的 DOM 类型里 scrollend 恒存在，而运行时不一定）
+    const hasScrollEnd: boolean = 'onscrollend' in window;
+    if (hasScrollEnd) {
+      window.addEventListener('scrollend', settle);
+    } else {
+      // 老浏览器没有 scrollend，退化成"滚停 120ms 之后再看"
+      let timer = 0;
+      window.addEventListener(
+        'scroll',
+        () => {
+          clearTimeout(timer);
+          timer = window.setTimeout(settle, 120);
+        },
+        { passive: true }
+      );
+    }
+  }
+</script>

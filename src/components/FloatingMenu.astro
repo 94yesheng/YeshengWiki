@@ -55,18 +55,23 @@
   /* 收起时不是 display:none 而是 visibility:hidden ——
      用 display 的话没有过渡可言，弹出动效就做不出来；
      visibility 同样会把里面的按钮移出可聚焦序列和无障碍树，不影响键盘。 */
+  /* 「从大球里弹出来」的关键是 transform-origin：
+     它不能是这块自己（那会从菜单底边长出来），而要落在**下面那个大球的圆心上** ——
+     大球高 3.75rem、和这块之间隔着 --space-3，所以球心在这块底边往下的
+     3.75rem/2 + 0.75rem = 2.625rem 处。从那儿放大，看着就像球里挤出来的。
+     收起时不是 display:none 而是 visibility —— 见下方注释。 */
   .fab-actions {
     display: flex;
     flex-direction: column;
     gap: var(--space-3);
+    transform-origin: 50% calc(100% + 2.625rem);
     opacity: 0;
     visibility: hidden;
-    transform: translateY(0.6rem) scale(0.9);
-    transform-origin: bottom center;
+    transform: scale(0.2);
     transition:
       opacity var(--dur-fast) var(--ease),
-      transform var(--dur-fast) var(--ease),
-      visibility 0s linear var(--dur-fast); /* 收起时等淡出跑完再真正隐藏 */
+      transform var(--dur-base) var(--ease),
+      visibility 0s linear var(--dur-base); /* 收起时等动画跑完再真正隐藏 */
   }
 
   .fab[data-open] .fab-actions {
@@ -75,9 +80,18 @@
     transform: none;
     transition:
       opacity var(--dur-fast) var(--ease),
-      transform var(--dur-fast) var(--ease),
+      transform var(--dur-base) var(--ease),
       visibility 0s;
   }
+
+  /* 中间的十字：**旋转 45° 变成 ×**，不是换一个字符 ——
+     换字是硬切，转过去才有"打开/关上"的连贯感 */
+  [data-main-icon] {
+    display: inline-block;
+    transition: transform var(--dur-base) var(--ease);
+  }
+
+  .fab[data-open] [data-main-icon] { transform: rotate(45deg); }
 
   /* 减少动效时不做弹出动画（base.css 那段会把时长压到 0，够用了） */
 
@@ -187,7 +201,7 @@
       if (open) fab.dataset.open = 'true';
       else delete fab.dataset.open;
       main?.setAttribute('aria-expanded', String(open));
-      if (mainIcon) mainIcon.textContent = open ? '×' : '+';
+      // 图标不换字符 —— 由 CSS 把 + 旋转 45° 变成 ×（见 [data-main-icon]）
       // 只在用户主动操作时搬焦点；首屏初始化时别去抢
       if (focusPanel) {
         const target = open

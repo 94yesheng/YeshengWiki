@@ -7,20 +7,18 @@
 html {
   -webkit-text-size-adjust: 100%;
   scroll-behavior: smooth;
-}
-
-/* 主页的滚动吸附：快到某一屏时自动对齐（proximity，不是 mandatory）。
-   【两个必须守住的点】
-   · scroll-padding-top 不能省 —— 顶栏是粘顶的、占掉 53px，
-     不写的话每一屏会吸到顶栏底下去
-   · **绝对不要给 html 加 overflow** —— 照片页灯箱靠
-     `body.lightbox-open { overflow: hidden }` 锁滚动，而那依赖"body 的 overflow
-     会传播到 viewport"这条规则；html 上一旦有了 overflow，传播就断了、灯箱锁不住。
-   用 :has() 只限定在主页：其它页面根本没有 .screen，写了也不生效，但不写更明确。 */
-html:has(body.home) {
-  scroll-snap-type: y proximity;
+  /* 顶栏是粘顶的：任何"跳锚点"都要避开它，否则目标会被压在顶栏底下
+     （文章列表页的标签筛选就是跳锚点） */
   scroll-padding-top: var(--nav-h);
 }
+
+/* ⚠️ **绝对不要给 html 加 overflow** —— 照片页灯箱靠
+   `body.lightbox-open { overflow: hidden }` 锁滚动，而那条规则之所以生效，
+   正是因为"body 的 overflow 会传播到 viewport"；html 上一旦有了 overflow，
+   传播就断了、灯箱就锁不住。
+   （主页的滚动吸附**不再用 CSS 的 scroll-snap-type** —— 它的速度和缓动
+   完全由浏览器定、没有属性可调，改不了"更快/非线性"。现在是 index.astro
+   里一段脚本自己做，见那边的注释。） */
 
 @media (prefers-reduced-motion: reduce) {
   html { scroll-behavior: auto; }
@@ -94,8 +92,6 @@ a { color: inherit; text-decoration: none; }
      而不是 50%。想再高就继续加这个值，它是最直接的旋钮 */
   padding: var(--space-8) 0 16vh;
   border-top: 1px solid var(--rule);
-  /* 吸附点：快到这一屏时自动对齐（配合 html 上的 scroll-snap-type） */
-  scroll-snap-align: start;
 }
 
 /* 必须显式给 100%：.wrap 带 margin:0 auto，而网格项上的 auto 外边距会让它按
