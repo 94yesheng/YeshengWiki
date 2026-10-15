@@ -2,47 +2,74 @@
 /**
  * 世界线变动率探测仪 —— 藏在页脚里的彩蛋（《命运石之门》里那台用辉光管做的机器）。
  *
- * 滚到页脚时七位数字一起乱跳，跳够了**同时**定下来，停在某个 1.xxxxxx 上；
+ * 滚到页脚时数字一起乱跳，跳够了**同时**定下来，停在某个 1.xxxxxx 上；
  * **每次刷新都是一个新的随机数**，所以没有哪一次是"对的"。
  *
- * 【为什么做成一块深色面板】
- * 辉光管的好看之处全在那圈橙色的辉光。站点是暖白纸底，橙色数字直接放上去
- * 会糊成一片、也完全没有"发光"的感觉 —— 所以这里给机器自己做了一块深色面板，
- * 它是一件**嵌在页面里的仪器**，不跟着页面的明暗主题走（夜里看也一样）。
+ * ===== 它是怎么"像"辉光管的：三件事，都是从实物构造来的 =====
  *
- * 【虚位的电子丝】
- * 辉光管里 0–9 十根阴极金属丝是**一直都在**的，只有一根通电发光，
- * 其余九根在暗处仍然能看见淡淡的线框 —— 这是它最好认的特征（看实物照片就很明显）。
- * 所以每位数字背后叠了一整组 0–9，用很低的透明度当"网"。
- * 少了这一层，就只是一个发光的数字，不像辉光管。
+ * 【一、小数点占**一整根管**】
+ *   辉光管每一位是一个独立阴极（把金属丝弯成数字形状，前后叠放），
+ *   小数点是一个**单独的小阴极**，所以它有自己的一根管、不挤在字缝里。
+ *   《命运石之门》那台是 8 根管 = 整数位 + 小数点 + 六位小数，
+ *   所以这里也是 8 根：第 2 根专门放那个点，亮点在管子右下角（阴极就这么装的）。
  *
- * 【为什么 aria-hidden】
- * 它是彩蛋，不是内容。读屏软件念出一串随机的 "1 0 4 8 5 9 6" 没有任何意义。
+ * 【二、暗处的九根丝会被辉光**映亮**，重合处更亮 → 那个"十字"】
+ *   管里十根 0–9 的阴极**一直都在**，通电的只有一根。其余九根自己不发光，
+ *   但会被放电辉光照到（反射 + 二次发射），所以能看见淡淡的线框。
+ *   关键在于：**好几根丝重合的地方会更亮**。0–9 这十个形状叠下来，
+ *   横向中笔（2/3/4/5/6/8/9 都有）和纵向笔画会自然聚成一片更亮的十字/井字区，
+ *   而只有某一个数字才有的笔画（比如 7 的那道斜笔）就暗得多。
+ *   ⇒ **那个十字不是画上去的，是十层描边自然叠出来的**。
+ *      所以这里用**描边**（`-webkit-text-stroke`）而不是半透明填充：
+ *      线叠线才会在重合处累积，实心字叠起来只会糊成一块色块。
+ *      字号也必须够大 —— 丝挤在一起就叠成实心块了（23px 时踩过）。
  *
- * 【数字格式】《命运石之门》里世界线变动率基本都长成 1.xxxxxx（比如
- * Steins;Gate 线是 1.048596），所以整数位固定为 1、后面六位随机。
+ * 【三、每根管是独立的玻璃壳 + 底部金属底座】
+ *   所以不是一个整块的深色板，而是 8 个小管并排、各自有微光的内壁和底座。
+ *   整体仍然是深色 —— 橙色的辉光只有压在暗底上才"发光"，
+ *   站点是暖白纸底，直接放上去会糊成一片。它是嵌在页面里的一件**仪器**，不跟明暗主题走。
+ *
+ * 【为什么 aria-hidden】它是彩蛋不是内容，读屏念一串随机数字没有意义。
  */
 const DIGITS = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9'];
-/** 小数位几位（前面还有固定的整数位 1） */
+/** 小数位几位（前面还有整数位 + 小数点那根管） */
 const DECIMALS = 6;
+
+/**
+ * 8 根管：第 1 根整数位、第 2 根小数点、之后六位小数。
+ * `init` 是**还没滚动到页脚时**显示的字符 —— 整数位写 1（世界线变动率都是 1 开头），
+ * 这样"没通电"的状态读出来也是 1.000000，而不是一串零。
+ */
+const TUBES: Array<{ kind: 'digit' | 'dot'; init?: string }> = [
+  { kind: 'digit', init: '1' },
+  { kind: 'dot' },
+  ...Array.from({ length: DECIMALS }, () => ({ kind: 'digit' as const, init: '0' })),
+];
 ---
 
 <div class="dm" data-dm aria-hidden="true">
-  <span class="dm-tubes">
+  <div class="dm-tubes">
     {
-      [0, ...Array.from({ length: DECIMALS }, (_, i) => i + 1)].map((slot) => (
-        <span class:list={['dm-digit', slot === 1 && 'dm-dot']} data-dm-digit>
-          {/* 十根阴极的残影，全叠在同一格里 */}
-          <span class="dm-ghost">
-            {DIGITS.map((d) => (
-              <span>{d}</span>
-            ))}
+      TUBES.map((tube) =>
+        tube.kind === 'dot' ? (
+          /* 小数点那根管：里面只有这一个点，位置在右下（阴极本来就装在那儿） */
+          <span class="dm-tube dm-tube--dot">
+            <span class="dm-point" />
           </span>
-          <span class="dm-value">{slot === 0 ? '1' : '0'}</span>
-        </span>
-      ))
+        ) : (
+          <span class="dm-tube">
+            {/* 十根阴极的残影，全叠在同一格里 —— 重合处自然叠出那个十字 */}
+            <span class="dm-mesh">
+              {DIGITS.map((d) => (
+                <span>{d}</span>
+              ))}
+            </span>
+            <span class="dm-value">{tube.init}</span>
+          </span>
+        )
+      )
     }
-  </span>
+  </div>
 </div>
 
 <style>
@@ -52,79 +79,108 @@ const DECIMALS = 6;
     margin-top: var(--space-6);
   }
 
-  /* 仪器的面板：深色、内嵌一圈极淡的边、外面一点投影，像嵌在纸里的一小块玻璃 */
+  /* 八根管并排，中间留很窄的缝 —— 实物就是一根挨一根插在底座上的 */
   .dm-tubes {
     display: inline-flex;
-    align-items: baseline;
-    padding: 0.3rem 0.75rem 0.4rem;
-    border-radius: 3px;
-    background: #17130f;
+    gap: 2px;
+    padding: 0.35rem 0.5rem 0.55rem;
+    border-radius: 4px;
+    background: #0e0c0a;
     box-shadow:
-      inset 0 0 0 1px rgba(255, 200, 160, 0.09),
-      inset 0 1px 6px rgba(0, 0, 0, 0.85),
-      0 2px 12px -8px rgba(0, 0, 0, 0.7);
+      inset 0 0 0 1px rgba(255, 200, 160, 0.07),
+      inset 0 2px 10px rgba(0, 0, 0, 0.9),
+      0 2px 14px -8px rgba(0, 0, 0, 0.75);
   }
 
-  .dm-digit {
+  /* 一根玻璃管：内壁比底板略亮一点，底下一截深色当金属底座 */
+  .dm-tube {
     position: relative;
-    display: inline-block;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0.22em 0.14em 0.42em;
+    border-radius: 2px;
+    background: linear-gradient(180deg, #1b1613 0%, #14100d 62%, #0b0907 100%);
+    box-shadow: inset 0 0 0 1px rgba(255, 200, 160, 0.05);
     font-family: ui-monospace, Consolas, "Cascadia Mono", monospace;
-    /* 比正文大一档：辉光管里十根阴极丝要挤在一位的宽度里，
-       23px 时它们会糊成一块实心色块、数字反而读不出来（踩过） */
-    font-size: var(--text-xl);
-    line-height: 1.15;
+    /* 字号必须够大：十根丝的描边要在一根的宽度里分得开，
+       挤到 23px 时它们会叠成一块实心色块、数字反而读不出来（踩过） */
+    font-size: var(--text-2xl);
+    line-height: 1.12;
     font-variant-numeric: tabular-nums;
   }
 
-  /* 小数点：只留一点窄边距，不用占一个数字的宽度 */
-  .dm-digit.dm-dot::after {
-    content: '.';
+  /* 底座：管子最下面那一小截——实物里阴极引线就插在这儿 */
+  .dm-tube::after {
+    content: '';
     position: absolute;
-    left: -0.34em;
-    bottom: -0.06em;
-    color: #ffb072;
-    text-shadow: 0 0 2px rgba(255, 150, 80, 0.55), 0 0 9px rgba(255, 110, 50, 0.22);
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: 0.28em;
+    background: linear-gradient(180deg, #241d17 0%, #090807 100%);
+    border-radius: 0 0 2px 2px;
   }
 
-  /* ---------- 虚位的电子丝 ---------- */
-  /* 十个数字叠在同一格里，形成那层"网"。
-     **必须用描边画、不能用半透明填充** —— 阴极是"线"，十层半透明实心字叠起来
-     只会糊成一团灰块，完全不是那个意思。`-webkit-text-stroke` + 透明填充
-     才是细线。（这行如果哪天被删了，辉光管就又变回"一个发光的数字"了） */
-  .dm-ghost {
+  /* ---------- 暗处的九根丝 ---------- */
+  /* 十个数字叠在同一格里。**用描边画，不能用半透明填充** ——
+     阴极是"线"，线叠线才会在重合处累积出那个更亮的十字；
+     十层半透明实心字叠起来只会糊成一块灰块，完全不是那个意思。 */
+  .dm-mesh {
     display: grid;
     position: absolute;
     inset: 0;
+    align-items: center;
+    justify-items: center;
   }
 
-  .dm-ghost > span {
+  .dm-mesh > span {
     grid-area: 1 / 1;
     color: transparent;
-    -webkit-text-stroke: 0.45px rgba(255, 176, 114, 0.34);
+    -webkit-text-stroke: 0.4px rgba(255, 176, 114, 0.22);
   }
 
-  /* ---------- 当前显示的那一位 ---------- */
+  /* ---------- 通电的那一根 ---------- */
   .dm-value {
     position: relative;
     color: #ffb072;
-    /* 辉光：近处一圈实、远处一圈散。
-       两圈都刻意压得比之前淡 —— 之前那版太亮，光晕漫出去把背后的阴极丝盖住了 */
+    /* 辉光：近处一圈实、远处一圈散。压得比较淡 ——
+       太亮的话光晕漫出去会把背后的丝盖住（踩过） */
     text-shadow:
-      0 0 3px rgba(255, 150, 80, 0.7),
-      0 0 10px rgba(255, 110, 50, 0.28);
+      0 0 3px rgba(255, 150, 80, 0.65),
+      0 0 11px rgba(255, 110, 50, 0.26);
+  }
+
+  /* ---------- 小数点那根管 ---------- */
+  .dm-tube--dot {
+    /* 比数字管窄：里面没有十根丝，只是一个点 */
+    padding-inline: 0.1em;
+  }
+
+  .dm-point {
+    display: block;
+    width: 0.15em;
+    height: 0.15em;
+    border-radius: 50%;
+    /* 小数点那个阴极装在管的**右下角**（实物就这样），所以亮点不在正中：
+       往下推将近一个字高、往右让开一点 */
+    margin: 0.95em 0 0 0.32em;
+    background: #ffc48a;
+    box-shadow:
+      0 0 3px rgba(255, 160, 90, 0.85),
+      0 0 10px rgba(255, 110, 50, 0.4);
   }
 </style>
 
 <script>
   /**
-   * 七位一起乱跳，跳够了**同时**定下来。
+   * 数字一起乱跳，跳够了**同时**定下来。
    *
    * 用 IntersectionObserver 而不是"监听滚动算位置"：后者要在每次滚动里读
    * getBoundingClientRect，是典型的布局抖动来源；前者由浏览器在合成线程上判断，
    * 到点了才叫我们一次。
    *
-   * 数字每次刷新都重新随机 —— 这正合它的来历（每条世界线都不一样，谁也说不准
-   * 下一次读到的是哪个数）。
+   * 数字每次刷新都重新随机 —— 这正合它的来历（每条世界线都不一样）。
    */
   for (const meter of document.querySelectorAll<HTMLElement>('[data-dm]')) {
     const values = [...meter.querySelectorAll<HTMLElement>('.dm-value')];
@@ -154,7 +210,7 @@ const DECIMALS = 6;
           values.forEach((el) => (el.textContent = String(Math.floor(Math.random() * 10))));
         }, TICK_MS);
 
-        // 时间到 → 七位**同时**停住（不是一位一位来）
+        // 时间到 → 一起停住（不是一位一位来）
         window.setTimeout(() => {
           window.clearInterval(spinner);
           settle();
