@@ -2,13 +2,19 @@
 /**
  * 世界线变动率探测仪 —— 藏在页脚里的彩蛋（《命运石之门》里那台用辉光管做的机器）。
  *
- * 滚到页脚时数字开始乱跳，然后从左到右一位一位定下来，最后停在某个变动率上；
+ * 滚到页脚时七位数字一起乱跳，跳够了**同时**定下来，停在某个 1.xxxxxx 上；
  * **每次刷新都是一个新的随机数**，所以没有哪一次是"对的"。
  *
- * 【为什么做成一块深色底板】
+ * 【为什么做成一块深色面板】
  * 辉光管的好看之处全在那圈橙色的辉光。站点是暖白纸底，橙色数字直接放上去
  * 会糊成一片、也完全没有"发光"的感觉 —— 所以这里给机器自己做了一块深色面板，
  * 它是一件**嵌在页面里的仪器**，不跟着页面的明暗主题走（夜里看也一样）。
+ *
+ * 【虚位的电子丝】
+ * 辉光管里 0–9 十根阴极金属丝是**一直都在**的，只有一根通电发光，
+ * 其余九根在暗处仍然能看见淡淡的线框 —— 这是它最好认的特征（看实物照片就很明显）。
+ * 所以每位数字背后叠了一整组 0–9，用很低的透明度当"网"。
+ * 少了这一层，就只是一个发光的数字，不像辉光管。
  *
  * 【为什么 aria-hidden】
  * 它是彩蛋，不是内容。读屏软件念出一串随机的 "1 0 4 8 5 9 6" 没有任何意义。
@@ -16,36 +22,34 @@
  * 【数字格式】《命运石之门》里世界线变动率基本都长成 1.xxxxxx（比如
  * Steins;Gate 线是 1.048596），所以整数位固定为 1、后面六位随机。
  */
+const DIGITS = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9'];
+/** 小数位几位（前面还有固定的整数位 1） */
+const DECIMALS = 6;
 ---
 
 <div class="dm" data-dm aria-hidden="true">
-  <span class="dm-label">世界线变动率</span>
   <span class="dm-tubes">
-    <span class="dm-digit" data-dm-digit>1</span>
-    <span class="dm-dot">.</span>
-    <span class="dm-digit" data-dm-digit>0</span>
-    <span class="dm-digit" data-dm-digit>0</span>
-    <span class="dm-digit" data-dm-digit>0</span>
-    <span class="dm-digit" data-dm-digit>0</span>
-    <span class="dm-digit" data-dm-digit>0</span>
-    <span class="dm-digit" data-dm-digit>0</span>
+    {
+      [0, ...Array.from({ length: DECIMALS }, (_, i) => i + 1)].map((slot) => (
+        <span class:list={['dm-digit', slot === 1 && 'dm-dot']} data-dm-digit>
+          {/* 十根阴极的残影，全叠在同一格里 */}
+          <span class="dm-ghost">
+            {DIGITS.map((d) => (
+              <span>{d}</span>
+            ))}
+          </span>
+          <span class="dm-value">{slot === 0 ? '1' : '0'}</span>
+        </span>
+      ))
+    }
   </span>
 </div>
 
 <style>
   .dm {
     display: flex;
-    align-items: center;
     justify-content: center;
-    gap: var(--space-4);
     margin-top: var(--space-6);
-  }
-
-  .dm-label {
-    font-family: var(--kai);
-    font-size: var(--text-xs);
-    letter-spacing: 0.3em;
-    color: var(--faint);
   }
 
   /* 仪器的面板：深色、内嵌一圈极淡的边、外面一点投影，像嵌在纸里的一小块玻璃 */
@@ -61,48 +65,56 @@
       0 2px 12px -8px rgba(0, 0, 0, 0.7);
   }
 
-  .dm-digit,
-  .dm-dot {
+  .dm-digit {
+    position: relative;
+    display: inline-block;
     font-family: ui-monospace, Consolas, "Cascadia Mono", monospace;
     font-size: var(--text-md);
     line-height: 1.15;
     font-variant-numeric: tabular-nums;
+  }
+
+  /* 小数点：只留一点窄边距，不用占一个数字的宽度 */
+  .dm-digit.dm-dot::after {
+    content: '.';
+    position: absolute;
+    left: -0.34em;
+    bottom: -0.06em;
+    color: #ffb072;
+    text-shadow: 0 0 4px rgba(255, 150, 80, 0.9), 0 0 14px rgba(255, 110, 50, 0.45);
+  }
+
+  /* ---------- 虚位的电子丝 ---------- */
+  /* 十个数字叠在同一格里，形成那层"网" */
+  .dm-ghost {
+    display: grid;
+    position: absolute;
+    inset: 0;
+    color: #ffb072;
+    /* 0.2：再淡就只是一层灰影、看不出"丝"；再浓就会和亮起来那位抢眼 */
+    opacity: 0.2;
+  }
+
+  .dm-ghost > span {
+    grid-area: 1 / 1;
+    /* 每一根丝都是独立的细线，所以给一点点描边感，比纯色更像金属丝 */
+    text-shadow: 0 0 1.5px rgba(255, 150, 80, 0.6);
+  }
+
+  /* ---------- 当前显示的那一位 ---------- */
+  .dm-value {
+    position: relative;
     color: #ffb072;
     /* 辉光：近处一圈实、远处一圈散，两层叠出来才像气体放电 */
     text-shadow:
       0 0 4px rgba(255, 150, 80, 0.9),
       0 0 14px rgba(255, 110, 50, 0.45);
   }
-
-  .dm-dot { padding: 0 0.05em; }
-
-  /* 没点亮的那几根阴极：辉光管里 0–9 的金属丝都在，只有一根通电发光，
-     所以数字背后应该隐隐有个"8"。这一层就是那点残影 —— 少了它就不像辉光管 */
-  .dm-digit {
-    position: relative;
-    display: inline-block;
-  }
-
-  .dm-digit::before {
-    content: '8';
-    position: absolute;
-    inset: 0;
-    color: #ffb072;
-    opacity: 0.07;
-  }
-
-  /* 每一位定下来时轻轻跳一下 */
-  .dm-digit.is-locked { animation: dm-lock 280ms var(--ease); }
-
-  @keyframes dm-lock {
-    0% { opacity: 0.45; transform: translateY(-0.14em); }
-    100% { opacity: 1; transform: none; }
-  }
 </style>
 
 <script>
   /**
-   * 数字乱跳 → 从左到右依次定住。
+   * 七位一起乱跳，跳够了**同时**定下来。
    *
    * 用 IntersectionObserver 而不是"监听滚动算位置"：后者要在每次滚动里读
    * getBoundingClientRect，是典型的布局抖动来源；前者由浏览器在合成线程上判断，
@@ -112,22 +124,21 @@
    * 下一次读到的是哪个数）。
    */
   for (const meter of document.querySelectorAll<HTMLElement>('[data-dm]')) {
-    const digits = [...meter.querySelectorAll<HTMLElement>('[data-dm-digit]')];
-    if (digits.length === 0) continue;
+    const values = [...meter.querySelectorAll<HTMLElement>('.dm-value')];
+    if (values.length === 0) continue;
 
-    // 整数位固定 1（世界线变动率都是 1.xxxxxx），小数点后六位随机
-    const target = digits.map((_, i) => (i === 0 ? 1 : Math.floor(Math.random() * 10)));
+    // 整数位固定 1（世界线变动率都是 1.xxxxxx），小数点后几位随机
+    const target = values.map((_, i) => (i === 0 ? 1 : Math.floor(Math.random() * 10)));
 
-    const settle = () => digits.forEach((el, i) => (el.textContent = String(target[i])));
+    const settle = () => values.forEach((el, i) => (el.textContent = String(target[i])));
 
     if (matchMedia('(prefers-reduced-motion: reduce)').matches) {
       settle();
       continue;
     }
 
-    const SPIN_MS = 650;   // 所有位一起乱跳多久
-    const STEP_MS = 150;   // 每位之间错开多久停下来
-    const TICK_MS = 45;    // 乱跳时多久换一次数字（跟屏幕刷新率走会糊成一片）
+    const SPIN_MS = 1200;  // 乱跳多久
+    const TICK_MS = 45;    // 多久换一次数字（跟屏幕刷新率走会糊成一片）
 
     let played = false;
     const io = new IntersectionObserver(
@@ -136,21 +147,15 @@
         played = true;
         io.disconnect();
 
-        const locked = digits.map(() => false);
         const spinner = window.setInterval(() => {
-          digits.forEach((el, i) => {
-            if (!locked[i]) el.textContent = String(Math.floor(Math.random() * 10));
-          });
+          values.forEach((el) => (el.textContent = String(Math.floor(Math.random() * 10))));
         }, TICK_MS);
 
-        digits.forEach((el, i) => {
-          window.setTimeout(() => {
-            locked[i] = true;
-            el.textContent = String(target[i]);
-            el.classList.add('is-locked');
-            if (i === digits.length - 1) window.clearInterval(spinner);
-          }, SPIN_MS + i * STEP_MS);
-        });
+        // 时间到 → 七位**同时**停住（不是一位一位来）
+        window.setTimeout(() => {
+          window.clearInterval(spinner);
+          settle();
+        }, SPIN_MS);
       },
       { threshold: 0.9 }
     );
