@@ -218,7 +218,8 @@ a { color: inherit; text-decoration: none; }
   gap: var(--space-5);
   margin: 0 0 var(--space-5);
   font-family: var(--kai);
-  font-size: var(--text-base);
+  /* 楷体小字号有锯齿，年份标记同样抬到 22px */
+  font-size: var(--text-md);
   font-weight: 400;
   letter-spacing: 0.3em;
   color: var(--muted);

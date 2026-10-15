@@ -49,18 +49,20 @@ const years = groupByYear(posts);
   .entry {
     display: grid;
     /* 日期栏宽度是给"三月十三日"这五个字留的，**跟着字号走**：
-       5.75rem（14px 时）→ 6.5rem（17px 时）→ 7.5rem（19px 时）。
+       5.75rem（14px）→ 6.5rem（17px）→ 7.5rem（19px）→ 8.25rem（22px）。
        字号再调就要回来重算，否则日期会折行 */
-    grid-template-columns: 7.5rem 1fr;
+    grid-template-columns: 8.25rem 1fr;
     align-items: baseline;
     gap: 0 var(--space-4);
     padding: 0.4rem 0;
   }
 
-  /* 日期栏用强调色 —— 全站唯一的彩色，只给时间用 */
+  /* 日期栏用强调色 —— 全站唯一的彩色，只给时间用。
+     字号给到 --text-md（22px）而不是更小的档：楷体在小字号下（19px 及以下）
+     渲染会有明显的像素锯齿，放大一档就干净了 */
   .entry time {
     font-family: var(--kai);
-    font-size: var(--text-sm);
+    font-size: var(--text-md);
     letter-spacing: 0.08em;
     color: var(--accent);
     white-space: nowrap;

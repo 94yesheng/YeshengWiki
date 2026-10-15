@@ -116,7 +116,7 @@ const previewFor = (href: string) =>
    *   · 时长 300ms —— 比浏览器默认那一下快一档，就是用户说的"稍微再快一些"
    *   · easeOutCubic（1-(1-t)³）—— 非线性：起步快、接近目标时收住，
    *     比线性自然得多，也不会有"撞上去"的顿感
-   *   · 阈值 0.3 屏 —— 离某一屏不到三成屏才吸过去；离得远就让它自由滚，
+   *   · 阈值 0.25 屏 —— 离某一屏不到四分之一屏才吸过去；离得远就让它自由滚，
    *     不硬拽（这是 proximity 的手感，不是 mandatory）。
    *     这个数就是"吸附距离"：调大=老远就被拽过去，调小=只有快到位了才吸
    *
@@ -131,7 +131,7 @@ const previewFor = (href: string) =>
     const navH = document.querySelector<HTMLElement>('.site-nav-bar')?.offsetHeight ?? 0;
 
     const DURATION = 300;
-    const THRESHOLD = 0.3;
+    const THRESHOLD = 0.25;
     const easeOutCubic = (t: number) => 1 - Math.pow(1 - t, 3);
 
     let raf = 0;
