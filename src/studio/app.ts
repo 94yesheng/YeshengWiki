@@ -40,15 +40,12 @@ import {
 } from './content';
 import { renderMarkdown, readingStats } from './md';
 import { parsePost } from './frontmatter';
-import { clearVault, hasVault, saveVault, takeLegacyToken, unlockVault, vaultVersion } from './vault';
+import { fetchVault, takeLegacyToken, unlockVault, VAULT_URL, type VaultBlob } from './vault';
 
 /* --------------------------------------------------------------------------
    配置：仓库地址写死在这里（和 Sveltia 的 config.yml 是同一个值）
    -------------------------------------------------------------------------- */
 const REPO = { owner: '94yesheng', repo: 'YeshengWiki', branch: 'main' };
-
-/** WebCrypto 只在安全上下文（https / localhost）里可用 —— 加密存储那一档依赖它 */
-const canEncrypt = typeof crypto !== 'undefined' && typeof crypto.subtle !== 'undefined';
 
 /* --------------------------------------------------------------------------
    状态
@@ -77,6 +74,8 @@ const state = {
   site: null as SiteFile | null,
   photoFiles: [] as string[],
   draft: {} as Draft,
+  /** 站点上的密文（没有就是 null —— 此时显示令牌登录页） */
+  vault: null as VaultBlob | null,
 };
 
 const $ = <T extends HTMLElement = HTMLElement>(sel: string): T | null => document.querySelector<T>(sel);
@@ -139,7 +138,7 @@ function showOnly(html: string): void {
   if (main) main.innerHTML = html;
 }
 
-async function useToken(token: string, remember: boolean, account: string, password: string): Promise<void> {
+async function useToken(token: string, fromVault = false): Promise<void> {
   setBusy(true, '验证令牌…');
   try {
     const gh = new Github(token, REPO);
@@ -147,21 +146,15 @@ async function useToken(token: string, remember: boolean, account: string, passw
     state.token = token;
     state.gh = gh;
     state.user = me.login;
-    if (remember && password) {
-      try {
-        await saveVault(token, account, password);
-      } catch (e) {
-        // 存不下不影响本次登录（比如非安全上下文），只是下次要重新粘
-        toast(`没存住（${e instanceof Error ? e.message : String(e)}），本次仍可正常使用`, true);
-      }
-    }
     setBusy(false);
     await loadAll();
   } catch (e) {
     setBusy(false);
     state.token = null;
     state.gh = null;
-    renderLogin(e instanceof GithubError ? e.message : '登录失败');
+    // 从密文解出来的令牌还被拒 → 多半是令牌本身失效/被撤销了，得重新生成一份密文
+    if (fromVault) renderUnlock('解出来的令牌已经失效或被撤销了 —— 需要重新生成密文');
+    else renderLogin(e instanceof GithubError ? e.message : '登录失败');
   }
 }
 
@@ -182,59 +175,24 @@ function renderLogin(message?: string, note?: string): void {
         <input class="st-input" id="st-token" type="password" placeholder="github_pat_..." autocomplete="off" />
         ${message ? `<p style="margin-top:var(--space-3);color:var(--seal)">${esc(message)}</p>` : ''}
 
-        <div style="margin-top:var(--space-4)">
-          <label class="st-check">
-            <input type="checkbox" id="st-remember" ${canEncrypt ? 'checked' : 'disabled'} />
-            <span>记住（用密码加密后存在本机）</span>
-          </label>
-          <div id="st-pwrow" style="margin-top:var(--space-3)">
-            <input class="st-input" id="st-acct" placeholder="解锁账号（至少 3 位，任意字符）" autocomplete="off" style="margin-bottom:6px" />
-            <input class="st-input" id="st-pw" type="password" placeholder="解锁密码（至少 6 位）" autocomplete="new-password" />
-            <div class="st-hint">
-              <b>账号和密码是同一个口令的两半</b>：真正的钥匙 = 账号 + 密码按顺序拼起来，
-              两样都存不下来、也没法找回。所以两半都要记住，大小写和空格必须完全一致。
-              它唯一的增益是"光有密码不够"；强度取决于两半合起来有多长。
-            </div>
-          </div>
-          <div class="st-hint" id="st-noremember" style="display:none">
-            不记住：令牌只在本次会话里有效，刷新页面就要重新粘。
-          </div>
-        </div>
-
         <div style="margin-top:var(--space-4);display:flex;gap:var(--space-2);align-items:center">
           <button class="st-btn st-btn--primary" id="st-login-go">登录</button>
           <span class="st-hint">令牌只发给 api.github.com，不经过任何第三方。别在公用电脑上登录。</span>
         </div>
+
+        <div class="st-hint" style="margin-top:var(--space-5);border-top:1px solid var(--rule);padding-top:var(--space-3);line-height:1.9">
+          <b>想以后只输账号密码？</b>在你自己电脑上跑 <code>node scripts/vault.mjs</code>：
+          它会用你给的账号和密码，把令牌加密成一份密文，写进
+          <code>public/studio/vault.json</code>。提交推送之后，任何设备打开后台都只需输账号和密码
+          —— 密文放在站点上，生成留在本机，公网上不放"能生成密文的东西"。
+        </div>
       </div>
     </div>`);
-
-  const remember = $<HTMLInputElement>('#st-remember');
-  const syncRemember = () => {
-    const on = !!remember?.checked;
-    const row = $('#st-pwrow');
-    const no = $('#st-noremember');
-    if (row) row.style.display = on ? '' : 'none';
-    if (no) no.style.display = on ? 'none' : '';
-  };
-  remember?.addEventListener('change', syncRemember);
-  syncRemember();
 
   const go = async () => {
     const token = $<HTMLInputElement>('#st-token')?.value.trim() ?? '';
     if (!token) return;
-    const on = !!remember?.checked;
-    const acct = $<HTMLInputElement>('#st-acct')?.value ?? '';
-    const pw = $<HTMLInputElement>('#st-pw')?.value ?? '';
-    if (on && acct.trim().length < 3) {
-      renderLogin('解锁账号至少 3 位 —— 那一半太短就等于没拆开');
-      return;
-    }
-    if (on && pw.length < 6) {
-      renderLogin('解锁密码至少 6 位 —— 太短的密码挡不住离线猜测');
-      return;
-    }
-    // 账号原样使用：不做 trim、不做大小写归一 —— 它是密钥的一半，差一个字符就解不开
-    await useToken(token, on, acct, pw);
+    await useToken(token);
   };
   $('#st-login-go')?.addEventListener('click', () => void go());
   $<HTMLInputElement>('#st-token')?.addEventListener('keydown', (e) => {
@@ -247,7 +205,7 @@ function renderUnlock(message?: string): void {
     <div class="st-login">
       <div class="st-card">
         <h2>解锁</h2>
-        <p>本机存着加密过的令牌。输入解锁账号和密码继续。</p>
+        <p>站点上存着加密过的令牌（<code>${esc(VAULT_URL)}</code>）。输入账号和密码继续。</p>
         <input class="st-input" id="st-unlock-acct" placeholder="账号" autocomplete="off" style="margin-bottom:6px" />
         <div class="st-row">
           <input class="st-input" id="st-unlock-pw" type="password" placeholder="密码" autocomplete="current-password" />
@@ -255,24 +213,29 @@ function renderUnlock(message?: string): void {
         </div>
         ${message ? `<p style="margin-top:var(--space-3);color:var(--seal)">${esc(message)}</p>` : ''}
         <p class="st-hint" style="margin-top:var(--space-3)">
-          两半都要对，大小写与空格必须和设置时完全一致 —— 它们是拼起来当钥匙用的，没有找回途径。
+          两半都要对，大小写与空格必须和生成密文时完全一致 —— 它们是拼起来当钥匙用的，没有找回途径。
+          密文本身是公开的（谁下载到都行），但**没有口令就解不开** —— 口令强度就是唯一的防线。
         </p>
         <p style="margin-top:var(--space-4)">
           忘了账号或密码，或者想换一个令牌？
-          <button class="st-btn" id="st-forget" style="margin-left:6px">清除本机令牌，改用令牌登录</button>
+          在你自己的电脑上跑 <code>node scripts/vault.mjs</code> 重新生成一份密文并提交。
+          要用令牌直接登录（不经过密文），也可以：
+          <button class="st-btn" id="st-use-token" style="margin-left:6px">改用令牌登录</button>
         </p>
       </div>
     </div>`);
 
   const go = async () => {
+    const blob = state.vault;
+    if (!blob) return;
     const acct = $<HTMLInputElement>('#st-unlock-acct')?.value ?? '';
     const pw = $<HTMLInputElement>('#st-unlock-pw')?.value ?? '';
     if (!acct || !pw) return;
     setBusy(true, '解锁中…');
     try {
-      const token = await unlockVault(acct, pw);
+      const token = await unlockVault(blob, acct, pw);
       setBusy(false);
-      await useToken(token, false, '', '');
+      await useToken(token, true);
     } catch {
       setBusy(false);
       // 账号错、密码错，都是同一个 AES-GCM 校验失败 —— 分不出来，也不该分
@@ -285,10 +248,9 @@ function renderUnlock(message?: string): void {
       if ((e as KeyboardEvent).key === 'Enter') void go();
     });
   }
-  $('#st-forget')?.addEventListener('click', () => {
-    if (!confirm('清除本机保存的加密令牌？之后要重新粘贴令牌。')) return;
-    clearVault();
-    renderLogin('已清除本机保存的令牌');
+  // 没有"清除本机密文"这回事了：密文在仓库里，改它要重新生成 + 提交
+  $('#st-use-token')?.addEventListener('click', () => {
+    renderLogin(undefined, '改用令牌登录。要更新站点上的密文，请在你自己的电脑上跑 node scripts/vault.mjs');
   });
 }
 
@@ -343,24 +305,23 @@ function renderBar(): void {
     <span class="st-spacer"></span>
     <button class="st-btn" id="st-refresh" ${state.busy ? 'disabled' : ''}>重新读取</button>
     <button class="st-btn st-btn--primary" id="st-save" ${state.dirty ? '' : 'disabled'}>保存</button>
-    ${hasVault() ? '<button class="st-btn" id="st-lock">锁定</button>' : ''}
+    ${state.vault ? '<button class="st-btn" id="st-lock">锁定</button>' : ''}
     <button class="st-btn st-btn--ghost" id="st-logout">退出</button>`;
   $('#st-refresh')?.addEventListener('click', () => void loadAll());
   $('#st-save')?.addEventListener('click', () => void saveCurrent());
 
-  // 锁定：令牌从内存里丢掉，回到解锁页（本机的密文保留）
+  // 锁定：令牌从内存里丢掉，回到解锁页（站点上的密文还在，输账密即可再进）
   $('#st-lock')?.addEventListener('click', () => {
     if (state.dirty && !confirm('有未保存的改动，确定锁定并丢弃吗？')) return;
     forgetSession();
     renderUnlock('已锁定');
   });
 
-  // 退出：连本机保存的密文一起清掉
+  // 退出：回登录页。没有"本机凭据"要清 —— 密文在仓库里，本机什么都不留
   $('#st-logout')?.addEventListener('click', () => {
     if (state.dirty && !confirm('有未保存的改动，确定退出并丢弃吗？')) return;
     forgetSession();
-    clearVault();
-    renderLogin('已退出，本机保存的令牌也清除了');
+    renderLogin();
   });
 }
 
@@ -1275,31 +1236,18 @@ async function boot(): Promise<void> {
   // 顶栏与骨架先渲染出来，避免白屏
   renderLogin();
 
-  // 旧版本把令牌明文存在浏览器里。这里清掉，并让用户重新登录一遍（顺便升级成加密存储）——
-  // 明文凭据不该继续留在本机，这是这次改动最实际的一个收益。
+  // 曾经有版本把令牌明文存在浏览器里，也曾经把密文存在浏览器里。
+  // 现在密文统一放在站点上（public/studio/vault.json），本机什么都不留 ——
+  // 所以把那个旧键清掉，并告诉用户一声（它是明文凭据，不该继续留着）。
   const legacy = takeLegacyToken();
   if (legacy) {
-    renderLogin(
-      undefined,
-      '之前那个令牌是明文存在浏览器里的，已经清除。请重新登录一次 —— 这次可以勾上「记住」，它会用你设的密码加密后再存。'
-    );
+    renderLogin(undefined, '本机曾经明文存过一个令牌，已经清除。请重新登录一次。');
     return;
   }
 
-  // 解锁方式从"单个密码"改成了"账号+密码各算一半"（口令的拼法变了），
-  // 旧密文解不开也不该留着 —— 清掉并请用户重新登录一次
-  const version = vaultVersion();
-  if (version === 'v1') {
-    clearVault();
-    renderLogin(
-      undefined,
-      '解锁方式升级了：现在账号和密码各算口令的一半。之前那份密文是按单个密码加密的，已经清除 —— 请重新登录一次。'
-    );
-    return;
-  }
-
-  if (version !== 'v2') return; // 没有加密保存过 → 停在登录页
-  renderUnlock();
+  // 站点上有密文 → 显示解锁页；没有 → 显示令牌登录页
+  state.vault = await fetchVault();
+  if (state.vault) renderUnlock();
 }
 
 void boot();
