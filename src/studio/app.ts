@@ -214,7 +214,7 @@ function renderUnlock(message?: string): void {
         ${message ? `<p style="margin-top:var(--space-3);color:var(--seal)">${esc(message)}</p>` : ''}
         <p class="st-hint" style="margin-top:var(--space-3)">
           两半都要对，大小写与空格必须和生成密文时完全一致 —— 它们是拼起来当钥匙用的，没有找回途径。
-          密文本身是公开的（谁下载到都行），但**没有口令就解不开** —— 口令强度就是唯一的防线。
+          密文本身是公开的（谁下载到都行），但<b>没有口令就解不开</b> —— 口令强度就是唯一的防线。
         </p>
         <p style="margin-top:var(--space-4)">
           忘了账号或密码，或者想换一个令牌？
