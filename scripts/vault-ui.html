@@ -1,0 +1,243 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="robots" content="noindex, nofollow" />
+<title>保险箱生成器 · 夜笙的小世界</title>
+<style>
+  /* 取值抄自 src/styles/tokens.css（这个页面是本地工具，拿不到站点的样式表） */
+  :root {
+    --paper: #fff; --ink: #1a1917; --muted: #8a857d; --rule: #e7e4de; --seal: #a61b29;
+    --kai: KaiTi, 楷体, STKaiti, serif; --song: "Songti SC", SimSun, 宋体, serif;
+    --sans: "Noto Sans SC", "Microsoft YaHei", 微软雅黑, system-ui, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: #f5f5f4; color: var(--ink);
+    font: 15px/1.7 var(--sans);
+    display: flex; justify-content: center; padding: 40px 20px 80px;
+  }
+  main { width: min(100%, 44rem); }
+  h1 { font: 400 26px/1.4 var(--kai); margin: 0 0 6px; letter-spacing: .04em; }
+  .sub { color: var(--muted); font-size: 13px; margin-bottom: 26px; }
+  .card { background: var(--paper); border: 1px solid var(--rule); border-radius: 4px; padding: 22px 24px; margin-bottom: 18px; }
+  .card h2 { font: 400 17px/1.4 var(--kai); margin: 0 0 14px; }
+  label { display: block; color: var(--muted); font-size: 12.5px; margin: 14px 0 5px; letter-spacing: .05em; }
+  input, textarea {
+    width: 100%; font: inherit; font-size: 14px; color: var(--ink); background: var(--paper);
+    border: 1px solid var(--rule); border-radius: 3px; padding: 8px 10px;
+  }
+  textarea { font-family: ui-monospace, monospace; font-size: 12.5px; resize: vertical; }
+  input:focus, textarea:focus { outline: 2px solid rgba(166,27,41,.22); border-color: var(--seal); }
+  .hint { color: var(--muted); font-size: 12.5px; margin-top: 5px; }
+  .row { display: flex; gap: 10px; align-items: center; margin-top: 20px; flex-wrap: wrap; }
+  button {
+    font: inherit; cursor: pointer; padding: 7px 16px; border-radius: 3px;
+    border: 1px solid var(--rule); background: var(--paper); color: var(--ink);
+  }
+  button:hover { border-color: var(--muted); }
+  button.primary { border-color: var(--seal); background: var(--seal); color: #fff; }
+  button.primary:hover { background: #8e1622; border-color: #8e1622; }
+  button:disabled { opacity: .45; cursor: not-allowed; }
+  .status { font-size: 13px; padding: 10px 12px; border-radius: 3px; border: 1px solid var(--rule); background: #fafaf9; }
+  .status b { font-weight: 500; }
+  .ok { border-color: #1e4a3c; color: #1e4a3c; background: #f2f7f5; }
+  .bad { border-color: var(--seal); color: var(--seal); background: #fdf5f5; }
+  pre { background: #1a1917; color: #f5f5f4; padding: 12px 14px; border-radius: 3px; overflow-x: auto; font-size: 12.5px; }
+  .warn { color: var(--seal); font-size: 13px; }
+  .meter { height: 6px; border-radius: 3px; background: var(--rule); margin-top: 8px; overflow: hidden; }
+  .meter i { display: block; height: 100%; background: var(--seal); width: 0; transition: width .25s ease; }
+  ul { padding-left: 1.3em; margin: 8px 0; }
+  li { margin-bottom: 5px; font-size: 13.5px; }
+  code { font-family: ui-monospace, monospace; font-size: .92em; background: rgba(0,0,0,.05); padding: 0 3px; border-radius: 2px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>保险箱生成器</h1>
+  <div class="sub">
+    把访问令牌加密成一份密文，写进站点上的数据文件。之后打开后台只需要输账号和密码。<br />
+    <b>这个页面只在本机跑</b>（127.0.0.1）—— 令牌与口令不会离开这台电脑，也不会被部署到站点上。
+  </div>
+
+  <div class="card">
+    <h2>当前状态</h2>
+    <div id="status" class="status">读取中…</div>
+  </div>
+
+  <div class="card">
+    <h2>要加密的东西</h2>
+
+    <label for="token">访问令牌</label>
+    <textarea id="token" rows="3" placeholder="github_pat_..." autocomplete="off" spellcheck="false"></textarea>
+    <div class="hint">GitHub 的细粒度令牌：只授权本仓库、只给 Contents 读写、建议 90 天有效期。</div>
+
+    <label for="acct">解锁账号</label>
+    <input id="acct" autocomplete="off" spellcheck="false" placeholder="至少 3 位" />
+    <label for="pw">解锁密码</label>
+    <input id="pw" type="password" autocomplete="new-password" placeholder="至少 6 位" />
+    <div class="meter"><i id="meter"></i></div>
+    <div class="hint" id="strength">口令强度：账号和密码合起来算 —— 长短比字符种类更重要。</div>
+    <label for="pw2">再输一次密码</label>
+    <input id="pw2" type="password" autocomplete="new-password" />
+
+    <div class="row">
+      <button class="primary" id="go">生成并写入</button>
+      <button id="copy" disabled>复制密文</button>
+      <label style="margin:0;display:flex;gap:6px;align-items:center;color:var(--ink);font-size:13px">
+        <input type="checkbox" id="overwrite" style="width:auto" /> 覆盖已存在的密文
+      </label>
+    </div>
+    <div class="hint">
+      生成前会先用同一口令自检一遍（解一遍看能不能解回令牌）—— 免得手滑打错密码、
+      产出一份连你自己也解不开的密文。
+    </div>
+  </div>
+
+  <div class="card" id="result" style="display:none">
+    <h2>结果</h2>
+    <div id="resultBody"></div>
+  </div>
+
+  <div class="card">
+    <h2>注意事项</h2>
+    <ul>
+      <li><b>口令没有找回途径。</b>忘了就重跑这个页面生成一份新的（密文本来就是可替换的）。</li>
+      <li>账号别用<b>站名、昵称、拼音缩写</b>这类能被猜到的词 —— 那样它就退化成"盐"，不提供额外强度。</li>
+      <li>密文会随站点公开（任何人能下载），所以<b>口令强度就是唯一的防线</b>：最好是一句 4–5 个不相关词的短语。</li>
+      <li>换令牌或换口令 = 再生成一次 + 提交推送；顺手在 GitHub 上撤销旧令牌。</li>
+    </ul>
+  </div>
+</main>
+
+<script>
+/* 口令的拼法必须和另外两处完全一致，否则解不开：
+     src/studio/vault.ts（后台解密）、scripts/vault.mjs（命令行版）、本页
+   口令 = 账号 + NUL + 密码；密钥 = PBKDF2-SHA256(60 万次)；密文 = AES-GCM。
+   NUL 用 String.fromCharCode(0) 拼出来，而不是写字面量 —— 源码里藏不可见字符会坑到编辑器。 */
+const SEP = String.fromCharCode(0);
+const ITERATIONS = 600000;
+
+const $ = (id) => document.getElementById(id);
+const b64 = (bytes) => {
+  let s = '';
+  for (const b of bytes) s += String.fromCharCode(b);
+  return btoa(s);
+};
+
+async function derive(secret, salt, usage) {
+  const material = await crypto.subtle.importKey('raw', new TextEncoder().encode(secret), 'PBKDF2', false, [
+    'deriveKey',
+  ]);
+  return crypto.subtle.deriveKey(
+    { name: 'PBKDF2', salt, iterations: ITERATIONS, hash: 'SHA-256' },
+    material,
+    { name: 'AES-GCM', length: 256 },
+    false,
+    [usage]
+  );
+}
+
+/* ---------- 状态 ---------- */
+async function loadStatus() {
+  try {
+    const info = await (await fetch('/status')).json();
+    $('status').innerHTML = info.exists
+      ? `站点上<b>已有一份密文</b>：<code>${info.path}</code>（${info.bytes} 字节，${info.modified}）<br />
+         重新生成会覆盖它 —— 覆盖前记得勾下面的「覆盖已存在的密文」。`
+      : `站点上<b>还没有密文</b>。生成之后，打开后台就只需要输账号和密码。<br />
+         要写的文件：<code>${info.path}</code>`;
+    $('overwrite').closest('label').style.display = info.exists ? '' : 'none';
+  } catch (e) {
+    $('status').textContent = '读不到状态（本地服务没在跑？）';
+  }
+}
+loadStatus();
+
+/* ---------- 口令强度：只给个粗略的量级感 ---------- */
+function strength() {
+  const acct = $('acct').value;
+  const pw = $('pw').value;
+  const len = acct.length + pw.length;
+  const pct = Math.min(100, Math.round((len / 24) * 100));
+  $('meter').style.width = pct + '%';
+  let text = '口令强度：账号和密码合起来算 —— 长短比字符种类更重要。';
+  if (len === 0) text = '口令强度：两半都没填。';
+  else if (len < 12) text = '口令强度：偏短。短口令挡不住离线猜测 —— 密文是公开的，猜它不需要碰到你的电脑。';
+  else if (len < 20) text = '口令强度：还可以。再长一点更稳（比如拼 4 个不相关的词）。';
+  else text = '口令强度：够长。记住两半必须完全一致，差一个字符就解不开。';
+  $('strength').textContent = text;
+}
+$('acct').addEventListener('input', strength);
+$('pw').addEventListener('input', strength);
+
+/* ---------- 生成 ---------- */
+$('go').addEventListener('click', async () => {
+  const token = $('token').value.trim();
+  const acct = $('acct').value;
+  const pw = $('pw').value;
+  const pw2 = $('pw2').value;
+  const box = $('resultBody');
+  const fail = (msg) => {
+    $('result').style.display = '';
+    box.innerHTML = `<div class="status bad">${msg}</div>`;
+  };
+
+  if (!token) return fail('还没填访问令牌。');
+  if (acct.trim().length < 3) return fail('解锁账号至少 3 位 —— 那一半太短就等于没拆开。');
+  if (pw.length < 6) return fail('解锁密码至少 6 位。');
+  if (pw !== pw2) return fail('两次输入的密码不一致。');
+
+  const btn = $('go');
+  btn.disabled = true;
+  btn.textContent = '生成中…';
+  try {
+    const salt = crypto.getRandomValues(new Uint8Array(16));
+    const iv = crypto.getRandomValues(new Uint8Array(12));
+    const passphrase = acct + SEP + pw;
+
+    const encKey = await derive(passphrase, salt, 'encrypt');
+    const ct = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, encKey, new TextEncoder().encode(token));
+
+    // 自检：用同一口令解一遍，确认产出的密文真的能解回令牌
+    const decKey = await derive(passphrase, salt, 'decrypt');
+    const back = new TextDecoder().decode(await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, decKey, ct));
+    if (back !== token) throw new Error('自检失败：解出来的和输入的不一致（这不该发生）');
+
+    const blob = { v: 2, iterations: ITERATIONS, salt: b64(salt), iv: b64(iv), ct: b64(new Uint8Array(ct)) };
+
+    const res = await fetch('/save', { method: 'POST', body: JSON.stringify(blob) });
+    const saved = await res.json();
+    if (!saved.ok) throw new Error(saved.error || '写入失败');
+
+    // 生成完就把令牌从页面上擦掉，减少它停留在屏幕上的时间
+    $('token').value = '';
+    $('pw').value = '';
+    $('pw2').value = '';
+
+    $('copy').disabled = false;
+    $('copy').onclick = () => navigator.clipboard.writeText(JSON.stringify(blob, null, 2) + '\n');
+
+    $('result').style.display = '';
+    box.innerHTML = `
+      <div class="status ok">
+        ✓ 已写入 <code>${saved.path}</code>（${saved.bytes} 字节，${saved.modified}）<br />
+        自检通过：用同一账号密码能解回令牌。页面上的令牌和密码已经清空。
+      </div>
+      <p class="hint" style="margin-top:14px">接下来把它提交上去，之后打开后台就只需要输账号和密码：</p>
+      <pre>git add public/studio/vault.json
+git commit -m "chore: 更新保险箱密文"
+git push</pre>
+      <p class="hint">顺手做两件事：在 GitHub 上撤销<b>旧令牌</b>（旧密文随之彻底失效）；把这台电脑上的这份密文记下它的口令 —— 忘了只能重来。</p>`;
+    loadStatus();
+  } catch (e) {
+    fail('出错了：' + (e instanceof Error ? e.message : String(e)));
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '生成并写入';
+  }
+});
+</script>
+</body>
+</html>

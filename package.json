@@ -14,6 +14,7 @@
     "build": "astro build",
     "preview": "astro preview",
     "check": "astro check",
+    "vault": "node scripts/vault-ui.mjs",
     "astro": "astro"
   },
   "dependencies": {
