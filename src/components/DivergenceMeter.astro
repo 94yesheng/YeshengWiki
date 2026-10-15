@@ -69,7 +69,9 @@ const DECIMALS = 6;
     position: relative;
     display: inline-block;
     font-family: ui-monospace, Consolas, "Cascadia Mono", monospace;
-    font-size: var(--text-md);
+    /* 比正文大一档：辉光管里十根阴极丝要挤在一位的宽度里，
+       23px 时它们会糊成一块实心色块、数字反而读不出来（踩过） */
+    font-size: var(--text-xl);
     line-height: 1.15;
     font-variant-numeric: tabular-nums;
   }
@@ -81,34 +83,35 @@ const DECIMALS = 6;
     left: -0.34em;
     bottom: -0.06em;
     color: #ffb072;
-    text-shadow: 0 0 4px rgba(255, 150, 80, 0.9), 0 0 14px rgba(255, 110, 50, 0.45);
+    text-shadow: 0 0 2px rgba(255, 150, 80, 0.55), 0 0 9px rgba(255, 110, 50, 0.22);
   }
 
   /* ---------- 虚位的电子丝 ---------- */
-  /* 十个数字叠在同一格里，形成那层"网" */
+  /* 十个数字叠在同一格里，形成那层"网"。
+     **必须用描边画、不能用半透明填充** —— 阴极是"线"，十层半透明实心字叠起来
+     只会糊成一团灰块，完全不是那个意思。`-webkit-text-stroke` + 透明填充
+     才是细线。（这行如果哪天被删了，辉光管就又变回"一个发光的数字"了） */
   .dm-ghost {
     display: grid;
     position: absolute;
     inset: 0;
-    color: #ffb072;
-    /* 0.2：再淡就只是一层灰影、看不出"丝"；再浓就会和亮起来那位抢眼 */
-    opacity: 0.2;
   }
 
   .dm-ghost > span {
     grid-area: 1 / 1;
-    /* 每一根丝都是独立的细线，所以给一点点描边感，比纯色更像金属丝 */
-    text-shadow: 0 0 1.5px rgba(255, 150, 80, 0.6);
+    color: transparent;
+    -webkit-text-stroke: 0.45px rgba(255, 176, 114, 0.34);
   }
 
   /* ---------- 当前显示的那一位 ---------- */
   .dm-value {
     position: relative;
     color: #ffb072;
-    /* 辉光：近处一圈实、远处一圈散，两层叠出来才像气体放电 */
+    /* 辉光：近处一圈实、远处一圈散。
+       两圈都刻意压得比之前淡 —— 之前那版太亮，光晕漫出去把背后的阴极丝盖住了 */
     text-shadow:
-      0 0 4px rgba(255, 150, 80, 0.9),
-      0 0 14px rgba(255, 110, 50, 0.45);
+      0 0 3px rgba(255, 150, 80, 0.7),
+      0 0 10px rgba(255, 110, 50, 0.28);
   }
 </style>
 
