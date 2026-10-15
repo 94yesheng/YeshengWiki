@@ -57,13 +57,14 @@ a { color: inherit; text-decoration: none; }
    布局容器
    -------------------------------------------------------------------------- */
 
+/* 页面容器：统一用 --shell。**成段的中文不在这里限宽** —— 那由各自的选择器
+   （.article / .intro / .placeholder / .wall-note）单独卡到 --measure，
+   否则一改容器就把正文行宽也改宽了。 */
 .wrap {
-  max-width: var(--measure);
+  max-width: var(--shell);
   margin: 0 auto;
   padding: 0 var(--pad-x);
 }
-
-.wrap--wide { max-width: var(--measure-wide); }
 
 /* --------------------------------------------------------------------------
    页头 —— 文章区与照片区共用，保证全站是一套东西

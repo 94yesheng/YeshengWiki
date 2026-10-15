@@ -1,0 +1,153 @@
+---
+/**
+ * 「最新一篇」推广位 —— 文章页和照片页共用。
+ *
+ * 封面是**正文里的第一张图**（见 utils/posts.ts 的 getPostCover），梗概是 frontmatter
+ * 里的 description。两者都没有时自动降级成纯文字块，版式不塌。
+ *
+ * 为什么左图右文：这是"电脑端比例"里最出效果的一块 —— 页面容器是 --shell（宽），
+ * 单独的封面图有地方摆，标题和梗概才不至于被挤成一条。窄屏下自动叠成上下。
+ */
+import { Image } from 'astro:assets';
+import { getPostCover, type Post } from '../utils/posts';
+import { dottedDate, isoDate } from '../utils/date';
+import { cjkSpacing } from '../utils/typography';
+
+interface Props {
+  post: Post;
+}
+
+const { post } = Astro.props;
+
+const cover = getPostCover(post);
+const tags = post.data.tags;
+---
+
+<a class:list={['latest-post', !cover && 'latest-post--textonly']} href={`/posts/${post.id}/`}>
+  {
+    cover && (
+      <div class="latest-post-cover">
+        <Image
+          src={cover}
+          alt=""
+          widths={[480, 720, 1080, 1600]}
+          sizes="(max-width: 56rem) 100vw, 31rem"
+          loading="lazy"
+          decoding="async"
+        />
+      </div>
+    )
+  }
+
+  <div class="latest-post-body">
+    <p class="latest-post-meta">
+      <span class="latest-post-flag">最新</span>
+      <time datetime={isoDate(post.data.pubDate)}>{dottedDate(post.data.pubDate)}</time>
+      {tags.length > 0 && <span class="latest-post-tags">{tags.join(' · ')}</span>}
+    </p>
+    <h2 class="latest-post-title">{cjkSpacing(post.data.title)}</h2>
+    {post.data.description && <p class="latest-post-excerpt">{post.data.description}</p>}
+  </div>
+</a>
+
+<style>
+  .latest-post {
+    display: grid;
+    grid-template-columns: 1.4fr 1fr;
+    gap: var(--space-6);
+    align-items: center;
+    margin: var(--space-6) 0 var(--space-7);
+    padding: var(--space-5);
+    border: 1px solid var(--rule);
+    border-radius: 3px;
+    text-decoration: none;
+    color: inherit;
+    transition: border-color var(--dur-base) var(--ease);
+  }
+
+  .latest-post:hover { border-color: var(--muted); }
+
+  /* 没有封面时不占左栏 */
+  .latest-post--textonly { grid-template-columns: 1fr; }
+
+  .latest-post-cover {
+    overflow: hidden;
+    border-radius: 2px;
+    /* 原图基本都是 16:9 的截图，用同一个比例就几乎不裁切 */
+    aspect-ratio: 16 / 9;
+  }
+
+  .latest-post-cover :global(img) {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+    transition: transform var(--dur-slow) var(--ease);
+  }
+
+  .latest-post:hover .latest-post-cover :global(img) { transform: scale(1.03); }
+
+  .latest-post-body { min-width: 0; }
+
+  .latest-post-meta {
+    display: flex;
+    align-items: baseline;
+    flex-wrap: wrap;
+    gap: var(--space-3);
+    margin: 0 0 var(--space-3);
+  }
+
+  /* 「最新」是个标记，不是时间 —— 所以不用朱红（全站唯一的彩色只留给时间）。
+     样式跟着全站的"片"走（见 TagChips）：纯排版，无底色，靠字距 + 一条细线立住 */
+  .latest-post-flag {
+    font-family: var(--kai);
+    font-size: var(--text-xs);
+    letter-spacing: 0.22em;
+    color: var(--ink);
+    padding-bottom: 0.15rem;
+    border-bottom: 1px solid var(--ink);
+  }
+
+  .latest-post-meta time {
+    font-family: var(--kai);
+    font-size: 0.875rem;
+    color: var(--seal);
+  }
+
+  .latest-post-tags {
+    font-size: var(--text-xs);
+    color: var(--muted);
+    letter-spacing: 0.08em;
+  }
+
+  .latest-post-title {
+    margin: 0 0 var(--space-3);
+    font-family: var(--kai);
+    font-size: var(--text-xl);
+    font-weight: 400;
+    letter-spacing: 0.04em;
+    line-height: 1.45;
+    transition: color var(--dur-fast) var(--ease);
+  }
+
+  .latest-post:hover .latest-post-title { color: var(--seal); }
+
+  /* 梗概：description 是截断过的前缀，末句多半是断的 ——
+     这里再多加一道两行截断，让断口落在省略号上，而不是明晃晃地露在半句中间 */
+  .latest-post-excerpt {
+    margin: 0;
+    font-size: var(--text-sm);
+    line-height: 1.9;
+    color: var(--muted);
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    overflow: hidden;
+  }
+
+  /* 窄屏叠成上下（不专门做手机端适配，只是别挤爆） */
+  @media (max-width: 34rem) {
+    .latest-post { grid-template-columns: 1fr; gap: var(--space-4); }
+  }
+</style>

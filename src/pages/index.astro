@@ -46,8 +46,11 @@ const latest = posts.slice(0, 4);
 </BaseLayout>
 
 <style>
-  /* 自我介绍沿用文章正文的书籍排版：首行缩进两字符 */
+  /* 自我介绍沿用文章正文的书籍排版：首行缩进两字符。
+     页面容器是宽的那个（--shell），但成段的中文要单独卡回阅读宽 --measure */
   .intro {
+    max-width: var(--measure);
+    margin: 0 auto;
     padding: var(--space-8) 0 var(--space-7);
   }
 

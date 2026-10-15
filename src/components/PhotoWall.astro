@@ -37,11 +37,16 @@ const single = wall.photos.length === 1;
 
 /* 告诉浏览器每张图实际占多宽。
    注意：sizes 不只是"下哪一档图"——对 width:auto 的图，它还会参与算出布局宽度。
-   单张的墙撑满内容区（65rem），所以这里必须照实写：写小了浏览器就会按那个宽度
-   渲染，照片看起来像被压过（踩过一次）。 */
+   写小了浏览器就会按那个宽度渲染，照片看起来像被压过（踩过一次）。
+
+   这几个数是跟着页面容器走的，改 .wrap 的 --shell 时必须回来一起改：
+     · 页面容器 56rem、两侧各 --pad-x(1.5rem) ⇒ 可用宽度 53rem
+     · 单张的墙撑满这 53rem（gallery.css 里的 56rem 上限已经够不着了）
+     · 多张的每张是 calc(宽高比 × 14rem)，横图封顶约 25rem；一行放不下时靠
+       flex-shrink 收缩，这里按上限报：多下一档图，总比把图压扁好 */
 const sizes = single
-  ? '(max-width: 34rem) 100vw, 56rem'
-  : '(max-width: 34rem) 92vw, (max-width: 68rem) 45vw, 30rem';
+  ? '(max-width: 56rem) 92vw, 53rem'
+  : '(max-width: 34rem) 92vw, 25rem';
 
 /* 覆盖层用的地址：取 1600px 那一档（和网格里 largest 的变体是同一个文件），
    原图比 1600 还小的就别放大，避免生成虚大的文件 */

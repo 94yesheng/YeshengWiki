@@ -1,6 +1,46 @@
 import { getCollection, type CollectionEntry } from 'astro:content';
+import type { ImageMetadata } from 'astro';
 
 export type Post = CollectionEntry<'posts'>;
+
+/**
+ * 文章配图，按文件名索引：'ji-bao-01.jpg' → ImageMetadata
+ * （和 utils/photos.ts 里那套完全一样的写法 —— 图片资源都在 src/assets/ 下，
+ *   Astro 在构建时统一压成多尺寸 WebP）
+ */
+const postImages = import.meta.glob<{ default: ImageMetadata }>(
+  '/src/assets/posts/*.{jpg,jpeg,png,webp,avif}',
+  { eager: true }
+);
+
+const imagesByName = new Map<string, ImageMetadata>();
+for (const [path, mod] of Object.entries(postImages)) {
+  imagesByName.set(path.split('/').pop() ?? path, mod.default);
+}
+
+/** markdown 图片语法。只认 `![](...)` —— 原始 HTML 块里的 <iframe>/<img> 一律不算 */
+const MD_IMAGE = /!\[[^\]]*\]\(\s*([^)\s]+)/;
+
+/**
+ * 文章的封面 —— **正文里的第一张图**，没有就返回 null。
+ *
+ * 为什么不从 frontmatter 取：那要给每篇文章多加一个字段、每篇手动选图，
+ * 而"正文第一张图"本来就是作者最先想让人看到的那张，零维护。
+ * 想某篇换封面时再说（到那时再加字段覆盖也不迟）。
+ *
+ * 为什么要读 `post.body`（原始 markdown）而不是 `post.rendered.html`：
+ * 后者里图片还是 `__ASTRO_IMAGE_` 占位符，要等 render() 才会变成真正的 <img>，
+ * 在页面里解析它拿不到文件名。
+ *
+ * 注意 ji-bao 那篇：正文第一个媒体元素是网易云播放器的 <iframe>（在原始 HTML 块里）。
+ * 只匹配 markdown 图片语法，天然跳过它 —— 这是个踩过的坑，别改成"找第一个 <img"。
+ */
+export function getPostCover(post: Post): ImageMetadata | null {
+  const match = MD_IMAGE.exec(post.body ?? '');
+  if (!match) return null;
+  const fileName = match[1].split('/').pop() ?? '';
+  return imagesByName.get(fileName) ?? null;
+}
 
 /** 已发布文章，按时间倒序 —— 全站唯一的时间轴顺序来源 */
 export async function getPublishedPosts(): Promise<Post[]> {

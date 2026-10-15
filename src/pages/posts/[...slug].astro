@@ -54,7 +54,13 @@ const { chars, minutes } = readingTime(post.body ?? '');
 </BaseLayout>
 
 <style>
-  .article { padding-top: var(--space-8); }
+  /* 页面容器是 --shell（宽），但**文章这整块**要卡回 --measure ——
+     题头和正文同宽才成栏。选择器写成 .wrap.article（两个类）是为了稳赢
+     base.css 里的 .wrap，不依赖样式注入顺序 */
+  .wrap.article {
+    max-width: var(--measure);
+    padding-top: var(--space-8);
+  }
 
   /* 题头：一条短朱红横线领着日期，和列表页的日期栏呼应 */
   .dateline {
