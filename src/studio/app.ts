@@ -40,12 +40,15 @@ import {
 } from './content';
 import { renderMarkdown, readingStats } from './md';
 import { parsePost } from './frontmatter';
+import { clearVault, hasVault, saveVault, takeLegacyToken, unlockVault } from './vault';
 
 /* --------------------------------------------------------------------------
    配置：仓库地址写死在这里（和 Sveltia 的 config.yml 是同一个值）
    -------------------------------------------------------------------------- */
 const REPO = { owner: '94yesheng', repo: 'YeshengWiki', branch: 'main' };
-const TOKEN_KEY = 'yesheng-studio-token';
+
+/** WebCrypto 只在安全上下文（https / localhost）里可用 —— 加密存储那一档依赖它 */
+const canEncrypt = typeof crypto !== 'undefined' && typeof crypto.subtle !== 'undefined';
 
 /* --------------------------------------------------------------------------
    状态
@@ -123,60 +126,153 @@ function reportError(e: unknown): void {
 }
 
 /* --------------------------------------------------------------------------
-   登录
+   登录：两种模式
+     ① 加密记住 —— 用解锁密码把令牌加密后存在本机，以后只输密码
+     ② 只在本次会话 —— 什么都不存，刷新就要重新粘
    -------------------------------------------------------------------------- */
-function renderLogin(message?: string): void {
+
+/** 清空登录态并显示某个界面（顶栏也一并清掉，免得留一条空边线） */
+function showOnly(html: string): void {
   const main = $('#st-main');
-  if (!main) return;
-  // 登录状态下顶栏没有内容，清空它免得留一条空边线
   const bar = $('#st-bar');
   if (bar) bar.innerHTML = '';
-  main.innerHTML = `
+  if (main) main.innerHTML = html;
+}
+
+async function useToken(token: string, remember: boolean, password: string): Promise<void> {
+  setBusy(true, '验证令牌…');
+  try {
+    const gh = new Github(token, REPO);
+    const me = await gh.whoAmI();
+    state.token = token;
+    state.gh = gh;
+    state.user = me.login;
+    if (remember && password) {
+      try {
+        await saveVault(token, password);
+      } catch (e) {
+        // 存不下不影响本次登录（比如非安全上下文），只是下次要重新粘
+        toast(`没存住（${e instanceof Error ? e.message : String(e)}），本次仍可正常使用`, true);
+      }
+    }
+    setBusy(false);
+    await loadAll();
+  } catch (e) {
+    setBusy(false);
+    state.token = null;
+    state.gh = null;
+    renderLogin(e instanceof GithubError ? e.message : '登录失败');
+  }
+}
+
+function renderLogin(message?: string, note?: string): void {
+  showOnly(`
     <div class="st-login">
       <div class="st-card">
         <h2>登录后台</h2>
+        ${note ? `<p style="color:var(--seal)">${esc(note)}</p>` : ''}
         <p>后台直接读写 GitHub 上的私有仓库，不需要服务器。所以你要给它一个访问令牌。</p>
         <ol>
           <li>GitHub → 头像 → Settings → Developer settings</li>
           <li>Personal access tokens → <b>Fine-grained tokens</b> → Generate new token</li>
           <li>Repository access 选 <b>Only select repositories</b>，勾 <code>${esc(REPO.repo)}</code></li>
-          <li>Permissions → Repository permissions → <b>Contents</b> 设为 <b>Read and write</b></li>
+          <li>Permissions → Repository permissions → <b>Contents</b> 设为 <b>Read and write</b>。只想看不想改，就给 <b>Read-only</b></li>
           <li>生成后把那串令牌（<code>github_pat_...</code>）粘到下面</li>
         </ol>
-        <div class="st-row">
-          <input class="st-input" id="st-token" type="password" placeholder="github_pat_..." autocomplete="off" />
-          <button class="st-btn st-btn--primary" id="st-login-go">登录</button>
-        </div>
+        <input class="st-input" id="st-token" type="password" placeholder="github_pat_..." autocomplete="off" />
         ${message ? `<p style="margin-top:var(--space-3);color:var(--seal)">${esc(message)}</p>` : ''}
-        <p style="margin-top:var(--space-3)">令牌只存在这台电脑的浏览器里，不会发到别处。别在公用电脑上登录。</p>
+
+        <div style="margin-top:var(--space-4)">
+          <label class="st-check">
+            <input type="checkbox" id="st-remember" ${canEncrypt ? 'checked' : 'disabled'} />
+            <span>记住（用密码加密后存在本机）</span>
+          </label>
+          <div id="st-pwrow" style="margin-top:var(--space-3)">
+            <input class="st-input" id="st-pw" type="password" placeholder="设一个解锁密码，以后打开后台输它" autocomplete="new-password" />
+            <div class="st-hint">
+              密码本身不存储，只用来加密令牌。忘了它就得重新粘一次令牌 ——
+              <b>密码强度就是这道锁的全部强度</b>。
+            </div>
+          </div>
+          <div class="st-hint" id="st-noremember" style="display:none">
+            不记住：令牌只在本次会话里有效，刷新页面就要重新粘。
+          </div>
+        </div>
+
+        <div style="margin-top:var(--space-4);display:flex;gap:var(--space-2);align-items:center">
+          <button class="st-btn st-btn--primary" id="st-login-go">登录</button>
+          <span class="st-hint">令牌只发给 api.github.com，不经过任何第三方。别在公用电脑上登录。</span>
+        </div>
       </div>
-    </div>`;
+    </div>`);
+
+  const remember = $<HTMLInputElement>('#st-remember');
+  const syncRemember = () => {
+    const on = !!remember?.checked;
+    const row = $('#st-pwrow');
+    const no = $('#st-noremember');
+    if (row) row.style.display = on ? '' : 'none';
+    if (no) no.style.display = on ? 'none' : '';
+  };
+  remember?.addEventListener('change', syncRemember);
+  syncRemember();
 
   const go = async () => {
-    const input = $<HTMLInputElement>('#st-token');
-    const token = input?.value.trim();
+    const token = $<HTMLInputElement>('#st-token')?.value.trim() ?? '';
     if (!token) return;
-    setBusy(true, '验证令牌…');
-    try {
-      const gh = new Github(token, REPO);
-      const me = await gh.whoAmI();
-      state.token = token;
-      state.gh = gh;
-      state.user = me.login;
-      localStorage.setItem(TOKEN_KEY, token);
-      setBusy(false);
-      await loadAll();
-    } catch (e) {
-      setBusy(false);
-      localStorage.removeItem(TOKEN_KEY);
-      state.token = null;
-      state.gh = null;
-      renderLogin(e instanceof GithubError ? e.message : '登录失败');
+    const on = !!remember?.checked;
+    const pw = $<HTMLInputElement>('#st-pw')?.value ?? '';
+    if (on && pw.length < 6) {
+      renderLogin('解锁密码至少 6 位 —— 太短的密码挡不住离线猜测');
+      return;
     }
+    await useToken(token, on, pw);
   };
-  $('#st-login-go')?.addEventListener('click', go);
+  $('#st-login-go')?.addEventListener('click', () => void go());
   $<HTMLInputElement>('#st-token')?.addEventListener('keydown', (e) => {
     if ((e as KeyboardEvent).key === 'Enter') void go();
+  });
+}
+
+function renderUnlock(message?: string): void {
+  showOnly(`
+    <div class="st-login">
+      <div class="st-card">
+        <h2>解锁</h2>
+        <p>本机存着加密过的令牌。输入解锁密码继续。</p>
+        <div class="st-row">
+          <input class="st-input" id="st-unlock-pw" type="password" placeholder="解锁密码" autocomplete="current-password" />
+          <button class="st-btn st-btn--primary" id="st-unlock-go">解锁</button>
+        </div>
+        ${message ? `<p style="margin-top:var(--space-3);color:var(--seal)">${esc(message)}</p>` : ''}
+        <p style="margin-top:var(--space-4)">
+          忘了密码，或者想换一个令牌？
+          <button class="st-btn" id="st-forget" style="margin-left:6px">清除本机令牌，改用令牌登录</button>
+        </p>
+      </div>
+    </div>`);
+
+  const go = async () => {
+    const pw = $<HTMLInputElement>('#st-unlock-pw')?.value ?? '';
+    if (!pw) return;
+    setBusy(true, '解锁中…');
+    try {
+      const token = await unlockVault(pw);
+      setBusy(false);
+      await useToken(token, false, '');
+    } catch {
+      setBusy(false);
+      renderUnlock('密码不对，或者本机的密文已经损坏');
+    }
+  };
+  $('#st-unlock-go')?.addEventListener('click', () => void go());
+  $<HTMLInputElement>('#st-unlock-pw')?.addEventListener('keydown', (e) => {
+    if ((e as KeyboardEvent).key === 'Enter') void go();
+  });
+  $('#st-forget')?.addEventListener('click', () => {
+    if (!confirm('清除本机保存的加密令牌？之后要重新粘贴令牌。')) return;
+    clearVault();
+    renderLogin('已清除本机保存的令牌');
   });
 }
 
@@ -231,17 +327,39 @@ function renderBar(): void {
     <span class="st-spacer"></span>
     <button class="st-btn" id="st-refresh" ${state.busy ? 'disabled' : ''}>重新读取</button>
     <button class="st-btn st-btn--primary" id="st-save" ${state.dirty ? '' : 'disabled'}>保存</button>
+    ${hasVault() ? '<button class="st-btn" id="st-lock">锁定</button>' : ''}
     <button class="st-btn st-btn--ghost" id="st-logout">退出</button>`;
   $('#st-refresh')?.addEventListener('click', () => void loadAll());
   $('#st-save')?.addEventListener('click', () => void saveCurrent());
+
+  // 锁定：令牌从内存里丢掉，回到解锁页（本机的密文保留）
+  $('#st-lock')?.addEventListener('click', () => {
+    if (state.dirty && !confirm('有未保存的改动，确定锁定并丢弃吗？')) return;
+    forgetSession();
+    renderUnlock('已锁定');
+  });
+
+  // 退出：连本机保存的密文一起清掉
   $('#st-logout')?.addEventListener('click', () => {
     if (state.dirty && !confirm('有未保存的改动，确定退出并丢弃吗？')) return;
-    localStorage.removeItem(TOKEN_KEY);
-    state.token = null;
-    state.gh = null;
-    state.user = '';
-    renderLogin();
+    forgetSession();
+    clearVault();
+    renderLogin('已退出，本机保存的令牌也清除了');
   });
+}
+
+/** 把当前会话的凭据从内存里丢掉（不动本机存的密文） */
+function forgetSession(): void {
+  state.token = null;
+  state.gh = null;
+  state.user = '';
+  state.dirty = false;
+  state.draft = {};
+  state.posts = [];
+  state.walls = [];
+  state.links = null;
+  state.site = null;
+  state.selected = null;
 }
 
 /* --------------------------------------------------------------------------
@@ -1140,22 +1258,20 @@ async function saveWallCurrent(gh: Github): Promise<void> {
 async function boot(): Promise<void> {
   // 顶栏与骨架先渲染出来，避免白屏
   renderLogin();
-  const saved = localStorage.getItem(TOKEN_KEY);
-  if (!saved) return;
-  setBusy(true, '验证令牌…');
-  try {
-    const gh = new Github(saved, REPO);
-    const me = await gh.whoAmI();
-    state.token = saved;
-    state.gh = gh;
-    state.user = me.login;
-    setBusy(false);
-    await loadAll();
-  } catch (e) {
-    setBusy(false);
-    localStorage.removeItem(TOKEN_KEY);
-    renderLogin(e instanceof GithubError ? e.message : '令牌已失效，请重新登录');
+
+  // 旧版本把令牌明文存在浏览器里。这里清掉，并让用户重新登录一遍（顺便升级成加密存储）——
+  // 明文凭据不该继续留在本机，这是这次改动最实际的一个收益。
+  const legacy = takeLegacyToken();
+  if (legacy) {
+    renderLogin(
+      undefined,
+      '之前那个令牌是明文存在浏览器里的，已经清除。请重新登录一次 —— 这次可以勾上「记住」，它会用你设的密码加密后再存。'
+    );
+    return;
   }
+
+  if (!hasVault()) return; // 没有加密保存过 → 停在登录页
+  renderUnlock();
 }
 
 void boot();
