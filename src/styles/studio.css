@@ -74,6 +74,25 @@
 /* --------------------------------------------------------------------------
    登录页
    -------------------------------------------------------------------------- */
+/* 脚本没跑起来时的兜底提示（见 studio.astro 里的说明） */
+.st-boot {
+  display: grid;
+  gap: var(--space-2);
+  place-items: center;
+  padding: var(--space-9) var(--space-5);
+  color: var(--muted);
+  font-family: var(--kai);
+  letter-spacing: 0.15em;
+  text-align: center;
+}
+.st-boot span {
+  font-family: var(--sans);
+  font-size: var(--text-xs);
+  letter-spacing: 0;
+  line-height: 1.9;
+  max-width: 30rem;
+}
+
 .st-login {
   display: grid;
   place-items: center;

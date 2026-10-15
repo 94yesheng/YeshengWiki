@@ -29,7 +29,18 @@ import '../styles/studio.css';
   </head>
   <body class="st-body">
     <header class="st-bar" id="st-bar"></header>
-    <main id="st-main"></main>
+
+    <!--
+      这段是"脚本没跑起来"时的兜底显示。整个后台由 JS 渲染，脚本一挂页面就是纯白，
+      看不出是坏了还是在加载 —— 踩过一次。登录界面或三栏骨架渲染时会把这里替换掉。
+    -->
+    <main id="st-main">
+      <p class="st-boot">
+        正在载入后台…
+        <span>如果一直停在这里，说明脚本没跑起来：按 F12 看控制台的报错，
+        或见 <code>后台说明.md</code> 的故障排查一节。</span>
+      </p>
+    </main>
     <div class="st-toast" id="st-toast" role="status" aria-live="polite"></div>
 
     <script>
