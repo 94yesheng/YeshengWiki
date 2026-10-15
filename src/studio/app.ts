@@ -40,7 +40,7 @@ import {
 } from './content';
 import { renderMarkdown, readingStats } from './md';
 import { parsePost } from './frontmatter';
-import { clearVault, hasVault, saveVault, takeLegacyToken, unlockVault } from './vault';
+import { clearVault, hasVault, saveVault, takeLegacyToken, unlockVault, vaultVersion } from './vault';
 
 /* --------------------------------------------------------------------------
    配置：仓库地址写死在这里（和 Sveltia 的 config.yml 是同一个值）
@@ -139,7 +139,7 @@ function showOnly(html: string): void {
   if (main) main.innerHTML = html;
 }
 
-async function useToken(token: string, remember: boolean, password: string): Promise<void> {
+async function useToken(token: string, remember: boolean, account: string, password: string): Promise<void> {
   setBusy(true, '验证令牌…');
   try {
     const gh = new Github(token, REPO);
@@ -149,7 +149,7 @@ async function useToken(token: string, remember: boolean, password: string): Pro
     state.user = me.login;
     if (remember && password) {
       try {
-        await saveVault(token, password);
+        await saveVault(token, account, password);
       } catch (e) {
         // 存不下不影响本次登录（比如非安全上下文），只是下次要重新粘
         toast(`没存住（${e instanceof Error ? e.message : String(e)}），本次仍可正常使用`, true);
@@ -188,10 +188,12 @@ function renderLogin(message?: string, note?: string): void {
             <span>记住（用密码加密后存在本机）</span>
           </label>
           <div id="st-pwrow" style="margin-top:var(--space-3)">
-            <input class="st-input" id="st-pw" type="password" placeholder="设一个解锁密码，以后打开后台输它" autocomplete="new-password" />
+            <input class="st-input" id="st-acct" placeholder="解锁账号（至少 3 位，任意字符）" autocomplete="off" style="margin-bottom:6px" />
+            <input class="st-input" id="st-pw" type="password" placeholder="解锁密码（至少 6 位）" autocomplete="new-password" />
             <div class="st-hint">
-              密码本身不存储，只用来加密令牌。忘了它就得重新粘一次令牌 ——
-              <b>密码强度就是这道锁的全部强度</b>。
+              <b>账号和密码是同一个口令的两半</b>：真正的钥匙 = 账号 + 密码按顺序拼起来，
+              两样都存不下来、也没法找回。所以两半都要记住，大小写和空格必须完全一致。
+              它唯一的增益是"光有密码不够"；强度取决于两半合起来有多长。
             </div>
           </div>
           <div class="st-hint" id="st-noremember" style="display:none">
@@ -221,12 +223,18 @@ function renderLogin(message?: string, note?: string): void {
     const token = $<HTMLInputElement>('#st-token')?.value.trim() ?? '';
     if (!token) return;
     const on = !!remember?.checked;
+    const acct = $<HTMLInputElement>('#st-acct')?.value ?? '';
     const pw = $<HTMLInputElement>('#st-pw')?.value ?? '';
+    if (on && acct.trim().length < 3) {
+      renderLogin('解锁账号至少 3 位 —— 那一半太短就等于没拆开');
+      return;
+    }
     if (on && pw.length < 6) {
       renderLogin('解锁密码至少 6 位 —— 太短的密码挡不住离线猜测');
       return;
     }
-    await useToken(token, on, pw);
+    // 账号原样使用：不做 trim、不做大小写归一 —— 它是密钥的一半，差一个字符就解不开
+    await useToken(token, on, acct, pw);
   };
   $('#st-login-go')?.addEventListener('click', () => void go());
   $<HTMLInputElement>('#st-token')?.addEventListener('keydown', (e) => {
@@ -239,36 +247,44 @@ function renderUnlock(message?: string): void {
     <div class="st-login">
       <div class="st-card">
         <h2>解锁</h2>
-        <p>本机存着加密过的令牌。输入解锁密码继续。</p>
+        <p>本机存着加密过的令牌。输入解锁账号和密码继续。</p>
+        <input class="st-input" id="st-unlock-acct" placeholder="账号" autocomplete="off" style="margin-bottom:6px" />
         <div class="st-row">
-          <input class="st-input" id="st-unlock-pw" type="password" placeholder="解锁密码" autocomplete="current-password" />
+          <input class="st-input" id="st-unlock-pw" type="password" placeholder="密码" autocomplete="current-password" />
           <button class="st-btn st-btn--primary" id="st-unlock-go">解锁</button>
         </div>
         ${message ? `<p style="margin-top:var(--space-3);color:var(--seal)">${esc(message)}</p>` : ''}
+        <p class="st-hint" style="margin-top:var(--space-3)">
+          两半都要对，大小写与空格必须和设置时完全一致 —— 它们是拼起来当钥匙用的，没有找回途径。
+        </p>
         <p style="margin-top:var(--space-4)">
-          忘了密码，或者想换一个令牌？
+          忘了账号或密码，或者想换一个令牌？
           <button class="st-btn" id="st-forget" style="margin-left:6px">清除本机令牌，改用令牌登录</button>
         </p>
       </div>
     </div>`);
 
   const go = async () => {
+    const acct = $<HTMLInputElement>('#st-unlock-acct')?.value ?? '';
     const pw = $<HTMLInputElement>('#st-unlock-pw')?.value ?? '';
-    if (!pw) return;
+    if (!acct || !pw) return;
     setBusy(true, '解锁中…');
     try {
-      const token = await unlockVault(pw);
+      const token = await unlockVault(acct, pw);
       setBusy(false);
-      await useToken(token, false, '');
+      await useToken(token, false, '', '');
     } catch {
       setBusy(false);
-      renderUnlock('密码不对，或者本机的密文已经损坏');
+      // 账号错、密码错，都是同一个 AES-GCM 校验失败 —— 分不出来，也不该分
+      renderUnlock('账号或密码不对');
     }
   };
   $('#st-unlock-go')?.addEventListener('click', () => void go());
-  $<HTMLInputElement>('#st-unlock-pw')?.addEventListener('keydown', (e) => {
-    if ((e as KeyboardEvent).key === 'Enter') void go();
-  });
+  for (const sel of ['#st-unlock-acct', '#st-unlock-pw']) {
+    $<HTMLInputElement>(sel)?.addEventListener('keydown', (e) => {
+      if ((e as KeyboardEvent).key === 'Enter') void go();
+    });
+  }
   $('#st-forget')?.addEventListener('click', () => {
     if (!confirm('清除本机保存的加密令牌？之后要重新粘贴令牌。')) return;
     clearVault();
@@ -1270,7 +1286,19 @@ async function boot(): Promise<void> {
     return;
   }
 
-  if (!hasVault()) return; // 没有加密保存过 → 停在登录页
+  // 解锁方式从"单个密码"改成了"账号+密码各算一半"（口令的拼法变了），
+  // 旧密文解不开也不该留着 —— 清掉并请用户重新登录一次
+  const version = vaultVersion();
+  if (version === 'v1') {
+    clearVault();
+    renderLogin(
+      undefined,
+      '解锁方式升级了：现在账号和密码各算口令的一半。之前那份密文是按单个密码加密的，已经清除 —— 请重新登录一次。'
+    );
+    return;
+  }
+
+  if (version !== 'v2') return; // 没有加密保存过 → 停在登录页
   renderUnlock();
 }
 
