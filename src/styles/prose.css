@@ -22,6 +22,12 @@
   margin: var(--space-6) 0;
 }
 
+/* 着重色：后台编辑器上的「着重」按钮插入的就是 <mark>，这里给它上朱红 */
+.prose mark {
+  background: none;
+  color: var(--seal);
+}
+
 /* 分隔符：用中文书籍里的「＊ ＊ ＊」，比一条横线更贴题 */
 .prose > hr {
   border: 0;

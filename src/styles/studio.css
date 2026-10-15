@@ -333,12 +333,191 @@
   margin-bottom: var(--space-3);
 }
 .st-editor-head .st-info { margin-left: auto; color: var(--muted); font-size: var(--text-xs); }
-.st-source {
-  min-height: 28rem;
-  font-family: ui-monospace, "Cascadia Mono", monospace;
+
+/* 文章页的头部操作行（预览按钮） */
+.st-head-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin-top: var(--space-3);
+  flex-wrap: wrap;
+}
+
+/* 文章页：编辑区占满右侧（预览改成点按钮看真实页面了） */
+.st-app--wide-edit { grid-template-columns: 17rem minmax(0, 1fr); }
+.st-app--wide-edit .st-col--preview { display: none; }
+
+/* --------------------------------------------------------------------------
+   所见即所得编辑器
+   外观上刻意贴近文章页：宋体、行高、首行缩进两字符 —— 写的时候看到的就接近成品
+   -------------------------------------------------------------------------- */
+.ed {
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+  background: var(--paper);
+  overflow: hidden;
+}
+
+.ed-bar {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  flex-wrap: wrap;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--rule);
+  background: #fafaf9;
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
+
+.ed-btn {
+  font: inherit;
   font-size: var(--text-xs);
-  line-height: 1.85;
-  white-space: pre-wrap;
+  padding: 3px 8px;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  background: none;
+  cursor: pointer;
+  color: var(--ink);
+}
+.ed-btn:hover { border-color: var(--rule); background: var(--paper); }
+.ed-btn--mark { color: var(--seal); }
+.ed-select {
+  font: inherit;
+  font-size: var(--text-xs);
+  padding: 3px 6px;
+  border: 1px solid var(--rule);
+  border-radius: 3px;
+  background: var(--paper);
+}
+.ed-sep { width: 1px; height: 1.1rem; background: var(--rule); margin: 0 4px; }
+.ed-grow { margin-left: auto; }
+.ed-count { font-size: var(--text-xs); color: var(--muted); padding-right: 4px; }
+
+.ed-area {
+  min-height: 30rem;
+  padding: var(--space-6) var(--space-6) var(--space-7);
+  font-family: var(--song);
+  font-size: var(--text-base);
+  line-height: 1.95;
+  outline: none;
+}
+.ed-area p { text-indent: 2em; margin: 0; }
+.ed-area h2,
+.ed-area h3 { font-family: var(--kai); font-weight: 400; text-indent: 0; margin: var(--space-5) 0 var(--space-3); }
+.ed-area h2 { font-size: var(--text-lg); }
+.ed-area h3 { font-size: var(--text-md); }
+.ed-area blockquote {
+  text-indent: 0;
+  margin: var(--space-4) 0;
+  padding-left: var(--space-4);
+  border-left: 2px solid var(--rule);
+  color: var(--muted);
+}
+.ed-area ul,
+.ed-area ol { margin: var(--space-3) 0; padding-left: 1.6em; }
+.ed-area li { text-indent: 0; }
+.ed-area img { max-width: 100%; height: auto; border-radius: 2px; }
+.ed-area hr { border: 0; text-align: center; margin: var(--space-6) 0; }
+/* 和文章页保持一致：全角「＊ ＊ ＊」（见 prose.css），写的时候看到的就是成品 */
+.ed-area hr::before {
+  content: "＊ ＊ ＊";
+  font-size: var(--text-xs);
+  color: var(--rule);
+  letter-spacing: 0.5em;
+  text-indent: 0.5em;
+}
+.ed-area a { color: var(--seal); }
+.ed-area code {
+  font-family: ui-monospace, monospace;
+  font-size: 0.9em;
+  background: rgba(0, 0, 0, 0.045);
+  padding: 0 3px;
+  border-radius: 2px;
+}
+/* 着重色：编辑区和正式文章里都是朱红 */
+.ed-area mark { background: none; color: var(--seal); }
+
+/* 原始 HTML 块（比如内嵌的播放器）：不可编辑的小标签，碰不到它 */
+.ed-area .raw-block {
+  text-indent: 0;
+  margin: var(--space-4) 0;
+  padding: 10px 12px;
+  border: 1px dashed var(--rule);
+  border-radius: 3px;
+  background: #fafaf9;
+  color: var(--muted);
+  font-family: var(--sans);
+  font-size: var(--text-xs);
+  user-select: none;
+  cursor: default;
+}
+.ed-area .raw-block .raw-kind { color: var(--ink); }
+
+/* --------------------------------------------------------------------------
+   「按博客的样子预览」—— 覆盖层里放一个真实的文章页 iframe
+   -------------------------------------------------------------------------- */
+.pv-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: flex;
+  flex-direction: column;
+  background: rgba(22, 22, 20, 0.6);
+}
+.pv-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: 10px var(--space-5);
+  background: var(--ink);
+  color: var(--paper);
+  font-size: var(--text-xs);
+}
+.pv-tag {
+  letter-spacing: 0.3em;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  padding: 1px 8px;
+  border-radius: 2px;
+}
+.pv-note { color: rgba(255, 255, 255, 0.66); }
+.pv-grow { margin-left: auto; }
+.pv-close {
+  font: inherit;
+  font-size: var(--text-xs);
+  cursor: pointer;
+  background: none;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  color: #fff;
+  padding: 3px 10px;
+  border-radius: 3px;
+}
+.pv-close:hover { background: rgba(255, 255, 255, 0.14); }
+.pv-frame { flex: 1; min-height: 0; padding: var(--space-4); }
+.pv-page {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  border-radius: 3px;
+  background: var(--paper);
+}
+.pv-fallback {
+  height: 100%;
+  overflow: auto;
+  padding: var(--space-7);
+  border-radius: 3px;
+  background: var(--paper);
+}
+/* 预览里取不到的图片（线上后台会这样）：说清楚，而不是显示错位的图 */
+.pv-missing {
+  display: inline-block;
+  padding: 6px 10px;
+  border: 1px dashed var(--rule);
+  color: var(--muted);
+  font-family: var(--sans);
+  font-size: var(--text-xs);
 }
 
 /* --------------------------------------------------------------------------

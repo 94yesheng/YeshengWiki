@@ -13,7 +13,6 @@
  */
 import { Github, GithubError } from './github';
 import {
-  buildPostText,
   createPost,
   createWall,
   deletePost,
@@ -38,7 +37,10 @@ import {
   type SiteFile,
   type WallEntry,
 } from './content';
-import { renderMarkdown, readingStats } from './md';
+import { normalizeHtml, renderMarkdown } from './md';
+import { createEditor, type EditorHandle } from './editor';
+import { openPreview } from './preview';
+import { chineseFullDate } from '../utils/date';
 import { parsePost } from './frontmatter';
 import { fetchVault, takeLegacyToken, unlockVault, type VaultBlob } from './vault';
 import { site } from '../site.config';
@@ -54,8 +56,8 @@ const REPO = { owner: '94yesheng', repo: 'YeshengWiki', branch: 'main' };
 type Collection = 'posts' | 'walls' | 'links' | 'site';
 
 interface Draft {
-  /** 文章：字段缓冲 + 正文缓冲 */
-  post?: { entry: PostEntry; fields: Record<string, unknown>; body: string };
+  /** 文章：字段缓冲 + 正文缓冲（正文的当前值由编辑器持有，body 是打开时的原文） */
+  post?: { entry: PostEntry; fields: Record<string, unknown>; body: string; editor?: EditorHandle };
   wall?: WallEntry;
   links?: LinksFile;
   site?: Record<string, unknown>;
@@ -433,6 +435,9 @@ function renderShell(): void {
 
 function renderApp(): void {
   renderShell();
+  // 文章页不再有右侧预览栏（预览改成点按钮看真实页面），编辑区占满右侧
+  const app = $('#st-app');
+  if (app) app.classList.toggle('st-app--wide-edit', state.collection === 'posts');
   renderBar();
   renderNav();
   renderList();
@@ -479,17 +484,14 @@ function postDraft(): Draft['post'] {
 
 function renderPostView(): void {
   const edit = $('#st-edit');
-  const preview = $('#st-preview');
-  if (!edit || !preview) return;
+  if (!edit) return;
 
   const d = postDraft();
   if (!d) {
     edit.innerHTML = '<p class="st-empty">左边选一篇文章，或者点「新建」。</p>';
-    preview.innerHTML = '';
     return;
   }
 
-  const stats = readingStats(d.body);
   const tags = (d.fields.tags as string[])
     .map((t) => `<span class="st-chip">${esc(t)}<button data-rm="${esc(t)}" title="移除">×</button></span>`)
     .join('');
@@ -498,7 +500,10 @@ function renderPostView(): void {
     <div class="st-head">
       <div class="st-kicker">${esc(d.fields.pubDate || '未填日期')} · ${esc(d.entry.path)}</div>
       <h2 id="st-live-title">${esc(d.fields.title)}</h2>
-      <div class="st-stats" id="st-live-stats">${stats.chars} 字 · 约 ${stats.minutes} 分钟</div>
+      <div class="st-head-actions">
+        <button class="st-btn" id="st-preview-btn">按博客的样子预览</button>
+        <span class="st-hint">打开一篇真实文章页，只把正文换成你现在的草稿</span>
+      </div>
     </div>
     <div class="st-form">
       <div class="st-field"><label>标题</label><div>
@@ -526,10 +531,10 @@ function renderPostView(): void {
       </div></div>
     </div>
     <div class="st-editor-head">
-      <span>正文（Markdown）</span>
-      <span class="st-info">${d.body.split('\n').length} 行 · ${stats.chars} 字</span>
+      <span>正文</span>
+      <span class="st-info">像写文档一样编辑；选中文字再用上面那排按钮加格式</span>
     </div>
-    <textarea class="st-textarea st-source" id="st-f-body">${esc(d.body)}</textarea>
+    <div id="ed-host"></div>
     <div style="margin-top:var(--space-5);display:flex;gap:var(--space-2)">
       <button class="st-btn st-btn--danger" id="st-del-post">删除这篇文章</button>
     </div>`;
@@ -539,13 +544,15 @@ function renderPostView(): void {
     $<HTMLInputElement>(sel)?.addEventListener('input', (e) => {
       d.fields[key] = (e.target as HTMLInputElement).value;
       markDirty();
-      refreshPostHeader();
+      if (key === 'title') {
+        const t = $('#st-live-title');
+        if (t) t.textContent = String(d.fields.title ?? '');
+      }
     });
   bindInput('#st-f-title', 'title');
   bindInput('#st-f-date', 'pubDate');
   bindInput('#st-f-desc', 'description');
   bindInput('#st-f-updated', 'updatedDate');
-  bindInput('#st-f-body', 'body');
 
   $<HTMLInputElement>('#st-f-draft')?.addEventListener('change', (e) => {
     d.fields.draft = (e.target as HTMLInputElement).checked;
@@ -571,36 +578,29 @@ function renderPostView(): void {
   );
   $('#st-del-post')?.addEventListener('click', () => void removePost(d.entry));
 
-  renderPostPreview();
-}
+  // 预览：取一篇真实文章页当外壳，正文换成当前草稿
+  $('#st-preview-btn')?.addEventListener('click', () => {
+    const pubDate = String(d.fields.pubDate ?? '');
+    const when = /^\d{4}-\d{2}-\d{2}$/.test(pubDate) ? new Date(`${pubDate}T00:00:00`) : null;
+    void openPreview({
+      id: d.entry.id,
+      title: String(d.fields.title ?? ''),
+      dateText: when ? chineseFullDate(when) : '',
+      bodyMarkdown: d.editor?.getMarkdown() ?? d.body,
+      fallbackId: state.posts.find((p) => p.id !== d.entry.id)?.id ?? '',
+    });
+  });
 
-function refreshPostHeader(): void {
-  const d = state.draft.post;
-  if (!d) return;
-  const t = $('#st-live-title');
-  if (t) t.textContent = String(d.fields.title ?? '');
-  const s = $('#st-live-stats');
-  if (s) {
-    const st = readingStats(d.body);
-    s.textContent = `${st.chars} 字 · 约 ${st.minutes} 分钟`;
+  // 挂上所见即所得编辑器（正文不再裸露 Markdown）
+  const host = $('#ed-host');
+  if (host) {
+    d.editor = createEditor(
+      host,
+      d.body,
+      () => markDirty(),
+      () => `相对路径，例如 ../../assets/posts/${d.entry.id}-01.png\n（图片文件放在 src/assets/posts/ 下）`
+    );
   }
-  const preview = $('#st-preview');
-  if (preview) renderPostPreview();
-}
-
-function renderPostPreview(): void {
-  const box = $('#st-preview');
-  const d = state.draft.post;
-  if (!box || !d) return;
-  box.innerHTML = `
-    <p class="st-note">右边是实时预览（排版按文章页的真实样式）。保存后会由构建流程生成正式页面。</p>
-    <div class="st-preview">
-      <p style="text-indent:0;color:var(--seal);font-size:var(--text-xs);letter-spacing:.15em">${esc(
-        d.fields.pubDate || '（未填日期）'
-      )}</p>
-      <h1>${esc(d.fields.title)}</h1>
-      ${renderMarkdown(d.body)}
-    </div>`;
 }
 
 async function createNewPost(): Promise<void> {
@@ -1146,13 +1146,28 @@ async function savePostCurrent(gh: Github): Promise<void> {
   const d = state.draft.post;
   if (!d) return;
   const changed = diffFields(d.entry.parsed.data, d.fields, [...POST_FIELDS]);
-  // 判断"其实没改"最可靠的办法是比结果：把新全文生成出来，和原文逐字符比。
-  // 这比"看哪些字段变了"更准 —— 界面用空串表示"没填"，那些字段会被判成变了却没实际写入。
-  if (buildPostText(d.entry, changed, d.body) === d.entry.parsed.raw) {
+  const body = d.editor?.getMarkdown() ?? d.body;
+
+  // 正文"其实没改"的判据：两边各自渲染成 HTML，语义比较。
+  // 不能逐字节比 Markdown —— 富文本编辑器转回来的写法会被规整化（空行、缩进），
+  // 那不叫改动。所以：渲染结果相同 → 保留**原文**，一个字节都不写。
+  const bodySame = normalizeHtml(renderMarkdown(body)) === normalizeHtml(renderMarkdown(d.body));
+
+  // 自检：把 Markdown 再渲染回来，和编辑器里看到的是不是一回事。
+  // 万一有哪种格式"所见"转不成"所得"，在这里提醒一声 —— 不然会静默地改掉外观。
+  if (d.editor && !bodySame) {
+    const intended = normalizeHtml(d.editor.getHtml());
+    const roundTripped = normalizeHtml(renderMarkdown(body, { forEditor: true }));
+    if (intended !== roundTripped) {
+      toast('注意：正文里有格式无法准确地转成 Markdown，保存后外观可能略有差异 —— 建议点「按博客的样子预览」确认', true);
+    }
+  }
+
+  if (Object.keys(changed).length === 0 && bodySame) {
     toast('没有任何改动');
     return;
   }
-  await savePost(gh, d.entry, changed, d.body);
+  await savePost(gh, d.entry, changed, bodySame ? d.body : body);
   await refreshPost(d.entry.id);
 }
 

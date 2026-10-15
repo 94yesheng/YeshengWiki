@@ -21,12 +21,17 @@
     "@astrojs/rss": "^4.0.19",
     "@astrojs/sitemap": "^3.7.4",
     "astro": "^7.3.8",
-    "js-yaml": "^5.4.3"
+    "js-yaml": "^5.4.3",
+    "markdown-it": "^15.0.2",
+    "turndown": "^7.2.4",
+    "turndown-plugin-gfm": "^1.0.2"
   },
   "devDependencies": {
     "@astrojs/check": "^0.9.10",
     "@sveltia/cms": "^0.238.0",
     "@types/js-yaml": "^4.0.9",
+    "@types/markdown-it": "^14.2.0",
+    "@types/turndown": "^5.0.6",
     "typescript": "^6.0.3"
   }
 }
