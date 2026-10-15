@@ -41,6 +41,7 @@ import {
 import { renderMarkdown, readingStats } from './md';
 import { parsePost } from './frontmatter';
 import { fetchVault, takeLegacyToken, unlockVault, type VaultBlob } from './vault';
+import { site } from '../site.config';
 
 /* --------------------------------------------------------------------------
    配置：仓库地址写死在这里（和 Sveltia 的 config.yml 是同一个值）
@@ -158,6 +159,15 @@ async function useToken(token: string, fromVault = false): Promise<void> {
   }
 }
 
+/** 登录页顶部的站点标识 —— 用站点配置里的站名，改配置这里跟着变 */
+function brandBlock(): string {
+  return `
+    <div class="st-brand">
+      <div class="st-brand-name">${esc(site.title)}</div>
+      <div class="st-brand-tag">后台</div>
+    </div>`;
+}
+
 /**
  * 站点上还没有密文时的界面。
  * 后台**不接受令牌登录** —— 令牌只在你自己电脑上的生成器里用一次，不进这个界面。
@@ -167,9 +177,10 @@ function renderNoVault(): void {
   showOnly(`
     <div class="st-login">
       <div class="st-card">
-        <h2>还没有配置解锁口令</h2>
-        <p>在你自己电脑上的项目目录（<code>D:\\blog</code>）里运行 <code>npm run vault</code>，
-           按提示生成密文并提交推送，然后刷新这一页。</p>
+        ${brandBlock()}
+        <p class="st-login-note">还没有配置解锁口令。</p>
+        <p class="st-login-note">在你自己电脑上的项目目录（<code>D:\\blog</code>）里运行
+          <code>npm run vault</code>，按提示生成密文并提交推送，然后刷新这一页。</p>
       </div>
     </div>`);
 }
@@ -178,14 +189,13 @@ function renderUnlock(message?: string): void {
   showOnly(`
     <div class="st-login">
       <div class="st-card">
-        <h2>解锁</h2>
-        <input class="st-input" id="st-unlock-acct" placeholder="账号" autocomplete="off"
-               style="margin-bottom:6px" />
-        <div class="st-row">
-          <input class="st-input" id="st-unlock-pw" type="password" placeholder="密码" autocomplete="current-password" />
-          <button class="st-btn st-btn--primary" id="st-unlock-go">解锁</button>
-        </div>
-        ${message ? `<p style="margin-top:var(--space-3);color:var(--seal)">${esc(message)}</p>` : ''}
+        ${brandBlock()}
+        <label class="st-label" for="st-unlock-acct">账号</label>
+        <input class="st-input" id="st-unlock-acct" autocomplete="off" spellcheck="false" />
+        <label class="st-label" for="st-unlock-pw">密码</label>
+        <input class="st-input" id="st-unlock-pw" type="password" autocomplete="current-password" />
+        <button class="st-btn st-btn--primary st-btn--block" id="st-unlock-go">解锁</button>
+        ${message ? `<p class="st-error">${esc(message)}</p>` : ''}
       </div>
     </div>`);
 

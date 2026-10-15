@@ -93,27 +93,115 @@
   max-width: 30rem;
 }
 
+/* --------------------------------------------------------------------------
+   登录 / 解锁页
+   做成"画布底色上放一张纸"的样子：纸是白卡片、带一道细边和一点投影，
+   顶部是站点自己的标识（楷体站名 + 朱红"后台"），和站点的视觉语言是一套东西。
+   -------------------------------------------------------------------------- */
 .st-login {
+  min-height: 100%;
   display: grid;
   place-items: center;
-  padding: var(--space-7);
+  padding: var(--space-7) var(--space-5);
+  background: var(--canvas);
 }
+
 .st-login .st-card {
-  width: min(100%, 34rem);
-  border: 1px solid var(--rule);
-  border-radius: 3px;
-  padding: var(--space-6);
+  width: min(100%, 24rem);
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: var(--space-7) var(--space-6) var(--space-6);
+  box-shadow: 0 20px 44px -30px rgba(20, 30, 26, 0.4);
+  animation: st-card-in var(--dur-slow) var(--ease);
 }
-.st-login h2 {
-  margin: 0 0 var(--space-3);
+
+@keyframes st-card-in {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: none; }
+}
+
+/* 减少动态效果时不做入场动画 */
+@media (prefers-reduced-motion: reduce) {
+  .st-login .st-card { animation: none; }
+}
+
+/* 站点标识 */
+.st-brand { text-align: center; margin-bottom: var(--space-6); }
+.st-brand-name {
   font-family: var(--kai);
   font-weight: 400;
-  font-size: var(--text-lg);
+  font-size: var(--text-xl);
+  letter-spacing: 0.14em;
+  text-indent: 0.14em; /* 字距会把居中顶偏一点，补回来 */
+  color: var(--ink);
 }
-.st-login p { color: var(--muted); font-size: var(--text-xs); margin: 0 0 var(--space-3); }
-.st-login ol { color: var(--muted); font-size: var(--text-xs); padding-left: 1.4em; margin: 0 0 var(--space-4); }
-.st-login li { margin-bottom: 4px; }
-.st-login .st-row { display: flex; gap: var(--space-2); }
+.st-brand-tag {
+  margin-top: var(--space-3);
+  font-size: var(--text-xs);
+  letter-spacing: 0.42em;
+  text-indent: 0.42em;
+  color: var(--seal);
+}
+/* 标识下面一道短横线，和站点的区块标题一个手法 */
+.st-brand::after {
+  content: '';
+  display: block;
+  width: 2.5rem;
+  height: 1px;
+  margin: var(--space-4) auto 0;
+  background: var(--rule);
+}
+
+.st-label {
+  display: block;
+  font-size: var(--text-xs);
+  letter-spacing: 0.1em;
+  color: var(--muted);
+  margin: var(--space-4) 0 var(--space-2);
+}
+
+.st-login .st-input { padding: 9px 11px; }
+
+/* 登录按钮：整宽、字距拉开一点，比挤在输入框旁边更像回事 */
+.st-btn--block {
+  width: 100%;
+  margin-top: var(--space-6);
+  padding: 10px 14px;
+  letter-spacing: 0.3em;
+  text-indent: 0.3em;
+}
+
+/* 出错时的提示做成一条浅红横幅，比一行红字清楚 */
+.st-error {
+  margin: var(--space-4) 0 0;
+  padding: 9px 12px;
+  border: 1px solid rgba(166, 27, 41, 0.2);
+  border-radius: 3px;
+  background: rgba(166, 27, 41, 0.05);
+  color: var(--seal);
+  font-size: var(--text-xs);
+  text-align: center;
+}
+
+.st-login-note {
+  margin: 0 0 var(--space-3);
+  color: var(--muted);
+  font-size: var(--text-xs);
+  line-height: 1.9;
+  text-align: center;
+}
+.st-login-note:last-child { margin-bottom: 0; }
+
+/* 登录提示里的 code（路径、命令）—— 别的区域没有通用 code 样式 */
+.st-login code {
+  font-family: ui-monospace, monospace;
+  font-size: 0.94em;
+  background: rgba(0, 0, 0, 0.045);
+  padding: 1px 4px;
+  border-radius: 2px;
+  color: var(--ink);
+}
 
 /* --------------------------------------------------------------------------
    三栏
