@@ -5,157 +5,87 @@
  * 滚到页脚时数字一起乱跳，跳够了**同时**定下来，停在某个 1.xxxxxx 上；
  * **每次刷新都是一个新的随机数**，所以没有哪一次是"对的"。
  *
- * ===== 为什么字是"自己画的"，不是挑了款字体 =====
+ * ===== 字形 =====
  *
- * 辉光管的数字**不是字体**，是拿金属丝在**一套共享格架**上弯出来的：
- * 左右各一根竖、正中间一根竖，上下各一根横、腰上一根横，所有 0–9 的笔画都落在
- * 这几根线上。格架是重点 —— 十个数字的笔画因此**互相重合**。
+ * 用 SVG 路径手绘的"灯丝"字形（`GLYPH`），每位由两段组成：
+ *   · `g` 数字本体的线条
+ *   · `c` 该数字自带的那道**十字结构**（每位的十字起止位置都不同，都在字形内部，
+ *     不会穿出数字轮廓）
+ * 9 是 6 绕 (30,50) 转 180°，连它的十字一起转。
  *
- * 而管里十根阴极丝**一直都在**：通电的只有一根，其余九根不发光、但会被辉光映亮
- * （反射 + 二次发射）。于是**重合越多的地方越亮**，叠出来的是这张网：
+ * ===== 灯管 =====
  *
- *   上横（3/5/7 共用）、腰横（3/4/5 共用）→ 各三根，是最亮的两道横
- *   腰上那道横 + 正中间的竖（只有「1」有）= 那个**十字**
- *   只有某个数字才有的笔画（0 的椭圆、2 的长斜、7 的斜丝）→ 永远最暗
+ * 每根管两层 SVG：
+ *   · `dm-ghost` —— **虚影层**：0–9 十位全部叠着，暗橙细线。实物里那十根阴极丝
+ *     一直都在，没通电的会被辉光映亮；小数点那根管里同样有这一层（丝是整个
+ *     阴极堆栈共用的，不挑管子）。
+ *   · `dm-lit`   —— **点亮层**：只画当前这一位，带三层辉光。小数点那根管点的是
+ *     一个圆点（阴极装在管内右下角，所以亮点不在正中）。
  *
- * 所以那个标志性的十字 = 中间的竖（「1」）+ 腰上的横。它**每根管里都有**，
- * 只是"1"那根管里竖笔是点亮的，十字最完整 —— 那也正是实物照片里的样子。
+ * ===== 结构 / 行为 =====
  *
- * ⇒ 普通字体做不出这个：等宽字体的「1」偏窄、0 是椭圆、7 是斜笔，十个字形
- *   没有共同格架，叠起来是一团糊。所以这里用 SVG 线段（`GLYPHS`）自己画，
- *   点亮的那一根和背后暗着的九根**形状完全一致**，换上去才严丝合缝。
+ * 8 根管 = 整数位 + 小数点 + 六位小数。小数点**独占一整根管**，不是挤在字缝里。
+ * 触发用 `IntersectionObserver`（不是监听滚动算位置 —— 后者要在每次滚动里读
+ * `getBoundingClientRect`，是布局抖动的典型来源）。七位**同时**定格，不是逐位来。
+ * `prefers-reduced-motion` 时直接显示结果。整体 `aria-hidden` —— 它是彩蛋不是内容。
  *
- * ===== 为什么用 mix-blend-mode: screen，而不是把透明度调来调去 =====
- *
- * 辉光是**加色**的：两根丝重叠处收到的光 = 两根丝之和，不是取较亮的那个。
- * `screen` 正好是这个语义，而且是**叠出来的** —— 重合处自己就亮了，不需要
- * 手工去猜每根丝该给多少透明度（上一版就是手工调的，调不出层次）。
- * 副作用也照实物：单根是深橙红，叠到三四根就自然转成琥珀色 —— 照片里就是这样。
- *
- * ===== 几个数字是拿实物照片量出来的，不是估的 =====
- *
- * 采样 `.work/ref/` 里那些实物照片：点亮那根最亮约 `#edbb4a`，暗丝里叠加最多的
- * 地方约 `#cb4627` —— 暗丝峰值约是亮丝的一半。于是 `opacity: 0.3`（十层 screen
- * 叠上去，三根重合处落在半亮出头）、`stroke-width: 1.05`（丝要细，粗了就成
- * 霓虹灯管、不像阴极丝）。
- *
- * **八个数字的字形是照用户给的实物照片一个一个读出来的**（`.work/ref/digits*.png`），
- * 和常见字体差得挺远 —— 比如 6 根本没有上横、2 是一道圆拱加一撇长斜、
- * 9 的尾巴是斜的不是竖的。要改形状请对着照片改，别按印象改。
- *
- * ===== 其余照实物 =====
- *   · 小数点占**一整根管**（它是单独一个小阴极），亮点在管子右下角（阴极装那儿）；
- *     但那根管里**同样有那十根丝** —— 丝是整个阴极堆栈共用的，不挑管子。
- *   · 每根管是独立的玻璃壳（左缘一道高光）+ 底部金属底座，管里留足黑的余地。
- *   · 整体深色近黑：橙色辉光只有压在黑底上才"发光"，站点是暖白纸底会糊成一片。
- *     它是嵌在页面里的一件**仪器**，不跟明暗主题走。
- *
- * 【为什么 aria-hidden】它是彩蛋不是内容，读屏念一串随机数字没有意义。
+ * 【为什么有一块深色底】这套样式原本是让数字直接浮在黑页面上的；本站是暖白纸底，
+ * 暗橙虚影和辉光压上去会糊成一片、根本不成像。所以给了一块近黑的底板 ——
+ * 它是嵌在页面里的一件**仪器**，不跟明暗主题走。
  */
 
-/**
- * 十个数字，全部画在 34×78 的格架上（字身 22×50）。
- *   字身：竖线 x = 6 / 17 / 28，横线 y = 16（顶）/ 45（腰）/ 64（底）
- *
- * 比例是量实物照片定的：**字身约占管宽六成半、管高六成半**，管子高宽比约 1 : 3。
- * 所以框要"高而窄"、字身四周留出玻璃的余地 —— 数字一撑满就像霓虹灯牌，不像管子。
- * **改框不要改字身比例** —— 数字一"方"，十根丝就挤成一团，十字也就散了。
- *
- * 各数字的特征笔（照片里读出来的，和常见字体差得挺远，别按印象改）：
- *   0  整墩椭圆                     1  中竖 + 左上一撇
- *   2  圆拱顶 + 肩横 + 一撇长斜到底 + 底横
- *   3  上横 + 左上竖 + 右上斜笔收进腰 + 腰横 + 下半圆勺
- *   4  右竖到底 + 从右上斜到左下的长斜 + 腰横
- *   5  上横 + 左上竖 + 腰横 + 下半圆勺
- *   6  **没有上横**：顶部一撇长斜下来 + 下半圆勺
- *   7  上横 + 一撇长斜到底           8  上下两个圈（上圈略窄）
- *   9  上面一个圈 + 从圈的右侧斜到底下的长尾
- */
+const VIEWBOX = '0 0 60 110';
+const DIGITS = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9];
 
-/** 拐角半径：实物的阴极丝是**弯**出来的，拐角都带一小段圆弧，不是直角 */
-const CORNER = 3.5;
-
-/**
- * 把一条轴对齐的折线画成带圆角的 path。
- * 注意：**直线段仍然精确落在格架上**（只有拐角处让开一丁点）——
- * 所以圆角再大也不会把重合、也就不会把十字弄丢。
- */
-function wire(points: Array<[number, number]>, r = CORNER): string {
-  const n = (v: number) => Math.round(v * 100) / 100;
-  const d = [`M${n(points[0][0])} ${n(points[0][1])}`];
-
-  for (let i = 1; i < points.length - 1; i++) {
-    const [ax, ay] = points[i - 1];
-    const [bx, by] = points[i];
-    const [cx, cy] = points[i + 1];
-    const before = Math.hypot(bx - ax, by - ay);
-    const after = Math.hypot(cx - bx, cy - by);
-    // 两边各退 r；哪边短就按它的一半让，免得圆弧把整段吃掉
-    const t = Math.min(r, before / 2, after / 2);
-    d.push(`L${n(bx - ((bx - ax) / before) * t)} ${n(by - ((by - ay) / before) * t)}`);
-    d.push(`Q${n(bx)} ${n(by)} ${n(bx + ((cx - bx) / after) * t)} ${n(by + ((cy - by) / after) * t)}`);
-  }
-
-  const [lx, ly] = points[points.length - 1];
-  d.push(`L${n(lx)} ${n(ly)}`);
-  return d.join('');
-}
-
-const GLYPHS: Record<string, string> = {
-  // 0：一个整墩的椭圆 —— 实物里 0 就是一圈闭合的丝
-  '0': 'M6 39A11 25 0 0 1 28 39A11 25 0 0 1 6 39',
-  // 1：正中间一根竖（十字的竖笔就是它）+ 左上角那面小旗（实物上 1 顶着一撇）
-  '1': 'M10 26L17 14L17 64',
-  // 2：圆拱顶 + 肩横 + 一撇长斜到底 + 底横
-  '2': `${wire([[6, 22], [28, 22], [6, 64], [28, 64]])}M6 22A11 8 0 0 1 28 22`,
-  // 3：上横、左上竖、腰横 + 从右上收进腰的一撇斜笔 + 下半圆勺
-  '3': `${wire([[6, 16], [28, 16], [6, 45], [28, 45]])}M28 16L15 45M6 45A11 19 0 0 0 28 45`,
-  // 4：右竖到底 + 从右上斜到左下的长斜 + 腰横
-  '4': `${wire([[26, 16], [6, 45], [28, 45]])}M28 16L28 64`,
-  // 5：上横、左上竖、腰横 —— 下半圈是个**整圆墩的碗**
-  '5': `${wire([[3, 16], [25, 16], [3, 45], [25, 45]])}M28 45A11 19 0 0 1 6 45`,
-  // 6：**没有上横** —— 顶上一撇长斜下来直接进碗（照片里就是这样）
-  '6': 'M17 14L7 37M6 50A11 14 0 0 1 28 50A11 14 0 0 1 6 50',
-  // 7：上横 + 一撇长斜到底 —— 实物里 7 就一道斜丝，所以它永远是最暗的那根
-  '7': 'M6 16L28 16L8 64',
-  // 8：上下两个圈（上圈略窄），在腰线上下相接
-  '8': 'M8 27A9 13 0 0 1 26 27A9 13 0 0 1 8 27M6 51A11 13 0 0 1 28 51A11 13 0 0 1 6 51',
-  // 9：上面一个圈 + 从圈的右侧斜到底下的长尾
-  '9': 'M6 26A11 12 0 0 1 28 26A11 12 0 0 1 6 26M28 26L9 64',
+const GLYPH: Record<number, { g: string; c: string; rot?: boolean }> = {
+  0: {
+    g: 'M30 6C46 6 50 28 50 50C50 72 46 94 30 94C14 94 10 72 10 50C10 28 14 6 30 6Z',
+    c: 'M30 6V94M12 32H48',
+  },
+  1: { g: 'M20 24L34 6V94M22 94H46', c: 'M20 44H48' },
+  2: {
+    g: 'M11 26C11 12 21 6 30 6C40 6 49 12 49 26C49 40 38 52 28 66L10 94H52',
+    c: 'M30 6V64M12 22H48',
+  },
+  3: {
+    g: 'M12 8H48L28 44C44 44 51 56 51 68C51 84 42 94 30 94C20 94 13 90 9 84',
+    c: 'M30 8V94M12 68H50',
+  },
+  4: { g: 'M40 94V6L8 66H54', c: 'M30 25V66M21 42H40' },
+  5: {
+    g: 'M46 8H16L13 46C18 42 24 41 30 41C44 41 51 52 51 67C51 83 42 94 30 94C20 94 13 90 9 84',
+    c: 'M30 8V94M13 62H50',
+  },
+  6: {
+    g: 'M42 10C37 7 33 6 29 6C16 6 10 24 10 58C10 82 18 94 30 94C43 94 50 82 50 68C50 54 42 46 30 46C20 46 12 52 10 62',
+    c: 'M30 6V94M10 52H50',
+  },
+  7: { g: 'M10 8H52C40 40 30 70 24 94', c: 'M30 8V70M14 26H44' },
+  8: {
+    g: 'M30 6C42 6 47 14 47 24C47 34 40 44 30 48C18 52 12 60 12 70C12 84 20 94 30 94C40 94 48 84 48 70C48 60 42 52 30 48C20 44 13 34 13 24C13 14 18 6 30 6Z',
+    c: 'M30 6V94M12 48H48',
+  },
+  // 9 = 6 转 180°（连它那道十字一起）
+  9: { g: '', c: '', rot: true },
 };
+GLYPH[9].g = GLYPH[6].g;
+GLYPH[9].c = GLYPH[6].c;
 
-const DIGIT_KEYS = Object.keys(GLYPHS);
+/** 转 180° 时的旋转中心 —— 9 用它，从虚影层抄 transform 时也认这一个 */
+const ROT9 = 'rotate(180 30 50)';
+const transformOf = (n: number) => (GLYPH[n].rot ? ROT9 : undefined);
+
 const DECIMALS = 6;
-
-/**
- * 十根阴极在管里是**前后叠着**的，所以从管外看，每一层都差一点点缩放（视差）。
- * 这正是实物照片里那圈"边框"看起来是**一小把糊在一起的丝**、而不是一根干净直线
- * 的原因。
- *
- * 缩放中心取字身中心 (20,46)：靠它最近的**腰横**（y=52，离中心 6）几乎不散、
- * 保持锐利，会散开的是离中轴远的顶横和两侧竖丝 —— 照片里正是这样。
- */
-const depth = (i: number) => {
-  const s = 1 + (i - 4.5) * 0.008;
-  return `translate(17 39) scale(${s.toFixed(4)}) translate(-17 -39)`;
-};
-
-/** 小数点那个阴极装在管内**右下角**（实物就这样），所以亮点不在正中 */
-const DOT = { cx: 26, cy: 65, r: 1.6 };
-
-/** 点亮一根丝要三层：外圈散光 / 丝的光晕 / 里面的亮芯 —— 照片里那根就是这么个结构 */
-const LIT_LAYERS = ['dm-lit-halo', 'dm-lit-body', 'dm-lit'];
-const DOT_LAYERS = ['dm-lit-dot-halo', 'dm-lit-dot-body', 'dm-lit-dot'];
 
 /**
  * 8 根管：第 1 根整数位、第 2 根小数点、之后六位小数。
  * `init` 是**还没滚到页脚时**点亮的那一位 —— 整数位写 1（世界线变动率都是 1 开头），
  * 这样"没通电"的状态读出来就是 1.000000 而不是一串零。
  */
-const TUBES: Array<{ kind: 'digit' | 'dot'; init: string }> = [
-  { kind: 'digit', init: '1' },
-  { kind: 'dot', init: '' },
-  ...Array.from({ length: DECIMALS }, () => ({ kind: 'digit' as const, init: '0' })),
+const TUBES: Array<{ dot: boolean; init: number }> = [
+  { dot: false, init: 1 },
+  { dot: true, init: 0 },
+  ...Array.from({ length: DECIMALS }, () => ({ dot: false, init: 0 })),
 ];
 ---
 
@@ -163,30 +93,30 @@ const TUBES: Array<{ kind: 'digit' | 'dot'; init: string }> = [
   <div class="dm-tubes">
     {
       TUBES.map((tube) => (
-        <span class:list={['dm-tube', tube.kind === 'dot' && 'dm-tube--dot']}>
-          <svg class="dm-face" viewBox="0 0 34 78" role="presentation">
-            {/* 十根阴极丝：不管点亮的是哪一位、哪一根管，这十根都在管里 */}
-            <g class="dm-wires">
-              {DIGIT_KEYS.map((d, i) => (
-                <path d={GLYPHS[d]} transform={depth(i)} />
-              ))}
-            </g>
-
-            {tube.kind === 'dot' ? (
-              DOT_LAYERS.map((cls, layer) => (
-                <circle class={cls} cx={DOT.cx} cy={DOT.cy} r={DOT.r * [2.4, 1.5, 1][layer]} />
-              ))
-            ) : (
-              LIT_LAYERS.map((cls, layer) => (
-                <path
-                  class={cls}
-                  data-value={layer === LIT_LAYERS.length - 1 ? tube.init : undefined}
-                  d={GLYPHS[tube.init]}
-                  transform={depth(Number(tube.init))}
-                />
-              ))
-            )}
+        <span class="dm-tube">
+          {/* 虚影层：十根丝一直都在 */}
+          <svg class="dm-ghost" viewBox={VIEWBOX}>
+            {DIGITS.map((n) => (
+              <g data-n={n} transform={transformOf(n)}>
+                <path class="g" d={GLYPH[n].g} />
+                <path class="c" d={GLYPH[n].c} />
+              </g>
+            ))}
           </svg>
+
+          {/* 点亮层：一次只亮一位 */}
+          {tube.dot ? (
+            <svg class="dm-lit" viewBox={VIEWBOX}>
+              <circle class="dm-dot" cx="51" cy="103" r="3.4" />
+            </svg>
+          ) : (
+            <svg class="dm-lit" viewBox={VIEWBOX}>
+              <g class="dm-lit-digit" data-value={tube.init} transform={transformOf(tube.init)}>
+                <path class="g" d={GLYPH[tube.init].g} />
+                <path class="c" d={GLYPH[tube.init].c} />
+              </g>
+            </svg>
+          )}
         </span>
       ))
     }
@@ -195,151 +125,100 @@ const TUBES: Array<{ kind: 'digit' | 'dot'; init: string }> = [
 
 <style>
   .dm {
+    --lit: #ffb13b;
+    --glow: #ff7a00;
+    --ghost: rgba(255, 110, 35, 0.2);
+
     display: flex;
     justify-content: center;
     margin-top: var(--space-6);
   }
 
-  /* 八根管并排，中间留很窄的缝 —— 实物就是一根挨一根插在底座上的 */
+  /* 深色底板 + 大小旋钮：管子宽 3.2em，所以 font-size 就是整台的缩放。
+     随视口收一档，窄屏上不至于把页脚撑破（这一版仍以桌面端为主）。 */
   .dm-tubes {
     display: inline-flex;
-    gap: 5px;
-    padding: 0.4rem 0.55rem 0.6rem;
-    border-radius: 4px;
+    gap: 0.5em;
+    font-size: clamp(7px, 2.3vw, 11px);
+    padding: 1em 1.3em;
+    border-radius: 6px;
     background: #070605;
     box-shadow:
-      inset 0 0 0 1px rgba(255, 200, 160, 0.07),
-      inset 0 2px 10px rgba(0, 0, 0, 0.9),
+      inset 0 0 0 1px rgba(255, 200, 160, 0.06),
+      inset 0 2px 12px rgba(0, 0, 0, 0.9),
       0 2px 14px -8px rgba(0, 0, 0, 0.75);
   }
 
-  /* 一根玻璃管：内壁比底板略亮一点，底下一截深色当金属底座。
-     管里要**近黑** —— 橙色辉光压在白底或灰底上不成像（整块都是亮的），
-     只有压到黑底上才"发光"（踩过：早先用的是 #1b1613，暗丝全看不见）。 */
   .dm-tube {
     position: relative;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    padding-bottom: 0.34rem;
-    border-radius: 2px;
-    background: linear-gradient(180deg, #141110 0%, #0b0908 60%, #050404 100%);
-    box-shadow: inset 0 0 0 1px rgba(255, 200, 160, 0.045);
+    width: 3.2em;
+    height: calc(3.2em * 110 / 60);
   }
 
-  /* 玻璃壁：左缘一道高光、右缘压暗 —— 不然管子只是块深色板，不像玻璃壳 */
-  .dm-tube::before {
-    content: '';
+  .dm-tube svg {
     position: absolute;
     inset: 0;
-    border-radius: 2px;
-    background: linear-gradient(
-      90deg,
-      rgba(255, 225, 200, 0.07) 0%,
-      rgba(255, 225, 200, 0.02) 12%,
-      transparent 30%,
-      transparent 78%,
-      rgba(0, 0, 0, 0.45) 100%
-    );
-    pointer-events: none;
-  }
-
-  /* 底座：管子最下面那一小截 —— 实物里阴极引线就插在这儿 */
-  .dm-tube::after {
-    content: '';
-    position: absolute;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    height: 0.26rem;
-    background: linear-gradient(180deg, #241d17 0%, #090807 100%);
-    border-radius: 0 0 2px 2px;
-  }
-
-  /* isolation：把加色混合限制在这一根管里 —— 不然 screen 会一路吃到页面背景上 */
-  .dm-face {
-    display: block;
-    height: 4.5rem;
-    width: auto;
+    width: 100%;
+    height: 100%;
     overflow: visible;
-    isolation: isolate;
-  }
-
-  /* ---------- 暗着的九根丝 ---------- */
-  /* 十根形状一致、只差一条 d 和一个 depth 变换；screen 让它们叠出层次。
-     丝必须**细**（1.05/22 ≈ 一位宽的 5%）—— 粗了就成霓虹灯管，十根叠起来是一块
-     方板。泡细 + 加色叠，才是照片里那张"细网、但交叠处更亮"的样子。 */
-  .dm-wires path {
     fill: none;
-    stroke: #ff4a12;
-    stroke-width: 1.05;
     stroke-linecap: round;
     stroke-linejoin: round;
-    mix-blend-mode: screen;
-    /* 0.26 是拿照片量出来的：十层叠上去，五根重合处正好落在半亮
-       （实测最亮约 0.5、单根约 0.16），跟实物对得上。
-       改这个数等于改"辉光有多亮"，别凭感觉动。 */
-    opacity: 0.3;
   }
 
-  /* ---------- 通电的那一根 ---------- */
-  /* 三层叠出"细芯 + 丝的光晕 + 外圈散光"。只描一条边做不出电子管那种厚度，
-     而且亮芯必须比丝本身细 —— 照片里点亮那根的中心是发白的，边上是橙的。 */
-  .dm-lit-halo,
-  .dm-lit-dot-halo {
-    fill: none;
-    stroke: #ff5a1e;
-    stroke-width: 3.4;
-    stroke-linecap: round;
-    stroke-linejoin: round;
-    mix-blend-mode: screen;
-    opacity: 0.28;
+  /* ---------- 虚影：0–9 全部叠着，暗橙细线 ---------- */
+  .dm-ghost {
+    stroke: var(--ghost);
   }
-
-  .dm-lit-body,
-  .dm-lit-dot-body {
-    fill: none;
-    stroke: #ff8030;
-    stroke-width: 1.8;
-    stroke-linecap: round;
-    stroke-linejoin: round;
-    mix-blend-mode: screen;
-    opacity: 0.6;
+  .dm-ghost .g {
+    stroke-width: 1.6;
   }
-
-  .dm-lit {
-    fill: none;
-    stroke: #ffc76b;
+  .dm-ghost .c {
     stroke-width: 0.9;
-    stroke-linecap: round;
-    stroke-linejoin: round;
-    mix-blend-mode: screen;
-    filter: drop-shadow(0 0 1px rgba(255, 170, 90, 0.7))
-      drop-shadow(0 0 5px rgba(255, 120, 50, 0.35));
   }
 
-  /* 小数点那根管：占**同样宽**一格（它是单独一根管、不是挤在字缝里），
-     所以这里没有任何收窄 —— 只有点本身的位置跟数字管不同 */
-  .dm-lit-dot-halo,
-  .dm-lit-dot-body,
-  .dm-lit-dot {
-    fill: none;
-    mix-blend-mode: screen;
+  /* ---------- 点亮层：整层加发光 ---------- */
+  .dm-lit {
+    stroke: var(--lit);
+    filter: drop-shadow(0 0 2px #ffd9a0) drop-shadow(0 0 5px var(--glow))
+      drop-shadow(0 0 12px rgba(255, 90, 0, 0.7));
+  }
+  .dm-lit .g {
+    stroke-width: 2.3;
+  }
+  .dm-lit .c {
+    stroke-width: 1.2;
+    opacity: 0.9;
   }
 
-  .dm-lit-dot-halo {
-    fill: #ff5a1e;
-    opacity: 0.22;
+  /* 小数点：阴极装在管内右下角，所以亮点不在正中 */
+  .dm-dot {
+    fill: var(--lit);
+    stroke: none;
   }
 
-  .dm-lit-dot-body {
-    fill: #ff8030;
-    opacity: 0.5;
+  /* 跳动时闪烁 / 固定后呼吸 */
+  .dm-tube.is-spinning .dm-lit {
+    animation: dm-flicker 0.09s steps(2) infinite;
+  }
+  @keyframes dm-flicker {
+    0% { opacity: 1; }
+    50% { opacity: 0.72; }
+    100% { opacity: 0.95; }
+  }
+  .dm-tube.is-settled .dm-lit {
+    animation: dm-breathe 4s ease-in-out infinite;
+  }
+  @keyframes dm-breathe {
+    0%,
+    100% { opacity: 1; }
+    50% { opacity: 0.88; }
   }
 
-  .dm-lit-dot {
-    fill: #ffc76b;
-    filter: drop-shadow(0 0 2.5px rgba(255, 120, 50, 0.6));
+  @media (prefers-reduced-motion: reduce) {
+    .dm-lit {
+      animation: none !important;
+    }
   }
 </style>
 
@@ -347,58 +226,66 @@ const TUBES: Array<{ kind: 'digit' | 'dot'; init: string }> = [
   /**
    * 数字一起乱跳，跳够了**同时**定下来。
    *
-   * 点亮的是一位 `<path>`，所以换数字是换它的 `d` —— 而 `d` 和 `transform`
-   * 都直接从**自己管里那十根暗丝**上抄（管里 0–9 的顺序就是数字顺序）。
-   * 抄 `transform` 不能漏：那是每根阴极在管里的前后深度，漏了亮的那根就会
-   * 跟其他九根错位。
+   * 点亮层那一位的 `g`/`c` 两段曲线，直接从**自己管里虚影层**上抄 ——
+   * 虚影层本来就有 0–9 十位，所以不需要在 JS 里再抄一份字形表；按 `data-n` 取，
+   * 不靠 DOM 顺序。`transform` 也要一起抄：9 是 6 转 180° 来的，漏了就会倒着站。
    *
    * 用 IntersectionObserver 而不是"监听滚动算位置"：后者要在每次滚动里读
-   * getBoundingClientRect，是典型的布局抖动来源；前者由浏览器在合成线程上判断，
-   * 到点了才叫我们一次。
+   * getBoundingClientRect，是典型的布局抖动来源。
    *
    * 数字每次刷新都重新随机 —— 这正合它的来历（每条世界线都不一样）。
    */
-  type Wire = { d: string; transform: string | null };
-  type Tube = { core: SVGPathElement; parts: SVGPathElement[]; wires: Wire[] };
+  type Digit = { parts: string[]; transform: string | null };
+  type Tube = { lit: SVGGElement; parts: SVGPathElement[]; byN: Map<number, Digit> };
 
   for (const meter of document.querySelectorAll<HTMLElement>('[data-dm]')) {
     const tubes: Tube[] = [];
 
-    for (const svg of meter.querySelectorAll<SVGSVGElement>('.dm-face')) {
-      // 只认"数字位"：小数点那根管点亮的是几个圆，没有 d 可换
-      const core = svg.querySelector<SVGPathElement>('path.dm-lit');
-      if (!core) continue;
+    for (const tube of meter.querySelectorAll<HTMLElement>('.dm-tube')) {
+      // 只认"数字位"：小数点那根管点亮的是个圆
+      const lit = tube.querySelector<SVGGElement>('.dm-lit-digit');
+      if (!lit) continue;
 
-      // 管里的十根丝就是 0–9，顺序即数字
-      const wires = [...svg.querySelectorAll<SVGPathElement>('.dm-wires path')].map((p) => ({
-        d: p.getAttribute('d') ?? '',
-        transform: p.getAttribute('transform'),
-      }));
-      if (wires.length === 0) continue;
+      const ghost = tube.querySelector<SVGSVGElement>('.dm-ghost');
+      if (!ghost) continue;
 
-      tubes.push({
-        core,
-        parts: [...svg.querySelectorAll<SVGPathElement>('.dm-lit-halo, .dm-lit-body, .dm-lit')],
-        wires,
-      });
+      const byN = new Map<number, Digit>();
+      for (const g of ghost.querySelectorAll<SVGGElement>('g[data-n]')) {
+        byN.set(Number(g.dataset.n), {
+          parts: [...g.querySelectorAll<SVGPathElement>('path')].map(
+            (p) => p.getAttribute('d') ?? ''
+          ),
+          transform: g.getAttribute('transform'),
+        });
+      }
+      if (byN.size === 0) continue;
+
+      tubes.push({ lit, parts: [...lit.querySelectorAll<SVGPathElement>('path')], byN });
     }
 
     if (tubes.length === 0) continue;
 
     const show = (tube: Tube, n: number) => {
-      const wire = tube.wires[n];
-      // 三层（外圈/光晕/亮芯）是同一条曲线，连深度一起换
-      for (const p of tube.parts) {
-        p.setAttribute('d', wire.d);
-        if (wire.transform === null) p.removeAttribute('transform');
-        else p.setAttribute('transform', wire.transform);
-      }
-      tube.core.dataset.value = String(n); // 让页面自己说得出"现在显示的是几"
+      const src = tube.byN.get(n);
+      if (!src) return;
+
+      tube.parts.forEach((p, i) => p.setAttribute('d', src.parts[i] ?? ''));
+      if (src.transform === null) tube.lit.removeAttribute('transform');
+      else tube.lit.setAttribute('transform', src.transform);
+
+      tube.lit.dataset.value = String(n); // 让页面自己说得出"现在显示的是几"
     };
 
     // 整数位固定 1（世界线变动率都是 1.xxxxxx），小数点后六位随机
     const target = tubes.map((_, i) => (i === 0 ? 1 : Math.floor(Math.random() * 10)));
-    const settle = () => tubes.forEach((tube, i) => show(tube, target[i]));
+
+    const settle = () => {
+      tubes.forEach((tube, i) => {
+        show(tube, target[i]);
+        tube.lit.closest('.dm-tube')?.classList.remove('is-spinning');
+        tube.lit.closest('.dm-tube')?.classList.add('is-settled');
+      });
+    };
 
     if (matchMedia('(prefers-reduced-motion: reduce)').matches) {
       settle();
@@ -416,7 +303,10 @@ const TUBES: Array<{ kind: 'digit' | 'dot'; init: string }> = [
         io.disconnect();
 
         const spinner = window.setInterval(() => {
-          tubes.forEach((tube) => show(tube, Math.floor(Math.random() * 10)));
+          for (const tube of tubes) {
+            show(tube, Math.floor(Math.random() * 10));
+            tube.lit.closest('.dm-tube')?.classList.add('is-spinning');
+          }
         }, TICK_MS);
 
         // 时间到 → 一起停住（不是一位一位来）
