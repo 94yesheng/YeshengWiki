@@ -28,17 +28,18 @@ const { item } = Astro.props;
   .tp {
     display: grid;
     /* 日期栏是给"二十四日"这四个字留的，跟着字号走 —— 改字号要回来重算 */
-    grid-template-columns: 6.5rem 1fr;
+    grid-template-columns: 7.25rem 1fr;
     align-items: baseline;
     gap: 0 var(--space-4);
     padding: 0.35rem 0;
   }
 
   /* 日期用强调色（全站唯一的彩色，只给时间用）。
-     字号给到 --text-md（22px）：楷体在小字号下（19px 及以下）渲染有明显像素锯齿 */
+     字号给到 --text-lg（24px）：楷体在小字号下渲染有明显像素锯齿，
+     要 23–24px 才干净 —— 这是实测出来的，不是随手挑的 */
   .tp time {
     font-family: var(--kai);
-    font-size: var(--text-md);
+    font-size: var(--text-lg);
     letter-spacing: 0.08em;
     color: var(--accent);
     white-space: nowrap;

@@ -41,7 +41,7 @@
   margin: 0;
   color: var(--muted);
   font-family: var(--sans);
-  font-size: var(--text-base);   /* 墙的"时间 · 地点"行，跟着一起抬 */
+  font-size: var(--text-md);   /* 墙的"时间 · 地点"行：楷体锯齿，要 23px 才干净 */
   letter-spacing: 0.08em;
 }
 

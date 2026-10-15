@@ -45,7 +45,7 @@ const years = groupByYearMonth(posts.map((post) => ({ date: post.data.pubDate, d
   /**
    * 标签筛选 —— 要和时间线的折叠配合。
    *
-   * 【和折叠的分工】折叠状态只存在 DOM 上（`aria-expanded` + 面板的 `hidden`），
+   * 【和折叠的分工】折叠状态只存在 DOM 上（按钮的 `aria-expanded` + 面板的 `data-open`），
    * 这里改的是同一组属性，两边不各记一份，就不会互相打架。
    *
    * 【三条规则】
@@ -63,13 +63,15 @@ const years = groupByYearMonth(posts.map((post) => ({ date: post.data.pubDate, d
   const emptyHint = document.querySelector<HTMLElement>('[data-empty]');
 
   /** 展开/收起一个年或月。用 :scope > 是因为未标注时间的月份**没有** head，
-      那时第一个子元素是条目容器，直接拿 firstElementChild 会拿错。 */
+      那时第一个子元素是条目容器，直接拿 firstElementChild 会拿错。
+      面板用的是 `data-open` 而不是 `hidden` —— 那样才有高度动画（见 Timeline.astro）。 */
   function setOpen(section: HTMLElement, open: boolean) {
     const head = section.querySelector<HTMLElement>(':scope > .tl-year-head, :scope > .tl-month-head');
     const panel = head?.nextElementSibling as HTMLElement | null;
     if (!head || !panel) return;
     head.setAttribute('aria-expanded', String(open));
-    panel.hidden = !open;
+    if (open) panel.dataset.open = '';
+    else delete panel.dataset.open;
   }
 
   function apply(rawTag: string) {
