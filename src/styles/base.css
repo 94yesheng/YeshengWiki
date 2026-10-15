@@ -90,8 +90,9 @@ a { color: inherit; text-decoration: none; }
   display: grid;
   align-content: center;
   /* 底下留一大截空白 —— 居中是在缩小后的内容盒里算的，所以整体会上移。
-     用户要的是"不要完全居中，偏上一些"：这样内容的中心大约落在 42% 而不是 50% */
-  padding: var(--space-8) 0 10vh;
+     用户两轮都要求"再偏上一些"，所以从 10vh 加到 16vh：内容中心大约落在 37%
+     而不是 50%。想再高就继续加这个值，它是最直接的旋钮 */
+  padding: var(--space-8) 0 16vh;
   border-top: 1px solid var(--rule);
   /* 吸附点：快到这一屏时自动对齐（配合 html 上的 scroll-snap-type） */
   scroll-snap-align: start;

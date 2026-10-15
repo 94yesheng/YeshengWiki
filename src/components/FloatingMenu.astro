@@ -18,7 +18,7 @@
 ---
 
 <div class="fab" id="fab">
-  <div class="fab-actions" id="fab-actions" hidden>
+  <div class="fab-actions" id="fab-actions">
     <button type="button" class="fab-btn" data-action="theme" aria-label="切换到夜间模式">
       <span data-theme-icon aria-hidden="true">☾</span>
     </button>
@@ -52,15 +52,38 @@
     gap: var(--space-3);
   }
 
+  /* 收起时不是 display:none 而是 visibility:hidden ——
+     用 display 的话没有过渡可言，弹出动效就做不出来；
+     visibility 同样会把里面的按钮移出可聚焦序列和无障碍树，不影响键盘。 */
   .fab-actions {
     display: flex;
     flex-direction: column;
     gap: var(--space-3);
+    opacity: 0;
+    visibility: hidden;
+    transform: translateY(0.6rem) scale(0.9);
+    transform-origin: bottom center;
+    transition:
+      opacity var(--dur-fast) var(--ease),
+      transform var(--dur-fast) var(--ease),
+      visibility 0s linear var(--dur-fast); /* 收起时等淡出跑完再真正隐藏 */
   }
 
+  .fab[data-open] .fab-actions {
+    opacity: 1;
+    visibility: visible;
+    transform: none;
+    transition:
+      opacity var(--dur-fast) var(--ease),
+      transform var(--dur-fast) var(--ease),
+      visibility 0s;
+  }
+
+  /* 减少动效时不做弹出动画（base.css 那段会把时长压到 0，够用了） */
+
   .fab-btn {
-    width: 3rem;
-    height: 3rem;
+    width: 3.25rem;
+    height: 3.25rem;
     padding: 0;
     border: 1px solid var(--rule);
     border-radius: 50%;
@@ -71,7 +94,10 @@
     line-height: 1;
     cursor: pointer;
     box-shadow: 0 6px 18px -10px rgba(0, 0, 0, 0.45);
-    transition: color var(--dur-fast) ease, border-color var(--dur-fast) ease,
+    transition:
+      color var(--dur-fast) ease,
+      background-color var(--dur-fast) ease,
+      border-color var(--dur-fast) ease,
       transform var(--dur-fast) var(--ease);
   }
 
@@ -84,24 +110,44 @@
 
   .fab-btn:active { transform: scale(0.94); }
 
-  /* 主按钮比子按钮大一点、实心一点，一眼能看出是它 */
+  /* 主按钮：白天用强调色（Claude 橙）、图标白。
+     选中/悬停时用**偏浅的强调色** —— 跟纯色比一眼能看出按下了 */
   .fab-btn--main {
-    width: 3.5rem;
-    height: 3.5rem;
-    font-size: var(--text-lg);
-    color: var(--paper);
-    background: var(--ink);
-    border-color: var(--ink);
+    width: 3.75rem;
+    height: 3.75rem;
+    font-size: var(--text-xl);   /* 图标比原来大一号 */
+    color: #fff;
+    background: var(--accent);
+    border-color: var(--accent);
   }
 
   .fab-btn--main:hover {
-    color: var(--paper);
-    border-color: var(--accent);
-    background: var(--accent);
+    color: #fff;
+    border-color: color-mix(in srgb, var(--accent) 74%, #fff);
+    background: color-mix(in srgb, var(--accent) 74%, #fff);
+  }
+
+  /* 夜间换成浅灰（深底上再用橙会太跳），图标仍是白的；
+     悬停时再浅一档 */
+  :root[data-theme='dark'] .fab-btn--main {
+    background: var(--faint);
+    border-color: var(--faint);
+  }
+
+  :root[data-theme='dark'] .fab-btn--main:hover {
+    background: color-mix(in srgb, var(--faint) 78%, #fff);
+    border-color: color-mix(in srgb, var(--faint) 78%, #fff);
+  }
+
+  /* 键盘焦点落在主按钮上时也亮一下，和悬停同一套 */
+  .fab-btn--main:focus-visible {
+    background: color-mix(in srgb, var(--accent) 74%, #fff);
+    border-color: color-mix(in srgb, var(--accent) 74%, #fff);
   }
 
   @media (prefers-reduced-motion: reduce) {
     .fab-btn:active { transform: none; }
+    .fab-actions { transition: none; }
   }
 </style>
 
@@ -109,10 +155,11 @@
   const fab = document.getElementById('fab');
   if (fab) {
     const main = fab.querySelector<HTMLButtonElement>('#fab-main');
-    const actions = fab.querySelector<HTMLElement>('#fab-actions');
     const themeBtn = fab.querySelector<HTMLButtonElement>('[data-action="theme"]');
     const icon = fab.querySelector<HTMLElement>('[data-theme-icon]');
     const mainIcon = fab.querySelector<HTMLElement>('[data-main-icon]');
+
+    const isOpen = () => fab.dataset.open === 'true';
 
     /** 深浅切换按钮的图标/文案要跟着当前主题走 */
     const syncThemeBtn = () => {
@@ -127,7 +174,7 @@
       if (meta) {
         meta.setAttribute(
           'content',
-          document.documentElement.dataset.theme === 'dark' ? '#151412' : '#ffffff'
+          document.documentElement.dataset.theme === 'dark' ? '#141413' : '#faf9f5'
         );
       }
     };
@@ -135,26 +182,26 @@
     syncThemeBtn();
 
     const setOpen = (open: boolean, focusPanel = true) => {
-      if (!actions || !main || !mainIcon) return;
-      actions.hidden = !open;
-      main.setAttribute('aria-expanded', String(open));
-      mainIcon.textContent = open ? '×' : '+';
+      // 用 data-open 而不是 hidden：隐藏靠 CSS 的 visibility，
+      // 这样才有过渡可做（见上面 .fab-actions 的注释）
+      if (open) fab.dataset.open = 'true';
+      else delete fab.dataset.open;
+      main?.setAttribute('aria-expanded', String(open));
+      if (mainIcon) mainIcon.textContent = open ? '×' : '+';
       // 只在用户主动操作时搬焦点；首屏初始化时别去抢
       if (focusPanel) {
-        (open ? actions.querySelector('button') : main)?.focus();
+        const target = open
+          ? fab.querySelector<HTMLButtonElement>('.fab-actions button')
+          : main;
+        target?.focus();
       }
     };
 
-    main?.addEventListener('click', () => {
-      // 展开状态 = 当前是收起的；!! 是因为新版 DOM 类型里 hidden 是 boolean | "until-found"
-      setOpen(!!actions?.hidden);
-    });
+    main?.addEventListener('click', () => setOpen(!isOpen()));
 
     // Esc 收起并把焦点还回主按钮 —— 项目里灯箱有这个缺口的先例，这里补上
     fab.addEventListener('keydown', (e) => {
-      if ((e as KeyboardEvent).key === 'Escape' && actions && !actions.hidden) {
-        setOpen(false);
-      }
+      if ((e as KeyboardEvent).key === 'Escape' && isOpen()) setOpen(false);
     });
 
     themeBtn?.addEventListener('click', () => {

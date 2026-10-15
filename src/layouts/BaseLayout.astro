@@ -57,7 +57,7 @@ const canonical = new URL(Astro.url.pathname, Astro.site);
     <meta name="generator" content={Astro.generator} />
 
     <!-- 手机浏览器地址栏的颜色；下面的脚本会按最终主题改写它 -->
-    <meta name="theme-color" content="#ffffff" />
+    <meta name="theme-color" content="#faf9f5" />
 
     <!--
       夜间模式的"定调"脚本 —— **必须在首次绘制之前同步跑完**。
@@ -85,7 +85,7 @@ const canonical = new URL(Astro.url.pathname, Astro.site);
         }
         document.documentElement.dataset.theme = dark ? 'dark' : 'light';
         var meta = document.querySelector('meta[name="theme-color"]');
-        if (meta) meta.setAttribute('content', dark ? '#151412' : '#ffffff');
+        if (meta) meta.setAttribute('content', dark ? '#141413' : '#faf9f5');
       })();
     </script>
   </head>

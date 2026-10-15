@@ -48,9 +48,10 @@ const years = groupByYear(posts);
 
   .entry {
     display: grid;
-    /* 日期栏宽度是给"三月十三日"这五个字留的，跟着字号走 ——
-       字号加大后 5.75rem 会顶到边，所以放到 6.5rem */
-    grid-template-columns: 6.5rem 1fr;
+    /* 日期栏宽度是给"三月十三日"这五个字留的，**跟着字号走**：
+       5.75rem（14px 时）→ 6.5rem（17px 时）→ 7.5rem（19px 时）。
+       字号再调就要回来重算，否则日期会折行 */
+    grid-template-columns: 7.5rem 1fr;
     align-items: baseline;
     gap: 0 var(--space-4);
     padding: 0.4rem 0;

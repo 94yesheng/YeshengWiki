@@ -28,7 +28,7 @@ const tags = post.data.tags;
 
 <BaseLayout title={post.data.title} description={post.data.description}>
   <article class="article">
-    <header class="article-head wrap">
+    <header class="article-head">
       <p class="dateline">{chineseFullDate(post.data.pubDate)}</p>
       <h1 class="article-title">{cjkSpacing(post.data.title)}</h1>
     </header>
@@ -77,9 +77,21 @@ const tags = post.data.tags;
 </BaseLayout>
 
 <style>
-  /* 这一页不再整体套 .wrap：题头留在 .wrap 里（占满 64rem），
-     正文区要**铺满整个视口宽**，这样左栏才有地方挪到两侧的空白里去 */
-  .article { padding-top: var(--space-7); }
+  /* 这一页不再整体套 .wrap：正文区要**铺满整个视口宽**，
+     左栏才有地方挪到两侧的空白里去。题头自己定宽（见下），和正文列对齐 */
+  .article {
+    padding-top: var(--space-7);
+    /* 两侧那两条竖线的定位基准 */
+    position: relative;
+  }
+
+  /* 题头和正文**同宽**（50rem）—— 这样两侧的竖线才能把标题和正文一起框住。
+     只加内边距是为了窄屏下不贴边；宽屏时内边距之外正好是 50rem */
+  .article-head {
+    max-width: calc(50rem + 2 * var(--pad-x));
+    margin: 0 auto;
+    padding: 0 var(--pad-x);
+  }
 
   /* 题头：一条短强调色横线领着日期，和列表页的日期栏呼应 */
   .dateline {
@@ -169,6 +181,24 @@ const tags = post.data.tags;
       grid-column: 2;
       min-width: 0;
     }
+
+    /* 文章两侧那两条竖线 —— 把标题和正文一起框住。
+       用绝对定位而不是 border，是因为要跨过"题头"和"正文区"两块：
+       border 只能贴在某一个盒子上，那样两段线会断开。
+       位置 = 视口中心 ± (正文半宽 25rem + 2rem)。这 2rem 是往外的让位，
+       免得线贴到字上。只在宽屏版式里画：窄屏那套正文不是 50rem，线会穿进正文。 */
+    .article::before,
+    .article::after {
+      content: "";
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      width: 1px;
+      background: var(--rule);   /* 最淡的一档，就是"不太明显" */
+    }
+
+    .article::before { left: calc(50% - 27rem); }
+    .article::after { right: calc(50% - 27rem); }
   }
 
   .rail-block { margin: 0; }
