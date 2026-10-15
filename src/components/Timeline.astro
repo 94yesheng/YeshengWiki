@@ -3,7 +3,8 @@
  * 时间线 —— 文章列表页和照片页共用。
  *
  * 结构是三层：**年 → 月 → 条目**。年和月都是可点的按钮，点一下折叠/展开。
- * 轴是左侧一条竖线，最上面一个「起点」图标（圆环套实心圆），下面串着年月的节点。
+ * 轴是左侧一条竖线：**最上面是「现在」，最下面（轴的另一端）是起点** ——
+ * 条目从新到旧往下排，所以起点图标落在最底下，标着"时间从这里开始"。
  *
  * 【叶子为什么是"传进来的组件"】
  * 两页的条目长得完全不一样：文章页是一行「日 + 标题链接」，照片页是一整块
@@ -13,11 +14,17 @@
  *
  * 【折叠怎么做动的】
  * 用 `grid-template-rows: 0fr → 1fr` —— 这是少数几个**不用知道内容高度**就能
- * 做高度动画的办法（`height: auto` 是不可动画的，`max-height` 那套要瞎猜一个值）。
- * 内层必须 `overflow: hidden` 让超出的部分被裁掉。
+ * 做高度动画的办法（`height: auto` 不可动画，`max-height` 那套要瞎猜一个值）。
+ * 内层 `overflow: hidden` 把超出的部分裁掉，于是展开时内容从上方"长"出来、
+ * 收起时从下往回收，整页看起来就是在往下伸 / 往上缩。
  * 因为动画要"看得见过程"，面板就不能再用 `hidden` 属性了（`display:none`
  * 没有过渡可言），改成 `data-open`；收起时额外用 `visibility: hidden` 把里面的
  * 按钮移出可聚焦序列 —— 光靠 `overflow: hidden` 的话 Tab 键还能跳进看不见的链接。
+ *
+ * ⚠️ **`overflow: hidden` 会把轴上探出去的节点一起裁掉**（踩过：月份的圆点整排消失，
+ * 而年份的还在 —— 因为年份的 head 在裁剪层外面）。所以 `.tl-body`（装月份
+ * 的那个盒子）往左多留了 6px 内边距、再用等量的负外边距把内容推回原位：
+ * 盒子变宽了、内容没动，节点就落在安全区里了。改这里的 padding/margin 要成对改。
  *
  * 【折叠状态只存在 DOM 上】
  * `aria-expanded`（在按钮上）+ `data-open`（在面板上），不另存一份变量 ——
@@ -36,9 +43,6 @@ const { years, Item } = Astro.props;
 ---
 
 <div class="tl" data-timeline>
-  <!-- 轴的起点：圆环套一个实心圆。纯装饰，不承载信息 -->
-  <div class="tl-start" aria-hidden="true"></div>
-
   {
     years.map((y) => {
       const yearTotal = y.months.reduce((n, m) => n + m.items.length, 0);
@@ -76,11 +80,15 @@ const { years, Item } = Astro.props;
       );
     })
   }
+
+  <!-- 轴的起点：圆环套一个实心圆。放在最底下 —— 条目是从新到旧往下排的，
+       所以"时间的开头"在底部。纯装饰，不承载信息。 -->
+  <div class="tl-start" aria-hidden="true"></div>
 </div>
 
 <style>
   /* --------------------------------------------------------------------------
-     轴 —— 一条竖线 + 顶端的起点图标
+     轴 —— 一条竖线：顶端是"现在"，底端收在起点图标上
      -------------------------------------------------------------------------- */
 
   .tl {
@@ -89,14 +97,14 @@ const { years, Item } = Astro.props;
     padding-left: var(--space-5);
   }
 
-  /* 轴线从起点圆环的圆心开始往下 —— 所以是 top: 6px 而不是 0，
-     这样线看起来是"从起点出发"，而不是从页面顶端垂下来 */
+  /* 轴线从顶端一直延伸到起点圆环的圆心（所以 bottom 是 6px，不是 0）——
+     这样线看起来是"收束在起点上"，而不是凭空垂到页面底部 */
   .tl::before {
     content: '';
     position: absolute;
     left: 0;
-    top: 6px;
-    bottom: 0;
+    top: 0;
+    bottom: 6px;
     width: 1px;
     background: var(--rule);
   }
@@ -104,7 +112,7 @@ const { years, Item } = Astro.props;
   .tl-start {
     position: relative;
     height: 12px;
-    margin-bottom: var(--space-6);
+    margin-top: var(--space-6);
   }
 
   /* 圆环 */
@@ -120,7 +128,7 @@ const { years, Item } = Astro.props;
     border-radius: 50%;
   }
 
-  /* 实心圆心：半个环的内径，正好落在圆心 */
+  /* 实心圆心 */
   .tl-start::after {
     content: '';
     position: absolute;
@@ -171,7 +179,7 @@ const { years, Item } = Astro.props;
     margin-top: -3px;
     border-radius: 50%;
     background: var(--rule);
-    transition: background-color var(--dur-fast) ease;
+    transition: background-color var(--dur-fast) ease, transform var(--dur-base) var(--ease);
   }
 
   /* 年的节点大一点、用强调色（年也是"时间"，配得上那唯一的彩色）；
@@ -185,7 +193,7 @@ const { years, Item } = Astro.props;
   }
 
   .tl-year-head:hover::before,
-  .tl-month-head:hover::before { background: var(--accent); }
+  .tl-month-head:hover::before { background: var(--accent); transform: scale(1.2); }
 
   .tl-year-label {
     font-family: var(--kai);
@@ -210,29 +218,52 @@ const { years, Item } = Astro.props;
   }
 
   /* --------------------------------------------------------------------------
-     折叠动画：0fr → 1fr
+     折叠动画
+     高度用 0fr → 1fr；缓动带一点点过冲（控制点 y 超过 1），所以展开到头会轻轻
+     回弹一下，不像默认的 ease 那样"咔"地停住。内层再叠一个位移+淡入，
+     让内容是从上方"落"下来的，而不是凭空出现。
      -------------------------------------------------------------------------- */
 
   .tl-panel {
     display: grid;
     grid-template-rows: 0fr;
-    transition: grid-template-rows var(--dur-base) var(--ease);
+    transition: grid-template-rows 400ms cubic-bezier(0.22, 1.12, 0.32, 1);
   }
 
   .tl-panel[data-open] { grid-template-rows: 1fr; }
+
+  /* 只有 .tl-body 需要轴线安全区 —— 月份的节点在里面。.tl-items 装的是普通条目，
+     不会探出轴线，所以它只要 overflow:hidden 就够了 */
+  .tl-body {
+    /* 往左多留 6px、再用等量负外边距推回去：盒子变宽、内容没动，
+       轴上探出去的月份圆点就落在安全区里了（踩过，见组件头注释） */
+    padding-left: calc(var(--space-5) + 6px);
+    margin-left: calc(-1 * var(--space-5) - 6px);
+  }
 
   .tl-body,
   .tl-items {
     overflow: hidden;   /* 0fr 时把内容裁掉，否则会溢出来 */
     visibility: hidden;
-    /* 收起时等高度动画跑完再真正隐藏（不然动画还没播内容就没了） */
-    transition: visibility 0s linear var(--dur-base);
+    opacity: 0;
+    transform: translateY(-0.35rem);
+    transition:
+      opacity 180ms ease,
+      transform 400ms cubic-bezier(0.22, 1.12, 0.32, 1),
+      /* 收起时等高度动画跑完再真正隐藏，不然内容会先没掉 */
+      visibility 0s linear 400ms;
   }
 
   .tl-panel[data-open] > .tl-body,
   .tl-panel[data-open] > .tl-items {
     visibility: visible;
-    transition: visibility 0s;
+    opacity: 1;
+    transform: none;
+    /* 展开时内容晚一点再淡入落位，层次感更好 */
+    transition:
+      opacity 260ms ease 70ms,
+      transform 420ms cubic-bezier(0.34, 1.3, 0.5, 1),
+      visibility 0s;
   }
 
   /* 间距要用 padding 不能用 margin：margin 会溢出到 overflow 之外，
@@ -247,6 +278,10 @@ const { years, Item } = Astro.props;
     .tl-start::after { left: calc(-1 * var(--space-4) - 2px); }
     .tl-year-head::before { left: calc(-1 * var(--space-4) - 4.5px); }
     .tl-month-head::before { left: calc(-1 * var(--space-4) - 3.5px); }
+    .tl-body {
+      padding-left: calc(var(--space-4) + 6px);
+      margin-left: calc(-1 * var(--space-4) - 6px);
+    }
   }
 </style>
 
