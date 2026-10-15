@@ -40,7 +40,7 @@ import {
 } from './content';
 import { renderMarkdown, readingStats } from './md';
 import { parsePost } from './frontmatter';
-import { fetchVault, takeLegacyToken, unlockVault, VAULT_URL, type VaultBlob } from './vault';
+import { fetchVault, takeLegacyToken, unlockVault, type VaultBlob } from './vault';
 
 /* --------------------------------------------------------------------------
    配置：仓库地址写死在这里（和 Sveltia 的 config.yml 是同一个值）
@@ -154,50 +154,24 @@ async function useToken(token: string, fromVault = false): Promise<void> {
     state.gh = null;
     // 从密文解出来的令牌还被拒 → 多半是令牌本身失效/被撤销了，得重新生成一份密文
     if (fromVault) renderUnlock('解出来的令牌已经失效或被撤销了 —— 需要重新生成密文');
-    else renderLogin(e instanceof GithubError ? e.message : '登录失败');
+    else renderNoVault();
   }
 }
 
-function renderLogin(message?: string, note?: string): void {
+/**
+ * 站点上还没有密文时的界面。
+ * 后台**不接受令牌登录** —— 令牌只在你自己电脑上的生成器里用一次，不进这个界面。
+ * 所以这里只说明"去哪里把密文建起来"。
+ */
+function renderNoVault(): void {
   showOnly(`
     <div class="st-login">
       <div class="st-card">
-        <h2>登录后台</h2>
-        ${note ? `<p style="color:var(--seal)">${esc(note)}</p>` : ''}
-        <p>后台直接读写 GitHub 上的私有仓库，不需要服务器。所以你要给它一个访问令牌。</p>
-        <ol>
-          <li>GitHub → 头像 → Settings → Developer settings</li>
-          <li>Personal access tokens → <b>Fine-grained tokens</b> → Generate new token</li>
-          <li>Repository access 选 <b>Only select repositories</b>，勾 <code>${esc(REPO.repo)}</code></li>
-          <li>Permissions → Repository permissions → <b>Contents</b> 设为 <b>Read and write</b>。只想看不想改，就给 <b>Read-only</b></li>
-          <li>生成后把那串令牌（<code>github_pat_...</code>）粘到下面</li>
-        </ol>
-        <input class="st-input" id="st-token" type="password" placeholder="github_pat_..." autocomplete="off" />
-        ${message ? `<p style="margin-top:var(--space-3);color:var(--seal)">${esc(message)}</p>` : ''}
-
-        <div style="margin-top:var(--space-4);display:flex;gap:var(--space-2);align-items:center">
-          <button class="st-btn st-btn--primary" id="st-login-go">登录</button>
-          <span class="st-hint">令牌只发给 api.github.com，不经过任何第三方。别在公用电脑上登录。</span>
-        </div>
-
-        <div class="st-hint" style="margin-top:var(--space-5);border-top:1px solid var(--rule);padding-top:var(--space-3);line-height:1.9">
-          <b>想以后只输账号密码？</b>在你自己电脑上跑 <code>node scripts/vault.mjs</code>：
-          它会用你给的账号和密码，把令牌加密成一份密文，写进
-          <code>public/studio/vault.json</code>。提交推送之后，任何设备打开后台都只需输账号和密码
-          —— 密文放在站点上，生成留在本机，公网上不放"能生成密文的东西"。
-        </div>
+        <h2>还没有配置解锁口令</h2>
+        <p>在你自己电脑上的项目目录（<code>D:\\blog</code>）里运行 <code>npm run vault</code>，
+           按提示生成密文并提交推送，然后刷新这一页。</p>
       </div>
     </div>`);
-
-  const go = async () => {
-    const token = $<HTMLInputElement>('#st-token')?.value.trim() ?? '';
-    if (!token) return;
-    await useToken(token);
-  };
-  $('#st-login-go')?.addEventListener('click', () => void go());
-  $<HTMLInputElement>('#st-token')?.addEventListener('keydown', (e) => {
-    if ((e as KeyboardEvent).key === 'Enter') void go();
-  });
 }
 
 function renderUnlock(message?: string): void {
@@ -205,23 +179,13 @@ function renderUnlock(message?: string): void {
     <div class="st-login">
       <div class="st-card">
         <h2>解锁</h2>
-        <p>站点上存着加密过的令牌（<code>${esc(VAULT_URL)}</code>）。输入账号和密码继续。</p>
-        <input class="st-input" id="st-unlock-acct" placeholder="账号" autocomplete="off" style="margin-bottom:6px" />
+        <input class="st-input" id="st-unlock-acct" placeholder="账号" autocomplete="off"
+               style="margin-bottom:6px" />
         <div class="st-row">
           <input class="st-input" id="st-unlock-pw" type="password" placeholder="密码" autocomplete="current-password" />
           <button class="st-btn st-btn--primary" id="st-unlock-go">解锁</button>
         </div>
         ${message ? `<p style="margin-top:var(--space-3);color:var(--seal)">${esc(message)}</p>` : ''}
-        <p class="st-hint" style="margin-top:var(--space-3)">
-          两半都要对，大小写与空格必须和生成密文时完全一致 —— 它们是拼起来当钥匙用的，没有找回途径。
-          密文本身是公开的（谁下载到都行），但<b>没有口令就解不开</b> —— 口令强度就是唯一的防线。
-        </p>
-        <p style="margin-top:var(--space-4)">
-          忘了账号或密码，或者想换一个令牌？
-          在你自己的电脑上跑 <code>node scripts/vault.mjs</code> 重新生成一份密文并提交。
-          要用令牌直接登录（不经过密文），也可以：
-          <button class="st-btn" id="st-use-token" style="margin-left:6px">改用令牌登录</button>
-        </p>
       </div>
     </div>`);
 
@@ -248,10 +212,6 @@ function renderUnlock(message?: string): void {
       if ((e as KeyboardEvent).key === 'Enter') void go();
     });
   }
-  // 没有"清除本机密文"这回事了：密文在仓库里，改它要重新生成 + 提交
-  $('#st-use-token')?.addEventListener('click', () => {
-    renderLogin(undefined, '改用令牌登录。要更新站点上的密文，请在你自己的电脑上跑 node scripts/vault.mjs');
-  });
 }
 
 /* --------------------------------------------------------------------------
@@ -305,23 +265,16 @@ function renderBar(): void {
     <span class="st-spacer"></span>
     <button class="st-btn" id="st-refresh" ${state.busy ? 'disabled' : ''}>重新读取</button>
     <button class="st-btn st-btn--primary" id="st-save" ${state.dirty ? '' : 'disabled'}>保存</button>
-    ${state.vault ? '<button class="st-btn" id="st-lock">锁定</button>' : ''}
-    <button class="st-btn st-btn--ghost" id="st-logout">退出</button>`;
+    ${state.vault ? '<button class="st-btn" id="st-lock">锁定</button>' : ''}`;
   $('#st-refresh')?.addEventListener('click', () => void loadAll());
   $('#st-save')?.addEventListener('click', () => void saveCurrent());
 
   // 锁定：令牌从内存里丢掉，回到解锁页（站点上的密文还在，输账密即可再进）
+  // 没有单独的"退出" —— 账密模型下两者是同一件事，本机不留任何凭据要清
   $('#st-lock')?.addEventListener('click', () => {
     if (state.dirty && !confirm('有未保存的改动，确定锁定并丢弃吗？')) return;
     forgetSession();
     renderUnlock('已锁定');
-  });
-
-  // 退出：回登录页。没有"本机凭据"要清 —— 密文在仓库里，本机什么都不留
-  $('#st-logout')?.addEventListener('click', () => {
-    if (state.dirty && !confirm('有未保存的改动，确定退出并丢弃吗？')) return;
-    forgetSession();
-    renderLogin();
   });
 }
 
@@ -1233,21 +1186,18 @@ async function saveWallCurrent(gh: Github): Promise<void> {
    启动
    -------------------------------------------------------------------------- */
 async function boot(): Promise<void> {
-  // 顶栏与骨架先渲染出来，避免白屏
-  renderLogin();
+  // 先不渲染任何界面：页面里那段静态兜底提示（"正在载入后台…"）会一直显示到
+  // 下面这次取密文结束 —— 本地请求很快，不会看到闪烁；
+  // 也避免先闪一下"还没有配置"再跳到解锁页。
 
-  // 曾经有版本把令牌明文存在浏览器里，也曾经把密文存在浏览器里。
-  // 现在密文统一放在站点上（public/studio/vault.json），本机什么都不留 ——
-  // 所以把那个旧键清掉，并告诉用户一声（它是明文凭据，不该继续留着）。
-  const legacy = takeLegacyToken();
-  if (legacy) {
-    renderLogin(undefined, '本机曾经明文存过一个令牌，已经清除。请重新登录一次。');
-    return;
-  }
+  // 更早的版本往浏览器里存过明文令牌。后台现在不接受令牌登录了，那个键留着也没用，
+  // 顺手清掉（它是明文凭据，不该继续躺在你机器上）。不必打扰用户，记一行日志即可。
+  if (takeLegacyToken()) console.info('[studio] 已清除本机残留的明文令牌');
 
-  // 站点上有密文 → 显示解锁页；没有 → 显示令牌登录页
+  // 站点上有密文 → 解锁页；没有 → 提示去本机生成（后台没有令牌登录这条路）
   state.vault = await fetchVault();
   if (state.vault) renderUnlock();
+  else renderNoVault();
 }
 
 void boot();
