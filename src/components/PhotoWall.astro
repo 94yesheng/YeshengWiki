@@ -40,13 +40,13 @@ const single = wall.photos.length === 1;
    写小了浏览器就会按那个宽度渲染，照片看起来像被压过（踩过一次）。
 
    这几个数是跟着页面容器走的，改 .wrap 的 --shell 时必须回来一起改：
-     · 页面容器 56rem、两侧各 --pad-x(1.5rem) ⇒ 可用宽度 53rem
-     · 单张的墙撑满这 53rem（gallery.css 里的 56rem 上限已经够不着了）
-     · 多张的每张是 calc(宽高比 × 14rem)，横图封顶约 25rem；一行放不下时靠
+     · 页面容器 64rem、两侧各 --pad-x(1.5rem) ⇒ 可用宽度 61rem
+     · 单张的墙是 100%，但撞到 gallery.css 里 56rem 的上限 ⇒ 实际 56rem
+     · 多张的每张是 calc(宽高比 × 16rem)，横图封顶约 28rem；一行放不下时靠
        flex-shrink 收缩，这里按上限报：多下一档图，总比把图压扁好 */
 const sizes = single
-  ? '(max-width: 56rem) 92vw, 53rem'
-  : '(max-width: 34rem) 92vw, 25rem';
+  ? '(max-width: 64rem) 92vw, 56rem'
+  : '(max-width: 34rem) 92vw, 28rem';
 
 /* 覆盖层用的地址：取 1600px 那一档（和网格里 largest 的变体是同一个文件），
    原图比 1600 还小的就别放大，避免生成虚大的文件 */

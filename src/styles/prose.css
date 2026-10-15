@@ -166,7 +166,7 @@
   border: 1px solid var(--rule);
   border-radius: 3px;
   overflow-x: auto;
-  font-size: 0.8125rem;
+  font-size: var(--text-sm);
   line-height: 1.75;
   text-indent: 0;
   -webkit-overflow-scrolling: touch;

@@ -1,18 +1,26 @@
 ---
+/**
+ * 主页 —— 一栏一屏。
+ *
+ * 第一屏是站名 + 签名 + 自我介绍（hero），之后每个板块各占满一屏
+ * （高度 = 100vh − 顶栏，见 base.css 的 .screen）。加一个新板块仍然只是
+ * 在 site.data.json 里加一行 —— 它天然就会多出一整屏，这里不用动。
+ *
+ * 注意：这一页**不套 .wrap 包整页**。裹在同一个容器里就做不出满屏的色带/分隔线了
+ * —— 照片页的 .gallery-page 也是同样处理（放在 .wrap 外面）。
+ */
 import BaseLayout from '../layouts/BaseLayout.astro';
 import SectionEntry from '../components/SectionEntry.astro';
-import { home } from '../site.config';
+import { home, site } from '../site.config';
 import { getPostCover, getPublishedPosts } from '../utils/posts';
 import { getPhotoWalls } from '../utils/photos';
-import { chineseFullDate, chineseMonthDay, isoDate } from '../utils/date';
+import { chineseFullDate, chineseMonthDay } from '../utils/date';
 import { cjkSpacing } from '../utils/typography';
 
 const posts = await getPublishedPosts();
-const latest = posts.slice(0, 4);
 
 /* 各栏「最新的一条」：文章栏放最新那篇文章，照片栏放最新的那面墙。
-   日期格式各随自己那个板块 —— 文章栏跟本页的「最近写的」用中文月日，
-   照片栏跟照片页用中文全日期。 */
+   日期格式各随自己那个板块 —— 文章栏跟列表页用中文月日，照片栏跟照片页用中文全日期。 */
 const newestPost = posts.length > 0 ? posts[0] : undefined;
 const newestWall = (await getPhotoWalls())[0];
 
@@ -32,120 +40,64 @@ const wallPreview = newestWall && {
   text: newestWall.note,
 };
 
-/** 只给这两栏配最新一条；程序、友链没有"条目"这个概念，保持纯文字那一行 */
+/** 只给这两栏配最新一条；程序、友链没有"条目"这个概念，保持标题 + 描述 */
 const previewFor = (href: string) =>
   href === '/posts/' ? postPreview : href === '/photos/' ? wallPreview : undefined;
 ---
 
-<BaseLayout>
-  <div class="wrap">
-    <!-- 自我介绍 -->
-    <section class="intro">
-      {home.intro.map((paragraph) => <p>{paragraph}</p>)}
-    </section>
+<BaseLayout bodyClass="home" masthead={false}>
+  <!-- 第一屏：站名 + 签名 + 自我介绍 -->
+  <section class="screen screen--hero">
+    <div class="wrap">
+      <h1 class="hero-title">{site.title}</h1>
+      <p class="hero-tagline">{site.tagline}</p>
+      <div class="hero-intro">
+        {home.intro.map((paragraph) => <p>{paragraph}</p>)}
+      </div>
+    </div>
+  </section>
 
-    <!-- 博客内容导览：加板块只需改 site.config.ts，这里不用动。
-         文章栏和照片栏各带一条"最新"（封面 + 标题 + 梗概），见上面的 previewFor -->
-    <section class="sections">
-      {home.sections.map((section) => (
-        <SectionEntry {...section} preview={previewFor(section.href)} />
-      ))}
-    </section>
-
-    {
-      latest.length > 0 && (
-        <section class="latest">
-          <h2 class="latest-title">最近写的</h2>
-          <ol class="latest-list">
-            {latest.map((post) => (
-              <li>
-                <time datetime={isoDate(post.data.pubDate)}>
-                  {chineseMonthDay(post.data.pubDate)}
-                </time>
-                <a href={`/posts/${post.id}/`}>{cjkSpacing(post.data.title)}</a>
-              </li>
-            ))}
-          </ol>
-          <a class="latest-more" href="/posts/">
-            全部文章 →
-          </a>
-        </section>
-      )
-    }
-  </div>
+  <!-- 之后每个板块各占满一屏 -->
+  {home.sections.map((section) => <SectionEntry {...section} preview={previewFor(section.href)} />)}
 </BaseLayout>
 
 <style>
-  /* 自我介绍沿用文章正文的书籍排版：首行缩进两字符。
-     页面容器是宽的那个（--shell），但成段的中文要单独卡回阅读宽 --measure */
-  .intro {
-    max-width: var(--measure);
-    margin: 0 auto;
-    padding: var(--space-8) 0 var(--space-7);
+  /* 第一屏不画上边线 —— 它上面就是顶栏，已经有一条了 */
+  .screen--hero { border-top: 0; }
+
+  .hero-title {
+    margin: 0;
+    font-family: var(--kai);
+    font-size: var(--text-3xl);
+    font-weight: 400;
+    letter-spacing: 0.22em;
+    text-indent: 0.22em;   /* 抵消末字后多出的字距，视觉才真居中 */
+    text-align: center;
   }
 
-  .intro p {
-    margin: 0 0 var(--space-3);
+  .hero-tagline {
+    margin: var(--space-4) 0 0;
+    font-size: var(--text-base);
+    letter-spacing: 0.16em;
+    color: var(--muted);
+    text-align: center;
+  }
+
+  /* 自我介绍沿用文章正文的书籍排版：首行缩进两字符。
+     成段的中文卡回阅读宽 --measure（页面容器比它宽） */
+  .hero-intro {
+    max-width: var(--measure);
+    margin: var(--space-8) auto 0;
+    padding-top: var(--space-7);
+    border-top: 1px solid var(--rule);
+  }
+
+  .hero-intro p {
+    margin: 0 0 var(--space-4);
+    font-size: var(--text-md);
     text-indent: 2em;
     line-height: 2;
   }
 
-  .intro p:last-child { margin-bottom: 0; }
-
-  .latest { margin-top: var(--space-8); }
-
-  .latest-title {
-    margin: 0 0 var(--space-5);
-    font-family: var(--kai);
-    font-size: var(--text-sm);
-    font-weight: 400;
-    letter-spacing: 0.3em;
-    color: var(--muted);
-  }
-
-  .latest-list {
-    list-style: none;
-    margin: 0;
-    padding: 0;
-  }
-
-  .latest-list li {
-    display: grid;
-    grid-template-columns: 5.75rem 1fr;
-    align-items: baseline;
-    gap: 0 var(--space-4);
-    padding: 0.4rem 0;
-  }
-
-  .latest-list time {
-    font-family: var(--kai);
-    font-size: 0.875rem;
-    letter-spacing: 0.08em;
-    color: var(--seal);
-    white-space: nowrap;
-  }
-
-  .latest-list a { transition: color var(--dur-fast) ease; }
-  .latest-list a:hover { color: var(--seal); }
-
-  .latest-more {
-    display: inline-block;
-    margin-top: var(--space-5);
-    font-size: var(--text-sm);
-    letter-spacing: 0.1em;
-    color: var(--muted);
-    transition: color var(--dur-fast) ease;
-  }
-
-  .latest-more:hover { color: var(--seal); }
-
-  @media (max-width: 34rem) {
-    .intro { padding: var(--space-7) 0 var(--space-6); }
-
-    .latest-list li {
-      grid-template-columns: 1fr;
-      gap: 0.1rem;
-      padding: 0.55rem 0;
-    }
-  }
+  .hero-intro p:last-child { margin-bottom: 0; }
 </style>

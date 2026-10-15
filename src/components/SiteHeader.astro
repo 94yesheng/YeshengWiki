@@ -1,16 +1,29 @@
 ---
+/**
+ * 页头 —— 分两段，顺序是「先导航、后站名」。
+ *
+ * 导航搬到了整个页面最顶上做成**粘顶条**（`.site-nav-bar`，见 base.css），
+ * 这样长页面里随时能跳转；站名和签名留在下面（`.site-head`）。
+ * 主页会把站名和签名放大成一整屏（hero），子页就还是这个标题块。
+ *
+ * 粘顶条的高度写死成 --nav-h：主页那些"整屏"区块要靠它算高度，改了这里要一起改。
+ */
 import { site } from '../site.config';
+
+interface Props {
+  /** 关掉站名/签名那块（主页把它升级成了自己的第一屏） */
+  masthead?: boolean;
+}
+
+const { masthead = true } = Astro.props;
 
 const pathname = Astro.url.pathname;
 const isCurrent = (href: string) =>
   href === '/' ? pathname === '/' : pathname.startsWith(href);
 ---
 
-<header class="site-head">
+<header class="site-nav-bar">
   <div class="wrap">
-    <h1 class="site-title"><a href="/">{site.title}</a></h1>
-    <p class="site-tagline">{site.tagline}</p>
-
     <nav class="site-nav" aria-label="主导航">
       {
         site.nav.map((item, i) => (
@@ -25,3 +38,18 @@ const isCurrent = (href: string) =>
     </nav>
   </div>
 </header>
+
+{
+  /* 整块条件渲染 —— 不要留一个空的 .site-head，它自带 4.5rem 上边距，
+     主页会因此凭空多出一段空白再把第一屏顶下去 */
+  masthead && (
+    <div class="site-head">
+      <div class="wrap">
+        <h1 class="site-title">
+          <a href="/">{site.title}</a>
+        </h1>
+        <p class="site-tagline">{site.tagline}</p>
+      </div>
+    </div>
+  )
+}

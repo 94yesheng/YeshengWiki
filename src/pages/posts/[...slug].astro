@@ -23,43 +23,65 @@ interface Props {
 const { post } = Astro.props;
 const { Content } = await render(post);
 const { chars, minutes } = readingTime(post.body ?? '');
+const tags = post.data.tags;
 ---
 
 <BaseLayout title={post.data.title} description={post.data.description}>
   <article class="wrap article">
-    <p class="dateline">{chineseFullDate(post.data.pubDate)}</p>
+    <header class="article-head">
+      <p class="dateline">{chineseFullDate(post.data.pubDate)}</p>
+      <h1 class="article-title">{cjkSpacing(post.data.title)}</h1>
+    </header>
 
-    <h1 class="article-title">{cjkSpacing(post.data.title)}</h1>
+    <div class="article-body">
+      {/*
+        左侧元信息栏 —— 桌面版式里这些"次要但常看"的信息放边上，
+        正文就能独占右边一整栏、不再被压成手机那样的窄条。
+        它是 sticky 的：长文往下滚时字数/标签一直看得见，不会滚没。
+      */}
+      <aside class="article-rail">
+        <div class="rail-block">
+          <p class="rail-k">字数</p>
+          <p class="rail-v">{chars} 字</p>
+        </div>
+        <div class="rail-block">
+          <p class="rail-k">阅读</p>
+          <p class="rail-v">约 {minutes} 分钟</p>
+        </div>
+        {
+          post.data.updatedDate && (
+            <div class="rail-block">
+              <p class="rail-k">修订</p>
+              <p class="rail-v">{chineseFullDate(post.data.updatedDate)}</p>
+            </div>
+          )
+        }
+        {
+          tags.length > 0 && (
+            <div class="rail-block">
+              <p class="rail-k">标签</p>
+              <p class="rail-v">{tags.join(' · ')}</p>
+            </div>
+          )
+        }
+        <nav class="article-end">
+          <a href="/posts/">← 全部文章</a>
+        </nav>
+      </aside>
 
-    <p class="article-meta">
-      {chars} 字 · 约 {minutes} 分钟
-      {
-        post.data.updatedDate && (
-          <>
-            <span class="dot">·</span>
-            修订于 {chineseFullDate(post.data.updatedDate)}
-          </>
-        )
-      }
-    </p>
-
-    <div class="prose">
-      <Content />
+      <div class="prose">
+        <Content />
+      </div>
     </div>
-
-    <nav class="article-end">
-      <a href="/posts/">← 全部文章</a>
-    </nav>
   </article>
 </BaseLayout>
 
 <style>
-  /* 页面容器是 --shell（宽），但**文章这整块**要卡回 --measure ——
-     题头和正文同宽才成栏。选择器写成 .wrap.article（两个类）是为了稳赢
-     base.css 里的 .wrap，不依赖样式注入顺序 */
+  /* 容器宽度用 .wrap 默认的 --shell（64rem）—— 不再卡回阅读宽。
+     选择器仍写成 .wrap.article（两个类）是为了稳赢 base.css 里的 .wrap，
+     不依赖样式注入顺序 */
   .wrap.article {
-    max-width: var(--measure);
-    padding-top: var(--space-8);
+    padding-top: var(--space-7);
   }
 
   /* 题头：一条短朱红横线领着日期，和列表页的日期栏呼应 */
@@ -76,14 +98,14 @@ const { chars, minutes } = readingTime(post.body ?? '');
 
   .dateline::before {
     content: "";
-    width: 1.75rem;
+    width: 2.25rem;
     height: 1px;
     background: var(--seal);
     flex: none;
   }
 
   .article-title {
-    margin: 0 0 var(--space-4);
+    margin: 0 0 var(--space-6);
     font-family: var(--kai);
     font-size: var(--text-2xl);
     font-weight: 400;
@@ -91,20 +113,46 @@ const { chars, minutes } = readingTime(post.body ?? '');
     letter-spacing: 0.03em;
   }
 
-  .article-meta {
-    margin: 0 0 var(--space-7);
-    padding-bottom: var(--space-5);
-    border-bottom: 1px solid var(--rule);
+  /* ---------- 两栏 ---------- */
+
+  .article-body {
+    display: grid;
+    grid-template-columns: 13rem 1fr;
+    gap: var(--space-8);
+    /* 必须是 start：左栏拉满整列高度的话，sticky 就没有可粘的余地了 */
+    align-items: start;
+  }
+
+  .article-rail {
+    position: sticky;
+    /* 顶栏是粘顶的，所以左栏要粘在它**下面**，不是 0 */
+    top: calc(var(--nav-h) + var(--space-5));
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-5);
+    padding-top: var(--space-2);
+  }
+
+  .rail-block { margin: 0; }
+
+  .rail-k {
+    margin: 0 0 0.25em;
     font-size: var(--text-xs);
-    letter-spacing: 0.14em;
+    letter-spacing: 0.22em;
+    color: var(--rule);
+  }
+
+  .rail-v {
+    margin: 0;
+    font-family: var(--kai);
+    font-size: var(--text-sm);
+    line-height: 1.7;
     color: var(--muted);
   }
 
-  .article-meta .dot { margin: 0 0.5em; color: var(--rule); }
-
   .article-end {
-    margin-top: var(--space-8);
-    padding-top: var(--space-5);
+    margin-top: var(--space-2);
+    padding-top: var(--space-4);
     border-top: 1px solid var(--rule);
     font-size: var(--text-sm);
     letter-spacing: 0.12em;
@@ -117,8 +165,10 @@ const { chars, minutes } = readingTime(post.body ?? '');
 
   .article-end a:hover { color: var(--seal); }
 
+  /* 窄屏塌成一栏（不专门做手机适配，只是别挤爆） */
   @media (max-width: 34rem) {
-    .article { padding-top: var(--space-7); }
+    .article-body { grid-template-columns: 1fr; gap: var(--space-6); }
+    .article-rail { position: static; flex-direction: row; flex-wrap: wrap; gap: var(--space-5); }
     .article-title { font-size: var(--text-xl); }
   }
 </style>

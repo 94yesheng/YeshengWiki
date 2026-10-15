@@ -67,7 +67,61 @@ a { color: inherit; text-decoration: none; }
 }
 
 /* --------------------------------------------------------------------------
-   页头 —— 文章区与照片区共用，保证全站是一套东西
+   「整屏」区块 —— 主页一栏一屏用的
+   高度是 100vh 减去顶栏：顶栏是粘顶的，滚到哪儿都占着那一条，
+   所以每一屏真正能用的高度就是这些。内容垂直居中。
+   （不加 scroll-snap：那会让长内容很难滚，也容易和照片页的灯箱打架）
+   -------------------------------------------------------------------------- */
+
+.screen {
+  min-height: calc(100vh - var(--nav-h));
+  display: grid;
+  align-content: center;
+  padding: var(--space-8) 0;
+  border-top: 1px solid var(--rule);
+}
+
+/* 必须显式给 100%：.wrap 带 margin:0 auto，而网格项上的 auto 外边距会让它按
+   fit-content 收缩、而不是被拉伸 —— 内容短的栏目（程序、友链）就会缩成一小团居中，
+   和内容长的栏目（文章、照片）左对齐铺满，两屏看起来不是一套东西 */
+.screen > .wrap { width: 100%; }
+
+/* --------------------------------------------------------------------------
+   顶部导航条 —— 全站最顶上的一条，粘顶
+   -------------------------------------------------------------------------- */
+
+.site-nav-bar {
+  position: sticky;
+  top: 0;
+  z-index: 40;                       /* 压住下面的内容；照片灯箱是 60，仍在它之上 */
+  background: var(--paper);          /* 必须不透明，否则内容会从底下透出来 */
+  border-bottom: 1px solid var(--rule);
+}
+
+/* 条内用 flex 让导航靠左 —— 顶栏的常规做法（原来在页头里是居中的）。
+   高度写死成 --nav-h：主页那些"整屏"区块要靠它算高度 */
+.site-nav-bar .wrap {
+  min-height: var(--nav-h);
+  display: flex;
+  align-items: center;
+}
+
+.site-nav {
+  font-size: var(--text-sm);
+  letter-spacing: 0.14em;
+}
+
+.site-nav a { color: var(--muted); transition: color var(--dur-fast) ease; }
+.site-nav a:hover { color: var(--seal); }
+.site-nav a[aria-current="page"] { color: var(--seal); }
+
+.site-nav .sep {
+  color: var(--rule);
+  margin: 0 0.55em;
+}
+
+/* --------------------------------------------------------------------------
+   站点标题块 —— 导航搬去顶栏之后就只剩站名和签名
    -------------------------------------------------------------------------- */
 
 .site-head {
@@ -78,7 +132,7 @@ a { color: inherit; text-decoration: none; }
 .site-title {
   margin: 0;
   font-family: var(--kai);
-  font-size: var(--text-xl);
+  font-size: var(--text-2xl);
   font-weight: 400;
   letter-spacing: 0.22em;
   text-indent: 0.22em;   /* 抵消末字后多出的字距，视觉才真居中 */
@@ -92,21 +146,6 @@ a { color: inherit; text-decoration: none; }
   font-size: var(--text-sm);
   letter-spacing: 0.14em;
   color: var(--muted);
-}
-
-.site-nav {
-  margin: var(--space-6) 0 0;
-  font-size: var(--text-sm);
-  letter-spacing: 0.14em;
-}
-
-.site-nav a { color: var(--muted); transition: color var(--dur-fast) ease; }
-.site-nav a:hover { color: var(--seal); }
-.site-nav a[aria-current="page"] { color: var(--seal); }
-
-.site-nav .sep {
-  color: var(--rule);
-  margin: 0 0.55em;
 }
 
 /* --------------------------------------------------------------------------
@@ -128,6 +167,9 @@ a { color: inherit; text-decoration: none; }
 }
 
 .site-foot a:hover { color: var(--seal); }
+
+/* 主页每一栏都是满屏的，最后一屏之后再来 6rem 空白就会多出一条突兀的空带 */
+.home .site-foot { margin-top: 0; }
 
 /* --------------------------------------------------------------------------
    通用小件
@@ -163,7 +205,7 @@ a { color: inherit; text-decoration: none; }
   gap: var(--space-5);
   margin: 0 0 var(--space-5);
   font-family: var(--kai);
-  font-size: 0.9375rem;
+  font-size: var(--text-base);
   font-weight: 400;
   letter-spacing: 0.3em;
   color: var(--muted);
@@ -181,7 +223,9 @@ a { color: inherit; text-decoration: none; }
    -------------------------------------------------------------------------- */
 
 @media (max-width: 34rem) {
-  body { font-size: 1rem; }
+  /* 这里原来写死 1rem —— 会自动盖掉 --text-base，是全站唯一"改了 token 也不跟着变"的
+     整段漏点。改成引用变量，窄屏才跟得上全站字号 */
+  body { font-size: var(--text-base); }
 
   .site-head { padding-top: var(--space-7); }
 

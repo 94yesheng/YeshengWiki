@@ -12,9 +12,15 @@ interface Props {
   description?: string;
   /** 照片页那种深色画布，需要整屏铺底 */
   bodyClass?: string;
+  /**
+   * 要不要渲染站名 + 签名那块（`SiteHeader` 的下半段）。
+   * 主页传 false —— 它把站名和签名放大成了自己的第一屏（hero），
+   * 再渲染一遍就会出现两个 <h1>、同一个站名写两遍。顶栏不受影响，永远都在。
+   */
+  masthead?: boolean;
 }
 
-const { title, description, bodyClass } = Astro.props;
+const { title, description, bodyClass, masthead = true } = Astro.props;
 
 const pageTitle = cjkSpacing(
   title ? `${title} —— ${site.title}` : `${site.title} —— ${site.tagline}`
@@ -51,7 +57,7 @@ const canonical = new URL(Astro.url.pathname, Astro.site);
   </head>
 
   <body class={bodyClass}>
-    <SiteHeader />
+    <SiteHeader masthead={masthead} />
     <main>
       <slot />
     </main>

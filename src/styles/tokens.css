@@ -23,15 +23,19 @@
   --song: "Songti SC", SimSun, 宋体, "Noto Serif SC", serif;
   --sans: "Noto Sans SC", "Microsoft YaHei", 微软雅黑, "PingFang SC", system-ui, sans-serif;
 
-  /* ---------- 字号 ---------- */
-  --text-xs:   0.75rem;
-  --text-sm:   0.8125rem;
-  --text-base: 1.0625rem;
-  --text-md:   1.125rem;
-  --text-lg:   1.25rem;
-  --text-xl:   1.5rem;
-  --text-2xl:  1.875rem;
-  --text-3xl:  2.25rem;
+  /* ---------- 字号 ----------
+     2026-10 整体放大约 18%（正文 17px → 20px）。这是一次"全站等比放大"：
+     下面 8 个值一起乘 1.18 再取整，行高全站都是无单位数值、会自己跟着放大。
+     注意：后台 /studio/ 用的也是这套变量，但它在 studio.css 里重新声明了自己的
+     一套旧值 —— 后台的布局是按旧尺寸调的，不跟着一起变大（见 studio.css 开头）。 */
+  --text-xs:   0.875rem;   /* 14px */
+  --text-sm:   0.9375rem;  /* 15px */
+  --text-base: 1.25rem;    /* 20px  正文基准 */
+  --text-md:   1.3125rem;  /* 21px */
+  --text-lg:   1.5rem;     /* 24px */
+  --text-xl:   1.75rem;    /* 28px */
+  --text-2xl:  2.25rem;    /* 36px */
+  --text-3xl:  2.625rem;   /* 42px */
 
   /* ---------- 宽度 ----------
      两个宽度要分开，别用一个管所有页面（踩过）：
@@ -44,10 +48,13 @@
                  所以凡是**成段的中文**（文章正文、自我介绍、照片墙的记录文字）
                  都单独卡在这个宽度上，不能跟着容器一起变宽。
 
-     按 17px 字体、box-sizing:border-box 算，可读字数 ≈ (宽度 − 3rem) ÷ 17px：
-       34rem → 约 29 字（偏窄）   38rem → 约 33 字 ✓   45rem 以上 → 破 40 字 ✗ */
-  --measure: 38rem;
-  --shell:   56rem;
+     按 20px 字体、box-sizing:border-box 算，可读字数 ≈ (宽度 − 3rem) ÷ 20px：
+       38rem → 约 30 字（贴下限）  44rem → 约 35 字 ✓   53rem 以上 → 破 40 字 ✗
+
+     两个宽度都是跟着字号走的：2026-10 字号 +18% 时它们一起从 38/56 加到 44/64。
+     字号变大而容器不变的话，每行字数反而变少、更显拥挤。 */
+  --measure: 44rem;
+  --shell:   64rem;
 
   /* ---------- 间距 ---------- */
   --space-1: 0.25rem;
@@ -61,6 +68,10 @@
   --space-9: 6rem;
 
   --pad-x: 1.5rem;
+
+  /* 顶部导航条的高度。粘顶条要占掉第一屏的一部分，
+     所以主页那些"整屏"的区块用 calc(100vh - var(--nav-h)) 算高度 */
+  --nav-h: 3.25rem;
 
   /* ---------- 动效 ---------- */
   --ease: cubic-bezier(0.22, 0.61, 0.36, 1);
