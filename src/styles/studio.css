@@ -1,6 +1,6 @@
 /* ==========================================================================
    后台（/studio/）的样式
-   刻意沿用站点的设计变量（纸墨朱红、宋体楷体那套），让后台不像"另一个软件"。
+   刻意沿用站点的设计变量（纸墨 + 强调色、宋体楷体那套），让后台不像"另一个软件"。
    变量来自 src/styles/tokens.css —— 页面里先 import 它，这里直接用。
    ========================================================================== */
 
@@ -49,7 +49,7 @@
   letter-spacing: 0.05em;
 }
 .st-bar .st-tag {
-  color: var(--seal);
+  color: var(--accent);
   font-size: var(--text-xs);
   letter-spacing: 0.2em;
 }
@@ -75,15 +75,16 @@
 .st-btn:hover { border-color: var(--muted); }
 .st-btn:disabled { opacity: 0.45; cursor: not-allowed; }
 .st-btn--primary {
-  border-color: var(--seal);
-  background: var(--seal);
+  border-color: var(--accent);
+  background: var(--accent);
   color: #fff;
 }
-.st-btn--primary:hover { border-color: #8e1622; background: #8e1622; }
-.st-btn--ghost { border-color: transparent; color: var(--seal); }
-.st-btn--ghost:hover { border-color: var(--seal); }
-.st-btn--danger { border-color: var(--rule); color: var(--seal); }
-.st-btn--danger:hover { border-color: var(--seal); }
+/* 悬停时的加深色：跟着 --accent 走，写死的话换配色就会对不上 */
+.st-btn--primary:hover { border-color: color-mix(in srgb, var(--accent) 82%, #000); background: color-mix(in srgb, var(--accent) 82%, #000); }
+.st-btn--ghost { border-color: transparent; color: var(--accent); }
+.st-btn--ghost:hover { border-color: var(--accent); }
+.st-btn--danger { border-color: var(--rule); color: var(--accent); }
+.st-btn--danger:hover { border-color: var(--accent); }
 
 /* --------------------------------------------------------------------------
    登录页
@@ -110,7 +111,7 @@
 /* --------------------------------------------------------------------------
    登录 / 解锁页
    做成"画布底色上放一张纸"的样子：纸是白卡片、带一道细边和一点投影，
-   顶部是站点自己的标识（楷体站名 + 朱红"后台"），和站点的视觉语言是一套东西。
+   顶部是站点自己的标识（楷体站名 + 强调色"后台"），和站点的视觉语言是一套东西。
    -------------------------------------------------------------------------- */
 .st-login {
   min-height: 100%;
@@ -126,7 +127,7 @@
   border: 1px solid var(--line);
   border-radius: 4px;
   padding: var(--space-7) var(--space-6) var(--space-6);
-  box-shadow: 0 20px 44px -30px rgba(20, 30, 26, 0.4);
+  box-shadow: 0 20px 44px -30px rgba(20, 20, 19, 0.4);
   animation: st-card-in var(--dur-slow) var(--ease);
 }
 
@@ -155,7 +156,7 @@
   font-size: var(--text-xs);
   letter-spacing: 0.42em;
   text-indent: 0.42em;
-  color: var(--seal);
+  color: var(--accent);
 }
 /* 标识下面一道短横线，和站点的区块标题一个手法 */
 .st-brand::after {
@@ -190,10 +191,10 @@
 .st-error {
   margin: var(--space-4) 0 0;
   padding: 9px 12px;
-  border: 1px solid rgba(166, 27, 41, 0.2);
+  border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
   border-radius: 3px;
-  background: rgba(166, 27, 41, 0.05);
-  color: var(--seal);
+  background: color-mix(in srgb, var(--accent) 7%, transparent);
+  color: var(--accent);
   font-size: var(--text-xs);
   text-align: center;
 }
@@ -265,7 +266,7 @@
   border-bottom: 1px solid transparent;
 }
 .st-nav button:hover { color: var(--ink); }
-.st-nav button[aria-current='true'] { color: var(--seal); border-bottom-color: var(--seal); }
+.st-nav button[aria-current='true'] { color: var(--accent); border-bottom-color: var(--accent); }
 .st-nav .st-n { color: var(--muted); font-size: 0.85em; }
 
 .st-list { list-style: none; margin: 0; padding: 0; }
@@ -283,9 +284,9 @@
   gap: 2px;
 }
 .st-list li button:hover { background: rgba(0, 0, 0, 0.03); }
-.st-list li button[aria-current='true'] { border-left-color: var(--seal); background: rgba(166, 27, 41, 0.04); }
+.st-list li button[aria-current='true'] { border-left-color: var(--accent); background: color-mix(in srgb, var(--accent) 6%, transparent); }
 .st-list .st-line { display: flex; gap: var(--space-2); align-items: baseline; min-width: 0; }
-.st-list .st-date { color: var(--seal); font-size: var(--text-xs); white-space: nowrap; }
+.st-list .st-date { color: var(--accent); font-size: var(--text-xs); white-space: nowrap; }
 .st-list .st-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .st-list .st-sub { color: var(--muted); font-size: var(--text-xs); }
 .st-empty { padding: var(--space-6) var(--space-5); color: var(--muted); font-size: var(--text-xs); }
@@ -294,7 +295,7 @@
    表单
    -------------------------------------------------------------------------- */
 .st-head { padding-bottom: var(--space-4); border-bottom: 1px solid var(--rule); margin-bottom: var(--space-5); }
-.st-head .st-kicker { color: var(--seal); font-size: var(--text-xs); letter-spacing: 0.15em; }
+.st-head .st-kicker { color: var(--accent); font-size: var(--text-xs); letter-spacing: 0.15em; }
 .st-head h2 {
   margin: var(--space-2) 0 var(--space-3);
   font-family: var(--kai);
@@ -320,7 +321,7 @@
   padding: 6px 9px;
 }
 .st-input:focus,
-.st-textarea:focus { outline: 2px solid rgba(166, 27, 41, 0.22); border-color: var(--seal); }
+.st-textarea:focus { outline: 2px solid color-mix(in srgb, var(--accent) 32%, transparent); border-color: var(--accent); }
 .st-textarea { resize: vertical; }
 .st-check { display: flex; align-items: center; gap: var(--space-2); }
 
@@ -336,7 +337,7 @@
   align-items: center;
 }
 .st-chip button { border: 0; background: none; cursor: pointer; color: var(--muted); font: inherit; padding: 0; line-height: 1; }
-.st-chip button:hover { color: var(--seal); }
+.st-chip button:hover { color: var(--accent); }
 
 .st-editor-head {
   display: flex;
@@ -396,7 +397,7 @@
   color: var(--ink);
 }
 .ed-btn:hover { border-color: var(--rule); background: var(--paper); }
-.ed-btn--mark { color: var(--seal); }
+.ed-btn--mark { color: var(--accent); }
 .ed-select {
   font: inherit;
   font-size: var(--text-xs);
@@ -442,7 +443,7 @@
   letter-spacing: 0.5em;
   text-indent: 0.5em;
 }
-.ed-area a { color: var(--seal); }
+.ed-area a { color: var(--accent); }
 .ed-area code {
   font-family: ui-monospace, monospace;
   font-size: 0.9em;
@@ -450,8 +451,8 @@
   padding: 0 3px;
   border-radius: 2px;
 }
-/* 着重色：编辑区和正式文章里都是朱红 */
-.ed-area mark { background: none; color: var(--seal); }
+/* 着重色：编辑区和正式文章里都是同一个强调色 */
+.ed-area mark { background: none; color: var(--accent); }
 
 /* 原始 HTML 块（比如内嵌的播放器）：不可编辑的小标签，碰不到它 */
 .ed-area .raw-block {
@@ -552,7 +553,7 @@
 .st-preview code { font-family: ui-monospace, monospace; font-size: 0.9em; background: rgba(0, 0, 0, 0.04); padding: 0 3px; border-radius: 2px; }
 .st-preview ul,
 .st-preview ol { margin: var(--space-3) 0; padding-left: 1.6em; }
-.st-preview a { color: var(--seal); }
+.st-preview a { color: var(--accent); }
 .st-preview .md-img {
   display: block;
   padding: var(--space-3);
@@ -588,7 +589,7 @@
   font-size: var(--text-xs);
   margin-top: var(--space-3);
 }
-.st-drop.st-over { border-color: var(--seal); color: var(--seal); }
+.st-drop.st-over { border-color: var(--accent); color: var(--accent); }
 .st-pick {
   max-height: 16rem;
   overflow-y: auto;
@@ -632,7 +633,7 @@
   z-index: 40;
 }
 .st-toast.st-show { opacity: 1; }
-.st-toast--err { background: var(--seal); }
+.st-toast--err { background: var(--accent); }
 
 .st-busy {
   position: fixed;

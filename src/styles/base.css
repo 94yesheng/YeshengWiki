@@ -52,7 +52,7 @@ figure { margin: 0; }
 a { color: inherit; text-decoration: none; }
 
 :focus-visible {
-  outline: 2px solid var(--seal);
+  outline: 2px solid var(--accent);
   outline-offset: 3px;
 }
 
@@ -128,8 +128,8 @@ a { color: inherit; text-decoration: none; }
 }
 
 .site-nav a { color: var(--muted); transition: color var(--dur-fast) ease; }
-.site-nav a:hover { color: var(--seal); }
-.site-nav a[aria-current="page"] { color: var(--seal); }
+.site-nav a:hover { color: var(--accent); }
+.site-nav a[aria-current="page"] { color: var(--accent); }
 
 .site-nav .sep {
   color: var(--faint);
@@ -155,7 +155,7 @@ a { color: inherit; text-decoration: none; }
 }
 
 .site-title a { transition: color var(--dur-fast) ease; }
-.site-title a:hover { color: var(--seal); }
+.site-title a:hover { color: var(--accent); }
 
 .site-tagline {
   margin: var(--space-3) 0 0;
@@ -182,7 +182,7 @@ a { color: inherit; text-decoration: none; }
   color: var(--muted);
 }
 
-.site-foot a:hover { color: var(--seal); }
+.site-foot a:hover { color: var(--accent); }
 
 /* 主页每一栏都是满屏的，最后一屏之后再来 6rem 空白就会多出一条突兀的空带 */
 .home .site-foot { margin-top: 0; }
@@ -191,7 +191,7 @@ a { color: inherit; text-decoration: none; }
    通用小件
    -------------------------------------------------------------------------- */
 
-/* 页面的题头：一条短朱红横线 + 标题 */
+/* 页面的题头：一条短强调色横线 + 标题 */
 .section-head {
   display: flex;
   align-items: baseline;

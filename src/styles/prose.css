@@ -22,10 +22,10 @@
   margin: var(--space-6) 0;
 }
 
-/* 着重色：后台编辑器上的「着重」按钮插入的就是 <mark>，这里给它上朱红 */
+/* 着重色：后台编辑器上的「着重」按钮插入的就是 <mark>，这里给它上强调色 */
 .prose mark {
   background: none;
-  color: var(--seal);
+  color: var(--accent);
 }
 
 /* 分隔符：用中文书籍里的「＊ ＊ ＊」，比一条横线更贴题 */
@@ -206,7 +206,7 @@
    -------------------------------------------------------------------------- */
 
 .prose a {
-  background-image: linear-gradient(var(--seal), var(--seal));
+  background-image: linear-gradient(var(--accent), var(--accent));
   background-repeat: no-repeat;
   background-position: 0 100%;
   background-size: 100% 1px;
@@ -214,7 +214,7 @@
 }
 
 .prose a:hover {
-  color: var(--seal);
+  color: var(--accent);
   background-size: 100% 2px;
 }
 

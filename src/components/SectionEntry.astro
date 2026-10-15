@@ -17,7 +17,7 @@ import type { ImageMetadata } from 'astro';
 interface Preview {
   /** 封面；没有就整块变单栏 */
   cover: ImageMetadata | null;
-  /** 时间 —— 全站唯一的彩色（朱红）只留给时间用 */
+  /** 时间 —— 全站唯一的彩色（强调色）只留给时间用 */
   date?: string;
   /** 灰字的补充：标签 / 地点 */
   extra?: string;
@@ -97,7 +97,7 @@ const { href, title, desc, preview } = Astro.props;
     transition: color var(--dur-fast) ease;
   }
 
-  .section-entry:hover .section-entry-title { color: var(--seal); }
+  .section-entry:hover .section-entry-title { color: var(--accent); }
 
   .section-entry-arrow {
     font-size: var(--text-md);
@@ -106,7 +106,7 @@ const { href, title, desc, preview } = Astro.props;
   }
 
   .section-entry:hover .section-entry-arrow {
-    color: var(--seal);
+    color: var(--accent);
     transform: translateX(4px);
   }
 
@@ -169,7 +169,7 @@ const { href, title, desc, preview } = Astro.props;
     letter-spacing: 0.1em;
   }
 
-  .section-entry-meta time { color: var(--seal); }
+  .section-entry-meta time { color: var(--accent); }
   .section-entry-meta .dot { color: var(--faint); }
   .section-entry-meta span { color: var(--muted); }
 
@@ -183,7 +183,7 @@ const { href, title, desc, preview } = Astro.props;
     transition: color var(--dur-fast) var(--ease);
   }
 
-  .section-entry:hover .section-entry-latest { color: var(--seal); }
+  .section-entry:hover .section-entry-latest { color: var(--accent); }
 
   /* 梗概是正文开头那一段，可能偏长 —— 三行之后由浏览器补省略号。
      **不要自己拼 "…"**：换行位置是浏览器算的，手拼的省略号会对不上位置、

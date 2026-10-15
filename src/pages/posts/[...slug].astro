@@ -81,7 +81,7 @@ const tags = post.data.tags;
      正文区要**铺满整个视口宽**，这样左栏才有地方挪到两侧的空白里去 */
   .article { padding-top: var(--space-7); }
 
-  /* 题头：一条短朱红横线领着日期，和列表页的日期栏呼应 */
+  /* 题头：一条短强调色横线领着日期，和列表页的日期栏呼应 */
   .dateline {
     display: flex;
     align-items: center;
@@ -90,14 +90,14 @@ const tags = post.data.tags;
     font-family: var(--kai);
     font-size: var(--text-sm);
     letter-spacing: 0.18em;
-    color: var(--seal);
+    color: var(--accent);
   }
 
   .dateline::before {
     content: "";
     width: 2.25rem;
     height: 1px;
-    background: var(--seal);
+    background: var(--accent);
     flex: none;
   }
 
@@ -110,14 +110,15 @@ const tags = post.data.tags;
     letter-spacing: 0.03em;
   }
 
-  /* ---------- 正文居中，左栏在两侧空白里 ----------
-     三列 1fr / 正文 / 1fr：正文那一列居中（左右两个 1fr 必然相等），
-     左栏塞进左边那片空白、贴着正文的左边停住。这样正文是活动的阅读列，
-     元信息落在它外侧的留白中，不再和正文挤在同一行里。 */
+  /* ---------- 正文与左栏 ----------
+     默认（屏幕不够宽）：左栏和正文并排，都待在 64rem 容器里。
+     屏幕够宽时换成下面那套：正文真正居中、左栏挪到左侧空白里。 */
   .article-body {
     display: grid;
-    grid-template-columns: 1fr minmax(0, 40rem) 1fr;
-    gap: 0 var(--space-8);
+    grid-template-columns: 11rem minmax(0, 1fr);
+    gap: 0 var(--space-7);
+    max-width: var(--shell);
+    margin: 0 auto;
     padding: 0 var(--pad-x);
     /* 必须是 start：左栏拉满整列高度的话，sticky 就没有可粘的余地了 */
     align-items: start;
@@ -125,8 +126,6 @@ const tags = post.data.tags;
 
   .article-rail {
     grid-column: 1;
-    justify-self: end;   /* 贴到左边那片空白的右缘 */
-    width: 15rem;
     position: sticky;
     /* 顶栏是粘顶的，所以左栏要粘在它**下面**，不是 0 */
     top: calc(var(--nav-h) + var(--space-5));
@@ -136,10 +135,40 @@ const tags = post.data.tags;
     padding-top: var(--space-2);
   }
 
-  /* 正文落在中间那一列；min-width:0 免得长代码行把网格撑宽、把居中位置带偏 */
-  .article-body > .prose {
-    grid-column: 2;
-    min-width: 0;
+  /* 宽屏：三列 minmax(0,1fr) / 正文 / minmax(0,1fr) ——
+     左右两个 1fr 必然相等，所以正文那一列是**真正居中**的；
+     左栏 justify-self:end 塞进左边那片空白。
+     【88rem 这个断点是怎么来的】左栏要塞进"屏幕左边留 1.5rem 余地"到
+     "标题左边线再退 2rem 空隙"之间，于是：
+       宽度 ≥ 2 × (左栏 10rem + 标题间隙 2rem + 31.5rem + 1.5rem) = 90rem，
+     再扣掉滚动条那 15px 的实际损耗，落回 88rem。
+     比这窄就放不下（左栏会被挤出屏幕左边裁掉），退回上面那套并排版式。
+     ⚠️ 别把这个断点卡到"刚好放得下"：实测媒体查询的取值宽度和 clientWidth
+     能差一个滚动条（iframe 里差 15px），留点余量。 */
+  @media (min-width: 88rem) {
+    .article-body {
+      grid-template-columns: minmax(0, 1fr) minmax(0, 50rem) minmax(0, 1fr);
+      gap: 0 var(--space-8);
+      max-width: none;
+    }
+
+    .article-rail {
+      grid-column: 1;
+      justify-self: end;   /* 贴到左边那片空白的右缘 */
+      /* 10rem：够放下"技术 · 服务器"这类值；万一有"修订"日期（十个字）会折成两行，
+         可接受。这个宽度直接决定上面的断点，改它要回去重算 */
+      width: 10rem;
+      /* 再往左推 3rem —— 正文加宽到 50rem 之后，左栏右边线本来就只差 1rem
+         就压到标题的左边线了；推 1rem 抵消它、再推 2rem 做空隙，合起来 3rem。
+         用户要的就是"最右端离标题最左端要有一些空隙" */
+      margin-right: 3rem;
+    }
+
+    /* 正文落在中间那一列；min-width:0 免得长代码行把网格撑宽、把居中位置带偏 */
+    .article-body > .prose {
+      grid-column: 2;
+      min-width: 0;
+    }
   }
 
   .rail-block { margin: 0; }
@@ -161,10 +190,19 @@ const tags = post.data.tags;
 
   .article-end {
     margin-top: var(--space-2);
-    padding-top: var(--space-4);
-    border-top: 1px solid var(--rule);
     font-size: var(--text-sm);
     letter-spacing: 0.12em;
+  }
+
+  /* 分割线：不用 border-top（那会撑满整个左栏，比下面的文字宽出一大截），
+     改成一条固定 4rem 的短线，跟"← 全部文章"这几个字同量级 */
+  .article-end::before {
+    content: "";
+    display: block;
+    width: 4rem;
+    height: 1px;
+    margin-bottom: var(--space-4);
+    background: var(--rule);
   }
 
   .article-end a {
@@ -172,7 +210,7 @@ const tags = post.data.tags;
     transition: color var(--dur-fast) ease;
   }
 
-  .article-end a:hover { color: var(--seal); }
+  .article-end a:hover { color: var(--accent); }
 
   /* 窄屏塌成一栏（不专门做手机适配，只是别挤爆） */
   @media (max-width: 34rem) {

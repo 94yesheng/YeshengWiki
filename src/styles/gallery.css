@@ -149,7 +149,7 @@
 
 .photo:hover {
   transform: translateY(-3px);
-  box-shadow: 0 16px 34px -20px rgba(20, 30, 26, 0.45);
+  box-shadow: 0 16px 34px -20px rgba(20, 20, 19, 0.45);
 }
 
 /* 照片本身：铺满所在格子的宽度，高度按原比例走 —— 不裁切也不拉伸 */
