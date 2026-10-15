@@ -154,10 +154,30 @@ async function derive(secret, salt, usage) {
   );
 }
 
-/* ---------- 状态 ---------- */
+/* ----------
+   和本地服务说话。服务停掉之后页面还能开着（它就是个静态页），
+   但一点按钮就会抛那句让人摸不着头脑的 Failed to fetch —— 这里把它翻译成人话。
+   ---------- */
+const SERVER_GONE = '连不上本地服务 —— 它已经停掉了。<br />在项目目录（<code>D:\\blog</code>）里重新运行 ' +
+  '<code>npm run vault</code>，它会起服务并打开一个新页面；那个终端窗口要一直开着。';
+
+async function post(path, body) {
+  let res;
+  try {
+    res = await fetch(path, { method: 'POST', ...(body ? { body } : {}) });
+  } catch {
+    throw new Error('__SERVER_GONE__');
+  }
+  return res.json();
+}
+
+/* ---------- 状态（顺便当作"服务在不在"的探针） ---------- */
 async function loadStatus() {
   try {
-    const info = await (await fetch('/status')).json();
+    const res = await fetch('/status');
+    if (!res.ok) throw new Error('bad status');
+    const info = await res.json();
+    $('status').className = 'status';
     $('status').innerHTML = info.exists
       ? `站点上<b>已有一份密文</b>：<code>${info.path}</code>（${info.bytes} 字节，${info.modified}）<br />
          重新生成会覆盖它 —— 覆盖前记得勾下面的「覆盖已存在的密文」。`
@@ -165,8 +185,12 @@ async function loadStatus() {
          要写的文件：<code>${info.path}</code>`;
     $('overwrite').closest('label').style.display = info.exists ? '' : 'none';
     if (info.logPath) $('logpath').textContent = info.logPath;
-  } catch (e) {
-    $('status').textContent = '读不到状态（本地服务没在跑？）';
+  } catch {
+    // 服务没在跑：页面还开着，但点任何按钮都会失败 —— 说清楚怎么办
+    $('status').className = 'status bad';
+    $('status').innerHTML = SERVER_GONE;
+    $('go').disabled = true;
+    $('go').textContent = '服务没在跑';
   }
 }
 loadStatus();
@@ -210,13 +234,13 @@ ${fenced}
 直接删文件即可 —— 它不参与解密，删了以后照样能用账号密码进后台。
 `;
   try {
-    const res = await fetch('/log', { method: 'POST', body: JSON.stringify({ markdown }) });
-    const out = await res.json();
+    const out = await post('/log', JSON.stringify({ markdown }));
     $('logResult').innerHTML = out.ok
       ? `<div class="status" style="margin-top:14px">✓ 明文记录已写入 <code>${out.path}</code></div>`
       : `<div class="status bad" style="margin-top:14px">记录没写成：${out.error}</div>`;
   } catch (e) {
-    $('logResult').innerHTML = `<div class="status bad" style="margin-top:14px">记录没写成：${e instanceof Error ? e.message : String(e)}</div>`;
+    $('logResult').innerHTML =
+      `<div class="status bad" style="margin-top:14px">${e instanceof Error && e.message === '__SERVER_GONE__' ? SERVER_GONE : '记录没写成：' + String(e)}</div>`;
   }
 }
 
@@ -228,13 +252,13 @@ async function doCommit() {
   btn.textContent = '提交中…';
   out.innerHTML = '';
   try {
-    const res = await fetch('/commit', { method: 'POST' });
-    const data = await res.json();
+    const data = await post('/commit');
     out.innerHTML =
       `<div class="status ${data.ok ? 'ok' : 'bad'}" style="margin-top:12px">${data.note ?? ''}</div>` +
       `<pre>${(data.steps ?? []).map((s) => `$ ${s.cmd}\n${s.out || '(无输出)'}`).join('\n\n')}</pre>`;
   } catch (e) {
-    out.innerHTML = `<div class="status bad" style="margin-top:12px">提交失败：${e instanceof Error ? e.message : String(e)}</div>`;
+    out.innerHTML =
+      `<div class="status bad" style="margin-top:12px">${e instanceof Error && e.message === '__SERVER_GONE__' ? SERVER_GONE : '提交失败：' + String(e)}</div>`;
   } finally {
     btn.disabled = false;
     btn.textContent = '提交并推送';
@@ -267,9 +291,18 @@ $('go').addEventListener('click', async () => {
   // 先在清空之前把"要不要留记录"和三个值记下来 —— 后面清完就取不到了
   const writeLog = $('writelog').checked;
   const box = $('resultBody');
+  const escapeHtml = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  // 服务停掉是一种特殊情况：说清楚怎么办，而不是丢一句 Failed to fetch
+  const showError = (e) => {
+    $('result').style.display = '';
+    const gone = e instanceof Error && e.message === '__SERVER_GONE__';
+    box.innerHTML = gone
+      ? `<div class="status bad">${SERVER_GONE}</div>`
+      : `<div class="status bad">出错了：${escapeHtml(e instanceof Error ? e.message : String(e))}</div>`;
+  };
   const fail = (msg) => {
     $('result').style.display = '';
-    box.innerHTML = `<div class="status bad">${msg}</div>`;
+    box.innerHTML = `<div class="status bad">${escapeHtml(msg)}</div>`;
   };
 
   if (!token) return fail('还没填访问令牌。');
@@ -295,8 +328,7 @@ $('go').addEventListener('click', async () => {
 
     const blob = { v: 2, iterations: ITERATIONS, salt: b64(salt), iv: b64(iv), ct: b64(new Uint8Array(ct)) };
 
-    const res = await fetch('/save', { method: 'POST', body: JSON.stringify(blob) });
-    const saved = await res.json();
+    const saved = await post('/save', JSON.stringify(blob));
     if (!saved.ok) throw new Error(saved.error || '写入失败');
 
     // 生成完就把令牌从页面上擦掉，减少它停留在屏幕上的时间
@@ -332,7 +364,7 @@ git push</pre>
     if (writeLog) await saveLog(token, acct, pw, saved);
     loadStatus();
   } catch (e) {
-    fail('出错了：' + (e instanceof Error ? e.message : String(e)));
+    showError(e);
   } finally {
     btn.disabled = false;
     btn.textContent = '生成并写入';
