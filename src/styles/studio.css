@@ -43,7 +43,9 @@
 }
 .st-bar h1 {
   margin: 0;
-  font-family: var(--kai);
+  /* 这里原来用楷体，但楷体在 Windows 上小于 20px 会发虚（见 tokens.css 的「楷体的下限」），
+     而顶栏标题只有 18px —— 换成界面字体 --sans，跟后台其他地方一致 */
+  font-family: var(--sans);
   font-size: var(--text-md);
   font-weight: 400;
   letter-spacing: 0.05em;
@@ -240,7 +242,8 @@
 .st-col--edit { padding: var(--space-5) var(--space-6) var(--space-7); border-right: 1px solid var(--rule); }
 .st-col--preview { padding: var(--space-5) var(--space-6) var(--space-7); background: var(--canvas); }
 .st-panel-title {
-  font-family: var(--kai);
+  /* 同上：这枚小标只有 12px，配楷体必糊 —— 换成界面字体 --sans */
+  font-family: var(--sans);
   font-size: var(--text-xs);
   font-weight: 400;
   letter-spacing: 0.25em;

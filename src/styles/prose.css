@@ -70,6 +70,9 @@
 }
 
 .prose h4 {
+  /* 正好卡在楷体的下限（20px）。**别再往下调**；也**别往上抬到 23** ——
+     那是 h3 的档，抬上去两个标题就一样大了。要动的话考虑像后台那样换成 --song。
+     （目前没有文章用到 h4，是条备用规则。） */
   font-size: var(--text-base);
   margin: var(--space-5) 0 var(--space-2);
   color: var(--muted);
