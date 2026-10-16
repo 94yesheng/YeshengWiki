@@ -96,7 +96,8 @@ const tags = post.data.tags;
     gap: var(--space-3);
     margin: 0 0 var(--space-4);
     font-family: var(--kai);
-    font-size: var(--text-sm);
+    /* 楷体的下限是 20px（见 tokens.css 的「楷体的下限」），别再往下调 */
+    font-size: var(--text-base);
     letter-spacing: 0.18em;
     color: var(--accent);
   }
@@ -216,7 +217,8 @@ const tags = post.data.tags;
   .rail-v {
     margin: 0;
     font-family: var(--kai);
-    font-size: var(--text-sm);
+    /* 楷体的下限是 20px（见 tokens.css 的「楷体的下限」），别再往下调 */
+    font-size: var(--text-base);
     line-height: 1.7;
     color: var(--muted);
   }
