@@ -17,6 +17,8 @@
  */
 import '../styles/tokens.css';
 import '../styles/studio.css';
+import '../styles/fab.css';   // 右下角悬浮球（和访客侧共用同一份样式）
+import { THEME_BOOT } from '../utils/theme';
 ---
 
 <!doctype html>
@@ -26,6 +28,15 @@ import '../styles/studio.css';
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="robots" content="noindex, nofollow" />
     <title>后台 · 夜笙的小世界</title>
+
+    <!-- 手机浏览器地址栏的颜色；下面的定调脚本会按最终主题改写它 -->
+    <meta name="theme-color" content="#faf9f5" />
+
+    <!--
+      夜间模式的"定调"脚本 —— 必须内联、必须在首次绘制前同步跑完（否则会闪白）。
+      内容与访客页共用同一份（src/utils/theme.ts 的 THEME_BOOT），别在这儿另写一份。
+    -->
+    <script is:inline set:html={THEME_BOOT}></script>
   </head>
   <body class="st-body">
     <header class="st-bar" id="st-bar"></header>

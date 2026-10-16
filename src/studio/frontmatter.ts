@@ -120,7 +120,12 @@ export function buildPost(parsed: ParsedFile, changed: Record<string, unknown>, 
 
   for (const block of parsed.layout) {
     if (Object.prototype.hasOwnProperty.call(changed, block.key)) {
-      lines.push(...serializeField(block.key, changed[block.key]));
+      const value = changed[block.key];
+      // 空串 = 界面上"没填"。这种要**整行删掉**，绝不能写成 `key: ""` ——
+      // 内容集合的 schema 里 `updatedDate: z.coerce.date()` 会把空串直接判非法，
+      // 于是**整站构建失败**（不是"后台少个字段"那么轻）。踩过，pubDate 有同一个洞。
+      if (value === '' || value === undefined || value === null) continue;
+      lines.push(...serializeField(block.key, value));
     } else {
       lines.push(...block.lines);
     }
@@ -129,8 +134,8 @@ export function buildPost(parsed: ParsedFile, changed: Record<string, unknown>, 
   // 新增字段（比如给一篇没标过草稿的文章打开草稿开关）追加在末尾
   for (const [key, value] of Object.entries(changed)) {
     if (originalKeys.has(key)) continue;
-    // 不因为"关闭草稿"就往文件里塞一个 draft: false
-    if (key === 'draft' && value === false) continue;
+    // 不因为「关掉草稿 / 关掉自动记修订」就往文件里塞一行 false
+    if ((key === 'draft' || key === 'autoUpdated') && value === false) continue;
     if (value === '' || value === undefined || value === null) continue;
     lines.push(...serializeField(key, value));
   }
@@ -157,7 +162,8 @@ export function effectiveChanges(parsed: ParsedFile, changed: Record<string, unk
       continue;
     }
     if (value === '' || value === undefined || value === null) continue;
-    if (key === 'draft' && value === false) continue;
+    // 「开关」字段关掉 = 回到缺省，不为它写一行（autoUpdated 同理：缺省就是跟随全局）
+    if ((key === 'draft' || key === 'autoUpdated') && value === false) continue;
     out[key] = value;
   }
   return out;

@@ -21,6 +21,9 @@ export function renderSiteView(): void {
   const nav = Array.isArray(site.nav) ? (site.nav as Json[]) : [];
   const intro = Array.isArray(home.intro) ? (home.intro as string[]) : [];
   const sections = Array.isArray(home.sections) ? (home.sections as Json[]) : [];
+  // 「保存时自动记修订」的全局默认（缺省开）
+  const studio = (data.studio ?? {}) as Json;
+  const studioAuto = studio.autoUpdated !== false;
 
   edit.innerHTML = `
     <div class="st-head">
@@ -37,6 +40,11 @@ export function renderSiteView(): void {
       <div class="st-field"><label>副标题</label><div><input class="st-input" data-p="site.tagline" value="${esc(site.tagline ?? '')}" /></div></div>
       <div class="st-field"><label>作者</label><div><input class="st-input" data-p="site.author" value="${esc(site.author ?? '')}" /></div></div>
       <div class="st-field"><label>描述</label><div><textarea class="st-textarea" data-p="site.description" rows="2">${esc(site.description ?? '')}</textarea></div></div>
+
+      <div class="st-field"><label>写作</label><div class="st-check">
+        <input type="checkbox" id="st-auto-updated" ${studioAuto ? 'checked' : ''} />
+        <span>保存文章时自动记「修订于」（盖成今天）。关掉后只有你自己填过才显示修订时间；单篇文章还能单独覆盖这一项</span>
+      </div></div>
 
       <div class="st-field"><label>主导航</label><div>
         ${nav
@@ -82,6 +90,13 @@ export function renderSiteView(): void {
     target[sub] = value;
     root[k] = target;
   };
+
+  // 复选框要单独绑：下面那个通用处理器读的是 input.value，而复选框的 value 恒为 'on'
+  edit.querySelector<HTMLInputElement>('#st-auto-updated')?.addEventListener('change', (e) => {
+    studio.autoUpdated = (e.target as HTMLInputElement).checked;
+    data.studio = studio;
+    markDirty();
+  });
 
   edit.querySelectorAll<HTMLInputElement>('[data-p]').forEach((input) =>
     input.addEventListener('input', () => {

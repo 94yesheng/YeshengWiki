@@ -182,6 +182,46 @@ function makeTurndown(): TurndownService {
       emphasisNeedsHtml(node, content) ? `<em>${content}</em>` : `*${content}*`,
   });
 
+  /**
+   * 对齐段：正文里写成原始 HTML `<p class="center">…</p>`。
+   *
+   * 为什么这么写而不是加个 Markdown 扩展语法：站点那边本来就有 `.prose > p.center` 这个钩子，
+   * 而 `p` 不在 BLOCK_HTML 白名单里 —— 所以它**不会被抽成不可编辑的原始 HTML 块**，
+   * markdown-it 原样输出、编辑器里是真 DOM、光标能进去改字。
+   *
+   * 【两头必须带空行】否则 markdown-it 会把它当成上一段的**内联** HTML，
+   * 浏览器把段落拆开，保存前后的往返自检会当场误报。
+   *
+   * 【为什么用 node.innerHTML 而不是 turndown 转过的 content】HTML 块里的 Markdown
+   * **不会被解析** —— 里面的 `<strong>粗</strong>` 若转成 `**粗**`，渲染出来就是两个星号。
+   */
+  td.addRule('alignParagraph', {
+    filter: (node) =>
+      node.nodeName === 'P' &&
+      ((node as HTMLElement).classList?.contains('center') || (node as HTMLElement).classList?.contains('right')),
+    replacement: (_content, node) => {
+      const cls = (node as HTMLElement).classList.contains('center') ? 'center' : 'right';
+      return `
+
+<p class="${cls}">${(node as HTMLElement).innerHTML}</p>
+
+`;
+    },
+  });
+
+  /**
+   * 有样式的分隔线：`<hr class="sakura">`。**没类的走上面那个默认选项**（`* * *`），
+   * 所以现有文章的写法一个字节都不会变。
+   */
+  td.addRule('styledHr', {
+    filter: (node) => node.nodeName === 'HR' && ((node as HTMLElement).getAttribute('class') ?? '') !== '',
+    replacement: (_content, node) => `
+
+<hr class="${(node as HTMLElement).getAttribute('class')}">
+
+`,
+  });
+
   // 编辑器里那个"原始 HTML 块"的小标签 → 还原成记号（外面再替换回原文）
   td.addRule('rawBlock', {
     filter: (node) => node.nodeName === 'DIV' && (node as HTMLElement).hasAttribute?.('data-raw'),

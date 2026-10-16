@@ -73,7 +73,7 @@ export function diffFields(
   return changed;
 }
 
-export const POST_FIELDS = ['title', 'pubDate', 'description', 'tags', 'updatedDate', 'draft'] as const;
+export const POST_FIELDS = ['title', 'pubDate', 'description', 'tags', 'updatedDate', 'draft', 'autoUpdated'] as const;
 
 /** 生成新全文（界面在保存前会先拿它和原文比对，判断"其实没改"） */
 export function buildPostText(post: PostEntry, changed: Record<string, unknown>, body: string): string {

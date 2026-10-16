@@ -214,7 +214,8 @@
 .st-login code {
   font-family: ui-monospace, monospace;
   font-size: 0.94em;
-  background: rgba(0, 0, 0, 0.045);
+  /* 行内代码底用站点那个变量（它自带夜间值）—— 写死 rgba 的话深色下看不见 */
+  background: var(--code-bg);
   padding: 1px 4px;
   border-radius: 2px;
   color: var(--ink);
@@ -227,20 +228,37 @@
 .st-body > #st-main { min-height: 0; overflow: hidden; }
 
 .st-app {
+  /* 左栏宽度只在这一个变量里 —— 收起（is-nav-hidden）时把它归零即可 */
+  --nav-w: 17rem;
   display: grid;
-  grid-template-columns: 17rem minmax(0, 1fr) minmax(0, 1fr);
+  grid-template-columns: var(--nav-w) minmax(0, 1fr) minmax(0, 1fr);
   grid-template-rows: minmax(0, 1fr);
   height: 100%;
   min-height: 0;
 }
+
+/* 收起左栏。**光把宽度设 0 不够** —— 那一列还有 1px 右边框和上下 padding，
+   它们照样占地方，要一起清掉。 */
+.st-app.is-nav-hidden { --nav-w: 0rem; }
+.st-app.is-nav-hidden .st-col--nav { border-right: 0; padding: 0; overflow: hidden; }
+
 @media (max-width: 1180px) {
-  .st-app { grid-template-columns: 15rem minmax(0, 1fr); }
+  .st-app { --nav-w: 15rem; }
+  /* 这里只藏**静态预览**那一栏（照片墙 / 友链 / 站点）。
+     文章集合的第三栏是「格式」工具面板（.st-col--tools），窄屏下也得留着 ——
+     工具栏一旦被藏掉，那几档宽度下就完全没有退路了。 */
   .st-col--preview { display: none; }
 }
 .st-col { min-width: 0; overflow-y: auto; overflow-x: hidden; }
 .st-col--nav { border-right: 1px solid var(--rule); padding: var(--space-4) 0; }
 .st-col--edit { padding: var(--space-5) var(--space-6) var(--space-7); border-right: 1px solid var(--rule); }
 .st-col--preview { padding: var(--space-5) var(--space-6) var(--space-7); background: var(--canvas); }
+/* 「格式」面板（文章集合的第三栏）。和预览栏同底色，但**窄屏不隐藏** */
+.st-col--tools { padding: var(--space-5) var(--space-5) var(--space-7); background: var(--canvas); }
+.st-tools-hint { padding: 0 var(--space-3); }
+/* 顶栏最左边那个「收起左栏」的箭头：方形小按钮，只有图标 */
+.st-btn--icon { padding: 4px 9px; line-height: 1; font-size: var(--text-sm); }
+
 .st-panel-title {
   /* 同上：这枚小标只有 12px，配楷体必糊 —— 换成界面字体 --sans */
   font-family: var(--sans);
@@ -286,7 +304,8 @@
   display: grid;
   gap: 2px;
 }
-.st-list li button:hover { background: rgba(0, 0, 0, 0.03); }
+/* 悬停淡底从 --ink 派生：深色下 --ink 是暖白，这块就自己跟着翻过来（写死黑的话深色下看不见） */
+.st-list li button:hover { background: color-mix(in srgb, var(--ink) 4%, transparent); }
 .st-list li button[aria-current='true'] { border-left-color: var(--accent); background: color-mix(in srgb, var(--accent) 6%, transparent); }
 .st-list .st-line { display: flex; gap: var(--space-2); align-items: baseline; min-width: 0; }
 .st-list .st-date { color: var(--accent); font-size: var(--text-xs); white-space: nowrap; }
@@ -314,7 +333,8 @@
 .st-field .st-hint { color: var(--muted); font-size: var(--text-xs); margin-top: 4px; }
 
 .st-input,
-.st-textarea {
+.st-textarea,
+.st-select {
   width: 100%;
   font: inherit;
   color: var(--ink);
@@ -324,7 +344,8 @@
   padding: 6px 9px;
 }
 .st-input:focus,
-.st-textarea:focus { outline: 2px solid color-mix(in srgb, var(--accent) 32%, transparent); border-color: var(--accent); }
+.st-textarea:focus,
+.st-select:focus { outline: 2px solid color-mix(in srgb, var(--accent) 32%, transparent); border-color: var(--accent); }
 .st-textarea { resize: vertical; }
 .st-check { display: flex; align-items: center; gap: var(--space-2); }
 
@@ -361,9 +382,6 @@
   flex-wrap: wrap;
 }
 
-/* 文章页：编辑区占满右侧（预览改成点按钮看真实页面了） */
-.st-app--wide-edit { grid-template-columns: 17rem minmax(0, 1fr); }
-.st-app--wide-edit .st-col--preview { display: none; }
 
 /* --------------------------------------------------------------------------
    所见即所得编辑器
@@ -376,18 +394,17 @@
   overflow: hidden;
 }
 
+/* 工具栏现在住在右侧的「格式」面板里，所以是竖排的：一组一段，各自换行 */
 .ed-bar {
   display: flex;
-  align-items: center;
-  gap: 3px;
-  flex-wrap: wrap;
-  padding: 6px 8px;
-  border-bottom: 1px solid var(--rule);
-  background: #fafaf9;
-  position: sticky;
-  top: 0;
-  z-index: 2;
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--space-4);
+  padding: var(--space-3) var(--space-3) 0;
 }
+.ed-group { display: flex; flex-direction: column; gap: 6px; }
+.ed-glabel { font-size: var(--text-xs); color: var(--faint); letter-spacing: 0.18em; }
+.ed-row { display: flex; flex-wrap: wrap; gap: 4px; }
 
 .ed-btn {
   font: inherit;
@@ -400,18 +417,10 @@
   color: var(--ink);
 }
 .ed-btn:hover { border-color: var(--rule); background: var(--paper); }
+/* 光标所在块决定哪个按钮是"按下"的（段落预设与对齐靠这个反映状态） */
+.ed-btn[aria-pressed='true'] { border-color: var(--accent); color: var(--accent); }
 .ed-btn--mark { color: var(--accent); }
-.ed-select {
-  font: inherit;
-  font-size: var(--text-xs);
-  padding: 3px 6px;
-  border: 1px solid var(--rule);
-  border-radius: 3px;
-  background: var(--paper);
-}
-.ed-sep { width: 1px; height: 1.1rem; background: var(--rule); margin: 0 4px; }
-.ed-grow { margin-left: auto; }
-.ed-count { font-size: var(--text-xs); color: var(--muted); padding-right: 4px; }
+.ed-count { font-size: var(--text-xs); color: var(--muted); text-align: right; padding: 0 var(--space-3) var(--space-2); }
 
 .ed-area {
   min-height: 30rem;
@@ -446,11 +455,37 @@
   letter-spacing: 0.5em;
   text-indent: 0.5em;
 }
+/* 正文里的对齐类：编辑器里就得看得见效果，不然"所见"和"所得"对不上 */
+.ed-area p.center,
+.ed-area p.right { text-indent: 0; margin: var(--space-6) 0; }
+.ed-area p.center { text-align: center; }
+.ed-area p.right { text-align: right; }
+.ed-area p.left { text-indent: 0; }
+
+/* 樱花分隔线（编辑器与右栏预览都要长得和文章页一样，见 prose.css） */
+.ed-area hr.sakura,
+.st-preview hr.sakura {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background:
+    linear-gradient(var(--rule), var(--rule)) left 50% / calc(50% - 2.2em) 1px no-repeat,
+    linear-gradient(var(--rule), var(--rule)) right 50% / calc(50% - 2.2em) 1px no-repeat;
+}
+.ed-area hr.sakura::before,
+.st-preview hr.sakura::before {
+  content: "❀";
+  font-size: var(--text-base);
+  color: var(--sakura);
+  letter-spacing: 0;
+  text-indent: 0;
+}
+
 .ed-area a { color: var(--accent); }
 .ed-area code {
   font-family: ui-monospace, monospace;
   font-size: 0.9em;
-  background: rgba(0, 0, 0, 0.045);
+  background: var(--code-bg);
   padding: 0 3px;
   border-radius: 2px;
 }
@@ -464,7 +499,7 @@
   padding: 10px 12px;
   border: 1px dashed var(--rule);
   border-radius: 3px;
-  background: #fafaf9;
+  background: color-mix(in srgb, var(--ink) 3%, transparent);
   color: var(--muted);
   font-family: var(--sans);
   font-size: var(--text-xs);
@@ -553,7 +588,7 @@
 .st-preview hr { border: 0; text-align: center; margin: var(--space-6) 0; }
 .st-preview hr::before { content: '✳　✳　✳'; color: var(--rule); letter-spacing: 0.4em; }
 .st-preview blockquote { margin: var(--space-4) 0; padding-left: var(--space-4); border-left: 2px solid var(--rule); color: var(--muted); }
-.st-preview code { font-family: ui-monospace, monospace; font-size: 0.9em; background: rgba(0, 0, 0, 0.04); padding: 0 3px; border-radius: 2px; }
+.st-preview code { font-family: ui-monospace, monospace; font-size: 0.9em; background: var(--code-bg); padding: 0 3px; border-radius: 2px; }
 .st-preview ul,
 .st-preview ol { margin: var(--space-3) 0; padding-left: 1.6em; }
 .st-preview a { color: var(--accent); }
@@ -614,7 +649,7 @@
   color: var(--ink);
 }
 .st-pick button:last-child { border-bottom: 0; }
-.st-pick button:hover { background: rgba(0, 0, 0, 0.03); }
+.st-pick button:hover { background: color-mix(in srgb, var(--ink) 4%, transparent); }
 
 /* --------------------------------------------------------------------------
    提示条
@@ -643,7 +678,7 @@
   inset: 0;
   display: grid;
   place-items: center;
-  background: rgba(255, 255, 255, 0.7);
+  background: color-mix(in srgb, var(--paper) 72%, transparent);
   color: var(--muted);
   font-family: var(--kai);
   letter-spacing: 0.2em;

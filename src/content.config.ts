@@ -16,6 +16,12 @@ const posts = defineCollection({
     tags: z.array(z.string()).default([]),
     /** 草稿不会出现在任何列表、RSS 或 sitemap 里 */
     draft: z.boolean().default(false),
+    /**
+     * 后台保存时要不要把「修订于」自动盖成今天。
+     * **缺省 = 跟随全局开关**（site.data.json 的 studio.autoUpdated）；写 true/false 就是这一篇的例外。
+     * 只在你真的动过这个开关时才写进文件，不会每篇都多一行。
+     */
+    autoUpdated: z.boolean().optional(),
   }),
 });
 

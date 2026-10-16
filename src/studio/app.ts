@@ -17,8 +17,9 @@ import { listPhotoFiles, loadLinks, loadPosts, loadSite, loadWalls, saveLinks, s
 import { fetchVault, takeLegacyToken } from './vault';
 import { forgetSession, registerHooks, REPO, state, type Collection } from './state';
 import { $, esc, reportError, setBusy, toast } from './ui';
+import { mountFab, type FabHandle } from './fab';
 import { renderNoVault, renderUnlock } from './views/login';
-import { createNewPost, renderPostView, savePostCurrent } from './views/posts';
+import { createNewPost, previewCurrentPost, renderPostView, savePostCurrent } from './views/posts';
 import { createNewWall, renderWallView, saveWallCurrent } from './views/walls';
 import { renderLinksView } from './views/links';
 import { renderSiteView } from './views/site';
@@ -62,10 +63,53 @@ async function loadAll(): Promise<void> {
 /* --------------------------------------------------------------------------
    顶栏
    -------------------------------------------------------------------------- */
+/* --------------------------------------------------------------------------
+   左栏收起 / 展开
+   -------------------------------------------------------------------------- */
+
+/**
+ * 只记"收起没收起"这一个偏好。放在 localStorage 而不是 site.data.json ——
+ * 它是**这台机器上这个人的界面习惯**，不是站点内容，为它提交一次仓库没道理。
+ */
+const NAV_KEY = 'studio.nav';
+
+function navHidden(): boolean {
+  try {
+    return localStorage.getItem(NAV_KEY) === 'hidden';
+  } catch {
+    return false; // 隐私模式读不了 localStorage —— 那就当没收起
+  }
+}
+
+/** 把 "收起" 这个状态落到界面上（骨架可能刚被重建过，所以每次重画都要调） */
+function applyNavHidden(): void {
+  const app = $('#st-app');
+  if (!app) return;
+  const hidden = navHidden();
+  app.classList.toggle('is-nav-hidden', hidden);
+  const btn = $('#st-nav-toggle');
+  if (!btn) return;
+  btn.setAttribute('aria-pressed', String(hidden));
+  btn.setAttribute('title', hidden ? '展开左栏' : '收起左栏');
+  btn.setAttribute('aria-label', hidden ? '展开左栏' : '收起左栏');
+  const icon = btn.querySelector('[data-nav-icon]');
+  if (icon) icon.textContent = hidden ? '»' : '«';
+}
+
+function setNavHidden(hidden: boolean): void {
+  try {
+    localStorage.setItem(NAV_KEY, hidden ? 'hidden' : 'shown');
+  } catch {
+    /* 记不住就只是记不住，本次照样生效 */
+  }
+  applyNavHidden();
+}
+
 function renderBar(): void {
   const bar = $('#st-bar');
   if (!bar) return;
   bar.innerHTML = `
+    <button class="st-btn st-btn--icon" id="st-nav-toggle" aria-pressed="false" title="收起左栏" aria-label="收起左栏"><span data-nav-icon aria-hidden="true">«</span></button>
     <h1>夜笙的小世界</h1>
     <span class="st-tag">后台</span>
     <span class="st-meta">${esc(REPO.owner)}/${esc(REPO.repo)} · ${esc(REPO.branch)}${
@@ -77,6 +121,7 @@ function renderBar(): void {
     ${state.vault ? '<button class="st-btn" id="st-lock">锁定</button>' : ''}`;
   $('#st-refresh')?.addEventListener('click', () => void loadAll());
   $('#st-save')?.addEventListener('click', () => void saveCurrent());
+  $('#st-nav-toggle')?.addEventListener('click', () => setNavHidden(!navHidden()));
 
   // 锁定：令牌从内存里丢掉，回到解锁页（站点上的密文还在，输账密即可再进）
   // 没有单独的"退出" —— 账密模型下两者是同一件事，本机不留任何凭据要清
@@ -213,14 +258,40 @@ function renderShell(): void {
       </div>
       <div class="st-col st-col--edit" id="st-edit"></div>
       <div class="st-col st-col--preview" id="st-preview"></div>
-    </div>`;
+    </div>
+    <div id="st-fab-host"></div>`;
+
+  // 悬浮球挂在这里而不是 studio.astro 的静态骨架里：登录页会把 #st-main 整体换掉，
+  // 挂外面会在登录页右下角留一个球。
+  const fabHost = $('#st-fab-host');
+  if (fabHost) {
+    fab = mountFab(fabHost, {
+      // 只有「文章」集合、且选了文章时才谈得上预览
+      available: () => state.collection === 'posts' && !!state.draft.post,
+      preview: () => previewCurrentPost(),
+    });
+  }
 }
+
+/** 右下角悬浮球；登录页会连同骨架一起被换掉，所以这里是可空的 */
+let fab: FabHandle | null = null;
 
 function renderApp(): void {
   renderShell();
-  // 文章页不再有右侧预览栏（预览改成点按钮看真实页面），编辑区占满右侧
-  const app = $('#st-app');
-  if (app) app.classList.toggle('st-app--wide-edit', state.collection === 'posts');
+
+  // 第三栏有两种身份：文章集合是「格式」工具面板，其它集合是各自的静态预览。
+  // 分成两个类是因为窄屏那条规则**只藏预览、不藏工具面板** —— 否则工具栏会整个消失、
+  // 窄屏下没有任何退路。
+  const third = $('#st-preview');
+  if (third) {
+    const isPosts = state.collection === 'posts';
+    third.classList.toggle('st-col--tools', isPosts);
+    third.classList.toggle('st-col--preview', !isPosts);
+  }
+
+  // 收栏状态要在这里应用：renderShell 在骨架已存在时直接 return，不会重刷
+  applyNavHidden();
+
   renderBar();
   renderNav();
   renderList();
@@ -228,6 +299,8 @@ function renderApp(): void {
   else if (state.collection === 'walls') renderWallView();
   else if (state.collection === 'links') renderLinksView();
   else renderSiteView();
+
+  fab?.sync();
 }
 
 /* --------------------------------------------------------------------------

@@ -1,0 +1,147 @@
+/* ==========================================================================
+   右下角的圆形悬浮球 —— 用户侧（FloatingMenu.astro）和后台（/studio/）共用
+
+   【为什么单独一个文件】两个页面长得一样，但一个是 Astro 组件（访客页）、
+   一个是 JS 运行时生成的（后台全部由脚本渲染）。样式放这里，两边各 import 一次，
+   免得两份拷贝各自漂移。
+
+   【改成了全局类】原先这些规则写在组件的 <style> 里，Astro 会给它们加
+   `[data-astro-cid-…]` 作用域。搬到公共文件后作用域没了，所以：
+     · 类名保持 `.fab*` 这个前缀，够独特、不会撞；
+     · 裸属性选择器 `[data-main-icon]` 改成 `.fab [data-main-icon]` ——
+       否则它会变成全站生效的规则（一个属性选择器能匹配到页面任何地方）。
+
+   【z-index 必须低于灯箱】照片页的灯箱是 60（gallery.css），这里 50 ——
+   否则看大图时右下角会压着一个圆按钮。
+
+   【图标】用 Unicode 字形 + aria-label，跟站里现有做法一致（灯箱的 × ‹ ›、
+   子页入口的 → 都是这么写的），不引入图标库。
+   ========================================================================== */
+
+.fab {
+  position: fixed;
+  right: var(--space-5);
+  bottom: var(--space-5);
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+/* 收起时不是 display:none 而是 visibility:hidden ——
+   用 display 的话没有过渡可言，弹出动效就做不出来；
+   visibility 同样会把里面的按钮移出可聚焦序列和无障碍树，不影响键盘。
+
+   「从大球里弹出来」的关键是 transform-origin：它不能是这块自己（那会从菜单底边
+   长出来），而要落在**下面那个大球的圆心上** —— 大球高 3.75rem、和这块之间隔着
+   --space-3，所以球心在这块底边往下的 3.75rem/2 + 0.75rem = 2.625rem 处。
+   从那儿放大，看着就像球里挤出来的。 */
+.fab-actions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  transform-origin: 50% calc(100% + 2.625rem);
+  opacity: 0;
+  visibility: hidden;
+  transform: scale(0.2);
+  transition:
+    opacity var(--dur-fast) var(--ease),
+    transform var(--dur-base) var(--ease),
+    visibility 0s linear var(--dur-base); /* 收起时等动画跑完再真正隐藏 */
+}
+
+.fab[data-open] .fab-actions {
+  opacity: 1;
+  visibility: visible;
+  transform: none;
+  transition:
+    opacity var(--dur-fast) var(--ease),
+    transform var(--dur-base) var(--ease),
+    visibility 0s;
+}
+
+/* 中间的十字：**旋转 45° 变成 ×**，不是换一个字符 ——
+   换字是硬切，转过去才有"打开/关上"的连贯感 */
+.fab [data-main-icon] {
+  display: inline-block;
+  transition: transform var(--dur-base) var(--ease);
+}
+
+.fab[data-open] [data-main-icon] {
+  transform: rotate(45deg);
+}
+
+.fab-btn {
+  width: 3.25rem;
+  height: 3.25rem;
+  padding: 0;
+  border: 1px solid var(--rule);
+  border-radius: 50%;
+  background: var(--paper);
+  color: var(--muted);
+  font-family: var(--kai);
+  font-size: var(--text-md);
+  line-height: 1;
+  cursor: pointer;
+  box-shadow: 0 6px 18px -10px rgba(0, 0, 0, 0.45);
+  transition:
+    color var(--dur-fast) ease,
+    background-color var(--dur-fast) ease,
+    border-color var(--dur-fast) ease,
+    transform var(--dur-fast) var(--ease);
+}
+
+/* 不要写 outline: none —— 全站唯一的 focus 样式是 base.css 里的 :focus-visible，
+   清掉它键盘用户就找不到焦点了 */
+.fab-btn:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.fab-btn:active {
+  transform: scale(0.94);
+}
+
+/* 主按钮：白天用强调色（Claude 橙）、图标白。
+   悬停/聚焦时用**偏浅的强调色** —— 跟纯色比一眼能看出按下了 */
+.fab-btn--main {
+  width: 3.75rem;
+  height: 3.75rem;
+  font-size: var(--text-xl); /* 图标比小按钮大一号 */
+  color: #fff;
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.fab-btn--main:hover {
+  color: #fff;
+  border-color: color-mix(in srgb, var(--accent) 74%, #fff);
+  background: color-mix(in srgb, var(--accent) 74%, #fff);
+}
+
+/* 夜间换成浅灰（深底上再用橙会太跳），图标仍是白的；悬停时再浅一档 */
+:root[data-theme='dark'] .fab-btn--main {
+  background: var(--faint);
+  border-color: var(--faint);
+}
+
+:root[data-theme='dark'] .fab-btn--main:hover {
+  background: color-mix(in srgb, var(--faint) 78%, #fff);
+  border-color: color-mix(in srgb, var(--faint) 78%, #fff);
+}
+
+/* 键盘焦点落在主按钮上时也亮一下，和悬停同一套 */
+.fab-btn--main:focus-visible {
+  background: color-mix(in srgb, var(--accent) 74%, #fff);
+  border-color: color-mix(in srgb, var(--accent) 74%, #fff);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fab-btn:active {
+    transform: none;
+  }
+  .fab-actions {
+    transition: none;
+  }
+}

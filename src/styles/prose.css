@@ -16,11 +16,15 @@
   text-indent: 2em;
 }
 
-.prose > p.center {
-  text-align: center;
-  text-indent: 0;
+.prose > p.center,
+.prose > p.right {
+  text-indent: 0;          /* 居中和右对齐都不能留那两个字的首行缩进 */
   margin: var(--space-6) 0;
 }
+.prose > p.center { text-align: center; }
+.prose > p.right { text-align: right; }
+/* 左对齐是默认，不需要类；后台点「左」就是把类去掉 */
+.prose > p.left { text-indent: 0; }
 
 /* 着重色：后台编辑器上的「着重」按钮插入的就是 <mark>，这里给它上强调色 */
 .prose mark {
@@ -41,6 +45,26 @@
   letter-spacing: 0.5em;
   text-indent: 0.5em;
   color: var(--faint);
+}
+
+/* 樱花那档：中间一朵淡粉的花，两侧各一条很淡的线。
+   【为什么用 ❀ 而不是 🌸】后者是彩色 emoji —— 浏览器拿固定的彩色字形渲染它，
+   CSS 的 color 完全管不了，那就谈不上"淡粉"。❀ 是可上色的文字字形。 */
+.prose > hr.sakura {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background:
+    linear-gradient(var(--rule), var(--rule)) left 50% / calc(50% - 2.2em) 1px no-repeat,
+    linear-gradient(var(--rule), var(--rule)) right 50% / calc(50% - 2.2em) 1px no-repeat;
+}
+
+.prose > hr.sakura::before {
+  content: "❀";
+  font-size: var(--text-base);
+  color: var(--sakura);
+  letter-spacing: 0;
+  text-indent: 0;
 }
 
 /* --------------------------------------------------------------------------

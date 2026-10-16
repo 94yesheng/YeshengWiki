@@ -18,10 +18,26 @@ import { createEditor } from '../editor';
 import { normalizeHtml, renderMarkdown } from '../md';
 import { parsePost } from '../frontmatter';
 import { openPreview } from '../preview';
-import { chineseFullDate } from '../../utils/date';
+import { chineseFullDate, isoDate } from '../../utils/date';
 import { $, esc, reportError, setBusy, toast } from '../ui';
 import { state, markDirty, reload, rerender, type Draft } from '../state';
 import type { Github } from '../github';
+
+/**
+ * 全局默认：保存时要不要自动记「修订」。存在 site.data.json 的 studio 块里（跟着仓库走，
+ * 换台机器打开后台也是同一个设定），缺省开。
+ */
+function autoUpdatedDefault(): boolean {
+  const data = state.site?.data as Record<string, unknown> | undefined;
+  const studio = data?.studio as Record<string, unknown> | undefined;
+  return studio?.autoUpdated !== false;
+}
+
+/** 这一篇生效的「自动记修订」：frontmatter 写了就用它，没写就跟随全局 */
+function postAutoUpdated(fields: Record<string, unknown>): boolean {
+  const v = fields.autoUpdated;
+  return typeof v === 'boolean' ? v : autoUpdatedDefault();
+}
 
 function currentPost(): PostEntry | null {
   return state.posts.find((p) => p.id === state.selected) ?? null;
@@ -40,8 +56,11 @@ function postDraft(): Draft['post'] {
         tags: [...(Array.isArray(entry.parsed.data.tags) ? (entry.parsed.data.tags as string[]) : [])],
         updatedDate: entry.parsed.data.updatedDate ? String(entry.parsed.data.updatedDate) : '',
         draft: entry.parsed.data.draft === true,
+        // 三态：undefined = 跟随全局；true / false = 这一篇的例外
+        autoUpdated: typeof entry.parsed.data.autoUpdated === 'boolean' ? entry.parsed.data.autoUpdated : undefined,
       },
       body: entry.parsed.body,
+      dateTouched: false,
     };
   }
   return state.draft.post;
@@ -57,6 +76,11 @@ export function renderPostView(): void {
     return;
   }
 
+  // 「自动记修订」的三个状态：跟随全局 / 始终 / 不记录
+  const globalAuto = autoUpdatedDefault();
+  const curAuto = d.fields.autoUpdated;
+  const autoValue = curAuto === true ? 'on' : curAuto === false ? 'off' : 'follow';
+
   const tags = (d.fields.tags as string[])
     .map((t) => `<span class="st-chip">${esc(t)}<button data-rm="${esc(t)}" title="移除">×</button></span>`)
     .join('');
@@ -66,8 +90,7 @@ export function renderPostView(): void {
       <div class="st-kicker">${esc(d.fields.pubDate || '未填日期')} · ${esc(d.entry.path)}</div>
       <h2 id="st-live-title">${esc(d.fields.title)}</h2>
       <div class="st-head-actions">
-        <button class="st-btn" id="st-preview-btn">按博客的样子预览</button>
-        <span class="st-hint">打开一篇真实文章页，只把正文换成你现在的草稿</span>
+        <span class="st-hint">想看效果：点<b>右下角悬浮球</b>里的「▤」—— 会打开一篇真实文章页，只把正文换成你现在的草稿</span>
       </div>
     </div>
     <div class="st-form">
@@ -89,6 +112,15 @@ export function renderPostView(): void {
       </div></div>
       <div class="st-field"><label>修订于</label><div>
         <input class="st-input" id="st-f-updated" value="${esc(d.fields.updatedDate)}" style="max-width:10rem" placeholder="留空则不显示" />
+        <div class="st-hint">留空就是没有「修订」这一栏；你手动填过之后，自动记录不会再覆盖它</div>
+      </div></div>
+      <div class="st-field"><label>修订记录</label><div>
+        <select class="st-select" id="st-f-auto">
+          <option value="follow"${autoValue === 'follow' ? ' selected' : ''}>跟随全局（当前：${globalAuto ? '自动记录' : '不记录'}）</option>
+          <option value="on"${autoValue === 'on' ? ' selected' : ''}>始终自动记录</option>
+          <option value="off"${autoValue === 'off' ? ' selected' : ''}>这一篇不记录</option>
+        </select>
+        <div class="st-hint">自动记录 = 保存时把「修订于」盖成今天。只有你动过这个选择、且和全局不同，才会写进 frontmatter</div>
       </div></div>
       <div class="st-field"><label>草稿</label><div class="st-check">
         <input type="checkbox" id="st-f-draft" ${d.fields.draft ? 'checked' : ''} />
@@ -118,6 +150,16 @@ export function renderPostView(): void {
   bindInput('#st-f-date', 'pubDate');
   bindInput('#st-f-desc', 'description');
   bindInput('#st-f-updated', 'updatedDate');
+  // 用户亲手动过「修订于」就留个痕：自动记录要给它让位，否则手填的日期会被今天的日期顶掉
+  $('#st-f-updated')?.addEventListener('input', () => {
+    d.dateTouched = true;
+  });
+  $<HTMLSelectElement>('#st-f-auto')?.addEventListener('change', (e) => {
+    const v = (e.target as HTMLSelectElement).value;
+    // 选「跟随」就把字段清掉（= 回到缺省，不会在文件里留一行）
+    d.fields.autoUpdated = v === 'follow' ? undefined : v === 'on';
+    markDirty();
+  });
 
   $<HTMLInputElement>('#st-f-draft')?.addEventListener('change', (e) => {
     d.fields.draft = (e.target as HTMLInputElement).checked;
@@ -143,29 +185,44 @@ export function renderPostView(): void {
   );
   $('#st-del-post')?.addEventListener('click', () => void removePost(d.entry));
 
-  // 预览：取一篇真实文章页当外壳，正文换成当前草稿
-  $('#st-preview-btn')?.addEventListener('click', () => {
-    const pubDate = String(d.fields.pubDate ?? '');
-    const when = /^\d{4}-\d{2}-\d{2}$/.test(pubDate) ? new Date(`${pubDate}T00:00:00`) : null;
-    void openPreview({
-      id: d.entry.id,
-      title: String(d.fields.title ?? ''),
-      dateText: when ? chineseFullDate(when) : '',
-      bodyMarkdown: d.editor?.getMarkdown() ?? d.body,
-      fallbackId: state.posts.find((p) => p.id !== d.entry.id)?.id ?? '',
-    });
-  });
-
-  // 挂上所见即所得编辑器（正文不再裸露 Markdown）
-  const host = $('#ed-host');
-  if (host) {
-    d.editor = createEditor(
-      host,
-      d.body,
-      () => markDirty(),
-      () => `相对路径，例如 ../../assets/posts/${d.entry.id}-01.png\n（图片文件放在 src/assets/posts/ 下）`
-    );
+  // 右侧那一栏 = 「格式」面板：工具栏搬进来了；预览改由右下角的悬浮球打开
+  const panel = $('#st-preview');
+  if (panel) {
+    panel.innerHTML = `<div class="st-panel-title">格式</div><div id="ed-bar-host"></div>
+      <p class="st-hint st-tools-hint">选中文字再点按钮。段落预设、字形、对齐、列表、分隔线都在这里。</p>`;
   }
+
+  // 挂上所见即所得编辑器（正文不再裸露 Markdown）。
+  // 已经有编辑器就**搬到新宿主里**，不要用 d.body 重建 —— 那会丢掉还没保存的正文改动
+  // （增删标签会重画整个表单，踩过）。
+  const areaHost = $('#ed-host');
+  const barHost = $('#ed-bar-host');
+  if (areaHost && barHost) {
+    if (d.editor) d.editor.remount(areaHost, barHost);
+    else
+      d.editor = createEditor(
+        areaHost,
+        barHost,
+        d.body,
+        () => markDirty(),
+        () => `相对路径，例如 ../../assets/posts/${d.entry.id}-01.png\n（图片文件放在 src/assets/posts/ 下）`
+      );
+  }
+}
+
+/** 打开「按博客的样子预览」当前草稿 —— 由右下角的悬浮球调用（原来那个按钮收进去了） */
+export function previewCurrentPost(): void {
+  const d = postDraft();
+  if (!d) return;
+  const pubDate = String(d.fields.pubDate ?? '');
+  const when = /^\d{4}-\d{2}-\d{2}$/.test(pubDate) ? new Date(`${pubDate}T00:00:00`) : null;
+  void openPreview({
+    id: d.entry.id,
+    title: String(d.fields.title ?? ''),
+    dateText: when ? chineseFullDate(when) : '',
+    bodyMarkdown: d.editor?.getMarkdown() ?? d.body,
+    fallbackId: state.posts.find((p) => p.id !== d.entry.id)?.id ?? '',
+  });
 }
 
 export async function createNewPost(): Promise<void> {
@@ -219,7 +276,23 @@ async function removePost(entry: PostEntry): Promise<void> {
 export async function savePostCurrent(gh: Github): Promise<void> {
   const d = state.draft.post;
   if (!d) return;
-  const changed = diffFields(d.entry.parsed.data, d.fields, [...POST_FIELDS]);
+
+  // 先挡一道：这几样写坏了不是"后台难看"，而是**整站构建失败**（内容集合校验不过），
+  // 所以宁可在这儿拦住、让人当场改。空字段在 buildPost 里会整行删掉 → 必填项就没了。
+  const dateOk = (v: unknown) => /^\d{4}-\d{2}-\d{2}$/.test(String(v ?? ''));
+  if (!String(d.fields.title ?? '').trim()) {
+    toast('标题不能为空 —— 空标题写下去，站点会构建失败', true);
+    return;
+  }
+  if (!dateOk(d.fields.pubDate)) {
+    toast('「日期」要写成 2026-03-09 这样（它决定文章在时间轴上的位置）', true);
+    return;
+  }
+  if (d.fields.updatedDate && !dateOk(d.fields.updatedDate)) {
+    toast('「修订于」要么留空，要么写成 2026-03-09 这样', true);
+    return;
+  }
+
   const body = d.editor?.getMarkdown() ?? d.body;
 
   // 正文"其实没改"的判据：两边各自渲染成 HTML，语义比较。
@@ -237,10 +310,26 @@ export async function savePostCurrent(gh: Github): Promise<void> {
     }
   }
 
-  if (Object.keys(changed).length === 0 && bodySame) {
+  // 「除了修订时间以外，这次有没有实质改动」。
+  // 单独手填/清空「修订于」本身算一次改动（要能存下去），但它**不该**反过来被当成
+  // "又改了一版" —— 否则你手填的日期存一次就被今天顶掉。
+  const changedExceptDate = diffFields(d.entry.parsed.data, d.fields, [...POST_FIELDS]);
+  const manualDate = d.dateTouched === true && 'updatedDate' in changedExceptDate;
+  delete changedExceptDate.updatedDate;
+  const hasRealEdit = Object.keys(changedExceptDate).length > 0 || !bodySame || manualDate;
+
+  if (!hasRealEdit) {
     toast('没有任何改动');
     return;
   }
+
+  // 开了自动记录、这次确实改了东西、而且你没亲手填过「修订于」→ 盖成今天。
+  // 用 isoDate（本地日期）而不是 toISOString —— 后者是 UTC，UTC+8 的凌晨会写成前一天。
+  if (!d.dateTouched && postAutoUpdated(d.fields)) {
+    d.fields.updatedDate = isoDate(new Date());
+  }
+
+  const changed = diffFields(d.entry.parsed.data, d.fields, [...POST_FIELDS]);
   await savePost(gh, d.entry, changed, bodySame ? d.body : body);
   await refreshPost(d.entry.id);
 }
@@ -266,8 +355,10 @@ async function refreshPost(id: string): Promise<void> {
       tags: [...(Array.isArray(parsed.data.tags) ? (parsed.data.tags as string[]) : [])],
       updatedDate: parsed.data.updatedDate ? String(parsed.data.updatedDate) : '',
       draft: parsed.data.draft === true,
+      autoUpdated: typeof parsed.data.autoUpdated === 'boolean' ? parsed.data.autoUpdated : undefined,
     },
     body: parsed.body,
+    dateTouched: false,
   };
   rerender();
 }

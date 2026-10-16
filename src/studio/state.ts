@@ -25,7 +25,14 @@ export type Collection = 'posts' | 'walls' | 'links' | 'site';
 
 export interface Draft {
   /** 文章：字段缓冲 + 正文缓冲（正文的当前值由编辑器持有，body 是打开时的原文） */
-  post?: { entry: PostEntry; fields: Record<string, unknown>; body: string; editor?: EditorHandle };
+  post?: {
+    entry: PostEntry;
+    fields: Record<string, unknown>;
+    body: string;
+    editor?: EditorHandle;
+    /** 用户有没有亲手动过「修订于」—— 动过就让位，自动记录不覆盖它 */
+    dateTouched?: boolean;
+  };
   wall?: WallEntry;
   links?: LinksFile;
   site?: Record<string, unknown>;
