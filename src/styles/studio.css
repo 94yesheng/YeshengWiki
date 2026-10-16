@@ -43,10 +43,10 @@
 }
 .st-bar h1 {
   margin: 0;
-  /* 这里原来用楷体，但楷体在 Windows 上小于 20px 会发虚（见 tokens.css 的「楷体的下限」），
-     而顶栏标题只有 18px —— 换成界面字体 --sans，跟后台其他地方一致 */
-  font-family: var(--sans);
-  font-size: var(--text-md);
+  /* 楷体回来了 —— 但楷体在 Windows 上低于 20px 会发虚（tokens.css 的「楷体的下限」），
+     所以字号跟着抬到 20px（--text-lg），两条规则同时满足 */
+  font-family: var(--kai);
+  font-size: var(--text-lg);
   font-weight: 400;
   letter-spacing: 0.05em;
 }
@@ -227,23 +227,25 @@
 /* 撑满顶栏以下的高度：不然三栏会缩到内容高度，页面下半截空着 */
 .st-body > #st-main { min-height: 0; overflow: hidden; }
 
-/* 左右两栏的宽度各走一个自定义属性。**先注册成 <length>，它们才可过渡** ——
-   没注册的 custom property 是"字符串"，transition 不认，收起/展开会瞬间跳变。 */
-@property --nav-w { syntax: '<length>'; inherits: true; initial-value: 17rem; }
-@property --tools-w { syntax: '<length>'; inherits: true; initial-value: 17rem; }
-
 .st-app {
   --nav-w: 17rem;
   --tools-w: 17rem;   /* 右栏和左栏差不多宽：它只是排按钮，没必要占半个屏 */
+  /* **展开时的设计宽度，不参与动画** —— 里面那层（.st-col-inner）用它撑住。
+     动画只动 --nav-w / --tools-w，内容因此是被"裁掉"的，而不是被"挤扁"的：
+     挤扁会让里面每一行都重新折行，看着像在蠕动（这就是上一版不满意的原因）。 */
+  --nav-expanded: 17rem;
+  --tools-expanded: 17rem;
   position: relative; /* 两个收放把手绝对定位挂在这上面，列收到 0 宽也还在 */
   display: grid;
   grid-template-columns: var(--nav-w) minmax(0, 1fr) var(--tools-w);
   grid-template-rows: minmax(0, 1fr);
   height: 100%;
   min-height: 0;
-  transition:
-    --nav-w var(--dur-base) var(--ease),
-    --tools-w var(--dur-base) var(--ease);
+  /* **直接过渡 grid-template-columns**。
+     本来想用 @property 注册 --nav-w 再过渡那个变量，但那套在这条链路上实测没注册上
+     （构建产物里规则在、浏览器就是不认，computed 还是原样的 token）—— 与其赌它，
+     不如过渡真正决定布局的那个属性：列轨列表是可插值的。 */
+  transition: grid-template-columns var(--dur-base) var(--ease);
 }
 
 /* 收起某一栏。**光把宽度设 0 不够** —— 那一列还有 1px 边框，会留在原地一条线。 */
@@ -252,8 +254,10 @@
 .st-app.is-nav-hidden .st-col--nav { border-right-color: transparent; }
 
 /* 收起来时把内容淡掉并挡掉点击 —— 不然它只是被"压扁"，还能 Tab 进去 */
+/* 内容淡出和列宽用**同一个时长** —— 上一版淡出只有 200ms、列宽 320ms，
+   内容先没了、框还在缩，两件事对不上 */
 .st-col--nav,
-.st-col--tools { transition: opacity var(--dur-fast) var(--ease); }
+.st-col--tools { transition: opacity var(--dur-base) var(--ease); }
 .st-app.is-nav-hidden .st-col--nav,
 .st-app.is-tools-hidden .st-col--tools { opacity: 0; pointer-events: none; }
 
@@ -312,16 +316,26 @@
 .st-col-handle:hover { color: var(--accent); border-color: var(--accent); }
 
 @media (max-width: 1180px) {
-  .st-app { --nav-w: 15rem; --tools-w: 15rem; }
+  .st-app { --nav-w: 15rem; --tools-w: 15rem; --nav-expanded: 15rem; --tools-expanded: 15rem; }
   /* 这里只藏**静态预览**那一栏（照片墙 / 友链 / 站点）。
      文章集合的第三栏是「格式」工具面板（.st-col--tools），窄屏下也得留着 ——
      工具栏一旦被藏掉，那几档宽度下就完全没有退路了。 */
   .st-col--preview { display: none; }
 }
 .st-col { min-width: 0; overflow-y: auto; overflow-x: hidden; }
+
+/* 列里面的那一层：**宽度固定成展开时那一档**。列在收起动画里变窄时，
+   它是被横向裁掉（.st-col 的 overflow-x: hidden），而不是重新排版。
+   这一层由 app.ts / views 渲染内容时套上。 */
+.st-col-inner { width: var(--col-expanded, 100%); }
 /* 左右两栏同底色（--canvas）—— 中间那栏仍是 --paper 的纸色，
    这样"两边的工具区"和"中间的正文"一眼分得开 */
-.st-col--nav { border-right: 1px solid var(--rule); padding: var(--space-4) 0; background: var(--canvas); }
+.st-col--nav {
+  border-right: 1px solid var(--rule);
+  padding: var(--space-4) 0;
+  background: var(--canvas);
+  --col-expanded: var(--nav-expanded);
+}
 .st-col--edit { padding: var(--space-5) var(--space-6) var(--space-7); border-right: 1px solid var(--rule); }
 
 /* 正文那一栏**不画滚动条** —— 三栏各有一条竖条并排，中间那根最碍眼。
@@ -330,11 +344,17 @@
 .st-col--edit::-webkit-scrollbar { width: 0; height: 0; }
 .st-col--preview { padding: var(--space-5) var(--space-6) var(--space-7); background: var(--canvas); }
 /* 「格式」面板（文章集合的第三栏）。和预览栏同底色，但**窄屏不隐藏** */
-.st-col--tools { padding: var(--space-5) var(--space-4) var(--space-7); background: var(--canvas); }
+.st-col--tools {
+  /* 横向 padding 挪到内容层上 —— 列本身只留纵向的，好让内容层宽度正好等于设计宽度 */
+  padding: var(--space-5) 0 var(--space-7);
+  background: var(--canvas);
+  --col-expanded: var(--tools-expanded);
+}
+.st-col--tools .st-col-inner { padding: 0 var(--space-4); }
 .st-panel-title {
-  /* 同上：这枚小标只有 12px，配楷体必糊 —— 换成界面字体 --sans */
-  font-family: var(--sans);
-  font-size: var(--text-xs);
+  /* 同样：换回楷体，字号抬到 20px 以满足「楷体的下限」 */
+  font-family: var(--kai);
+  font-size: var(--text-lg);
   font-weight: 400;
   letter-spacing: 0.25em;
   color: var(--muted);
@@ -494,9 +514,10 @@
   /* 和左栏那些入口同号 —— 两边的"选项字号"一致，看着才是一套 */
   font-size: var(--text-base);
   padding: 5px 11px;
-  border: 1px solid var(--rule);
+  /* **默认不画框**：十几个白框铺在灰底上太碎。悬停/选中时才浮出来。 */
+  border: 1px solid transparent;
   border-radius: 5px;
-  background: var(--paper);
+  background: none;
   cursor: pointer;
   color: var(--ink);
   transition:
@@ -504,7 +525,7 @@
     border-color var(--dur-fast) ease,
     background-color var(--dur-fast) ease;
 }
-.ed-btn:hover { border-color: var(--accent); color: var(--accent); }
+.ed-btn:hover { border-color: var(--rule); background: var(--paper); }
 /* 光标所在块决定哪个按钮是"按下"的（段落预设与对齐靠这个反映状态） */
 .ed-btn[aria-pressed='true'] {
   border-color: var(--accent);
@@ -512,6 +533,39 @@
   background: color-mix(in srgb, var(--accent) 8%, transparent);
 }
 .ed-btn--mark { color: var(--accent); }
+/* 图标按钮：正方形，只有那个图标 */
+.ed-btn--icon { display: grid; place-items: center; width: 2.2rem; height: 2.2rem; padding: 0; }
+/* 分隔线那组：**竖着排**，每个按钮里画的就是那条线真实的样子（同一套 CSS，去掉外边距） */
+.ed-row--hr { flex-direction: column; align-items: stretch; gap: 2px; }
+.ed-hr-btn { display: flex; justify-content: center; padding: 8px 10px; }
+.ed-hr-preview {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  font-size: var(--text-base);
+}
+.ed-hr-preview--star::before {
+  content: "＊ ＊ ＊";
+  color: var(--faint);
+  font-size: var(--text-sm);
+  letter-spacing: 0.5em;
+  text-indent: 0.5em;
+}
+.ed-hr-preview--sakura {
+  background:
+    linear-gradient(var(--rule), var(--rule)) left 50% / calc(50% - 2.2em) 1px no-repeat,
+    linear-gradient(var(--rule), var(--rule)) right 50% / calc(50% - 2.2em) 1px no-repeat;
+}
+.ed-hr-preview--sakura::before {
+  content: "";
+  width: 1.05em;
+  height: 1.05em;
+  background-color: var(--sakura);
+  -webkit-mask: var(--sakura-mask) center / contain no-repeat;
+  mask: var(--sakura-mask) center / contain no-repeat;
+}
+
 .ed-count {
   font-size: var(--text-sm);
   color: var(--muted);
@@ -573,17 +627,14 @@
     linear-gradient(var(--rule), var(--rule)) left 50% / calc(50% - 2.2em) 1px no-repeat,
     linear-gradient(var(--rule), var(--rule)) right 50% / calc(50% - 2.2em) 1px no-repeat;
 }
-/* 花用**内联 SVG 当蒙版**，不用字体字形：字形长什么样、朝哪个方向，全看系统拿哪个
-   字体来兜底（实机上就画歪了），而蒙版是我们自己画的，永远正着、跨平台一致。
-   想换颜色只改 background-color。 */
 .ed-area hr.sakura::before,
 .st-preview hr.sakura::before {
   content: "";
   width: 1.05em;
   height: 1.05em;
   background-color: var(--sakura);
-  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cg fill='black'%3E%3Cg transform='translate(12 12)'%3E%3Cellipse cx='0' cy='-6.2' rx='3.1' ry='4.9'/%3E%3Cellipse cx='0' cy='-6.2' rx='3.1' ry='4.9' transform='rotate(72)'/%3E%3Cellipse cx='0' cy='-6.2' rx='3.1' ry='4.9' transform='rotate(144)'/%3E%3Cellipse cx='0' cy='-6.2' rx='3.1' ry='4.9' transform='rotate(216)'/%3E%3Cellipse cx='0' cy='-6.2' rx='3.1' ry='4.9' transform='rotate(288)'/%3E%3C/g%3E%3Ccircle cx='12' cy='12' r='1.6'/%3E%3C/g%3E%3C/svg%3E") center / contain no-repeat;
-  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cg fill='black'%3E%3Cg transform='translate(12 12)'%3E%3Cellipse cx='0' cy='-6.2' rx='3.1' ry='4.9'/%3E%3Cellipse cx='0' cy='-6.2' rx='3.1' ry='4.9' transform='rotate(72)'/%3E%3Cellipse cx='0' cy='-6.2' rx='3.1' ry='4.9' transform='rotate(144)'/%3E%3Cellipse cx='0' cy='-6.2' rx='3.1' ry='4.9' transform='rotate(216)'/%3E%3Cellipse cx='0' cy='-6.2' rx='3.1' ry='4.9' transform='rotate(288)'/%3E%3C/g%3E%3Ccircle cx='12' cy='12' r='1.6'/%3E%3C/g%3E%3C/svg%3E") center / contain no-repeat;
+  -webkit-mask: var(--sakura-mask) center / contain no-repeat;
+  mask: var(--sakura-mask) center / contain no-repeat;
   letter-spacing: 0;
   text-indent: 0;
 }

@@ -268,9 +268,11 @@ function renderShell(): void {
   main.innerHTML = `
     <div class="st-app" id="st-app">
       <div class="st-col st-col--nav">
-        <nav class="st-nav" id="st-nav"></nav>
-        <div class="st-panel-title" id="st-list-title"></div>
-        <div id="st-list"></div>
+        <div class="st-col-inner">
+          <nav class="st-nav" id="st-nav"></nav>
+          <div class="st-panel-title" id="st-list-title"></div>
+          <div id="st-list"></div>
+        </div>
       </div>
       <div class="st-col st-col--edit" id="st-edit"></div>
       <div class="st-col st-col--preview" id="st-preview"></div>

@@ -51,11 +51,27 @@ const BLOCK_PRESETS = [
 /**
  * 分隔线的样式。**无类的那档是"默认"**，与现有文章的 `* * *` 完全兼容 ——
  * 老文章一个字节都不会变。
+ *
+ * 按钮里不写字，而是画**它真实的样子**（`preview` 那个类用的就是正文那套 CSS），
+ * 所以挑的时候看到什么、插进去就是什么。
  */
 const HR_STYLES = [
-  { cls: '', label: '＊ ＊ ＊', title: '星号（默认）' },
-  { cls: 'sakura', label: '❀', title: '樱花' },
+  { cls: '', preview: 'ed-hr-preview--star', title: '星号（默认）' },
+  { cls: 'sakura', preview: 'ed-hr-preview--sakura', title: '樱花' },
 ];
+
+/** 对齐按钮的图标：四条线按左/中/右排（比"左/中/右"三个字一眼看得懂） */
+const ALIGN_ICONS: Record<string, string> = {
+  left: '<path d="M1 3h12M1 6.5h8M1 10h10"/>',
+  center: '<path d="M1 3h12M3 6.5h8M2 10h10"/>',
+  right: '<path d="M1 3h12M5 6.5h8M3 10h10"/>',
+};
+
+const ALIGN_BUTTONS = [
+  { kind: 'left', title: '左对齐（默认）' },
+  { kind: 'center', title: '居中' },
+  { kind: 'right', title: '右对齐' },
+] as const;
 
 export function createEditor(
   areaHost: HTMLElement,
@@ -93,9 +109,12 @@ export function createEditor(
       <div class="ed-group">
         <span class="ed-glabel">对齐</span>
         <div class="ed-row">
-          <button class="ed-btn" data-align="left" title="左对齐（默认）">左</button>
-          <button class="ed-btn" data-align="center" title="居中">中</button>
-          <button class="ed-btn" data-align="right" title="右对齐">右</button>
+          ${ALIGN_BUTTONS.map(
+            (a) => `<button class="ed-btn ed-btn--icon" data-align="${a.kind}" title="${a.title}" aria-label="${a.title}">
+              <svg viewBox="0 0 14 14" width="14" height="14" aria-hidden="true" fill="none"
+                   stroke="currentColor" stroke-width="1.6" stroke-linecap="round">${ALIGN_ICONS[a.kind]}</svg>
+            </button>`
+          ).join('')}
         </div>
       </div>
 
@@ -111,9 +130,11 @@ export function createEditor(
 
       <div class="ed-group">
         <span class="ed-glabel">分隔线</span>
-        <div class="ed-row">
+        <div class="ed-row ed-row--hr">
           ${HR_STYLES.map(
-            (h) => `<button class="ed-btn" data-hr="${h.cls}" title="${h.title}">${h.label}</button>`
+            (h) => `<button class="ed-btn ed-hr-btn" data-hr="${h.cls}" title="${h.title}" aria-label="${h.title}">
+              <span class="ed-hr-preview ${h.preview}"></span>
+            </button>`
           ).join('')}
         </div>
       </div>

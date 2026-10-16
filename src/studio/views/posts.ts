@@ -189,7 +189,7 @@ export function renderPostView(): void {
   const panel = $('#st-preview');
   if (panel) {
     // 面板里只放工具栏 —— 标题和底部提示都去掉了（分组标签自己就是引导）
-    panel.innerHTML = `<div id="ed-bar-host"></div>`;
+    panel.innerHTML = `<div class="st-col-inner"><div id="ed-bar-host"></div></div>`;
   }
 
   // 挂上所见即所得编辑器（正文不再裸露 Markdown）。
