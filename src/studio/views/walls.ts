@@ -2,16 +2,16 @@
  * 照片墙视图 —— 一面墙的字段、照片清单、上传与移除，以及"保存这一面墙"。
  */
 import {
-  createWall,
-  deleteWall,
   draftId,
+  newWallEntry,
   prepareImage,
   saveWall,
   uploadPhoto,
+  wallToJson,
   type WallEntry,
 } from '../content';
 import { $, esc, reportError, setBusy, toast } from '../ui';
-import { state, markDirty, reload, rerender } from '../state';
+import { isStagedNew, markDirty, rerender, settleBeforeLeaving, stageAdd, stageRemove, state } from '../state';
 import { isoDate } from '../../utils/date';
 import type { Github } from '../github';
 
@@ -122,7 +122,7 @@ export function renderWallView(): void {
     })
   );
 
-  $('#st-del-wall')?.addEventListener('click', () => void removeWall(w));
+  $('#st-del-wall')?.addEventListener('click', () => removeWall(w));
   $('#st-pick-file')?.addEventListener('click', () => $<HTMLInputElement>('#st-file')?.click());
   $('#st-file')?.addEventListener('change', (e) => {
     const files = (e.target as HTMLInputElement).files;
@@ -206,64 +206,84 @@ async function uploadImages(w: WallEntry, files: File[]): Promise<void> {
 }
 
 /**
- * 新建照片墙：和新建文章同一套 —— 不问名字，直接出来一面空墙（标题「草稿」、日期今天）。
+ * 新建照片墙：和新建文章同一套 —— 不问名字、**也不碰仓库**，直接出来一面空墙
+ * （标题「草稿」、日期今天），落在列表最上面滑开。等点「保存」才写进仓库。
+ *
  * 日期一定要给：照片墙是按日期倒序排的，**没有日期的会沉到最后**，那就看不见刚加的这一面了。
  */
-export async function createNewWall(): Promise<void> {
-  const gh = state.gh;
-  if (!gh) return;
+export function createNewWall(): void {
+  if (!settleBeforeLeaving()) return; // 换掉当前这面墙之前先收尾（见 posts.ts 里同一套说明）
+
   const id = draftId((x) => state.walls.some((w) => w.id === x));
-  const wall: WallEntry = {
-    path: `src/content/photos/${id}.json`,
-    sha: '',
-    id,
-    title: '草稿',
-    date: isoDate(new Date()),
-    place: '',
-    note: '',
-    photos: [],
-    extra: {},
-  };
-  setBusy(true, '创建中…');
-  try {
-    await createWall(gh, id, wall);
-    await reload();
-    state.selected = id;
-    state.justAdded = id; // 让它滑出来（画完就清）
-    rerender();
-    state.justAdded = null;
-    toast('已新建一面空墙 —— 往里面拖图片就行');
-  } catch (e) {
-    reportError(e);
-  } finally {
-    setBusy(false);
-  }
+  const wall = newWallEntry(id, isoDate(new Date()));
+  state.walls.unshift(wall); // 日期是今天，本来就排在最前面
+  stageAdd(wall);
+  state.selected = id;
+  state.draft = {};
+  markDirty();
+
+  state.justAdded = id; // 让它滑出来（rerender 是同步的，画完就清）
+  rerender();
+  state.justAdded = null;
+
+  toast('已加了一面空墙 —— 还没进仓库，点右上角「保存」才写进去');
 }
 
-async function removeWall(wall: WallEntry): Promise<void> {
-  const gh = state.gh;
-  if (!gh) return;
-  if (!confirm(`确定删除照片墙「${wall.title || wall.id}」？\n\n只删这个数据文件，照片本身不删。`)) return;
-  setBusy(true, '删除中…');
-  try {
-    await deleteWall(gh, wall);
+/** 删除：同样只记一笔，点「保存」才真从仓库删。刚加还没写下去的那面，等于撤销新增。 */
+function removeWall(wall: WallEntry): void {
+  if (isStagedNew(wall)) {
+    if (!confirm(`把「${wall.title || wall.id}」从列表里拿掉？\n\n它还没写进仓库，拿掉就没了。`)) return;
+    state.walls = state.walls.filter((w) => w.path !== wall.path);
+    stageRemove(wall); // 会把它从"新增"那一笔里划掉
     state.selected = null;
     state.draft = {};
-    state.dirty = false;
-    await reload();
-    toast('已删除');
-  } catch (e) {
-    reportError(e);
-  } finally {
-    setBusy(false);
+    rerender();
+    toast('已拿掉（它本来就没写进仓库）');
+    return;
   }
+
+  if (
+    !confirm(
+      `确定删除照片墙「${wall.title || wall.id}」？\n\n先只是从列表里拿掉 —— 点右上角「保存」才真正从仓库删。` +
+        `照片文件本身不会删。在那之前点「重新读取」可以取消。`
+    )
+  )
+    return;
+
+  stageRemove(wall);
+  state.selected = null;
+  state.draft = {};
+  markDirty(); // 「保存」要亮起来 —— 这一笔还等着落盘
+  rerender();
+  toast('已从列表移除 —— 点右上角「保存」才真正删除');
 }
 
-export async function saveWallCurrent(gh: Github): Promise<void> {
+/** 当前这面墙有没有"还没保存的字段改动" */
+export function wallDraftEdited(): boolean {
   const w = state.draft.wall;
-  if (!w) return;
+  if (!w) return false;
+  const entry = state.walls.find((x) => x.path === w.path);
+  if (!entry) return false;
+  return JSON.stringify(wallToJson(w)) !== JSON.stringify(wallToJson(entry));
+}
+
+/** 把正在改的东西并进那条还没写进仓库的墙（同 posts.ts 的 foldStagedPostDraft） */
+export function foldStagedWallDraft(): void {
+  const w = state.draft.wall;
+  if (!w || !isStagedNew(w)) return;
+  const entry = state.walls.find((x) => x.path === w.path);
+  if (!entry) return;
+  entry.title = w.title;
+  entry.date = w.date;
+  entry.place = w.place;
+  entry.note = w.note;
+  entry.photos = w.photos.map((p) => ({ ...p }));
+}
+
+export async function saveWallCurrent(gh: Github): Promise<boolean> {
+  const w = state.draft.wall;
+  if (!w) return true;
   await saveWall(gh, w);
-  await reload();
-  state.selected = w.id;
-  rerender();
+  // 不在这里 reload：保存是一批（可能还有别的暂存），由 app.ts 收尾时统一刷新
+  return true;
 }

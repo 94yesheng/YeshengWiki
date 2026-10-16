@@ -1,8 +1,10 @@
 /**
  * 内容层：把"仓库里的文件"变成后台能编辑的数据，以及反过来。
  *
- * 所有写操作都只碰一个文件 —— 这是刻意的：diff 干净，出错影响面小，
+ * 这里的每个写函数**只管一个文件** —— 这是刻意的：diff 干净，出错影响面小，
  * 也不会像现成 CMS 那样一次提交顺手改一堆无关文件。
+ * （"一次保存可能连着写好几个文件"是上一层 app.ts 编排的：它把暂存的那几笔
+ * 逐个交给这里的函数，每个仍然是一个文件一次提交。）
  */
 import { Github, type DirEntry } from './github';
 import { buildJson, buildPost, effectiveChanges, parsePost, parseJson, type ParsedFile } from './frontmatter';
@@ -89,12 +91,9 @@ export async function savePost(
 ): Promise<void> {
   const text = buildPostText(post, changed, body);
   const title = String(changed.title ?? post.parsed.data.title ?? post.id);
-  await gh.putText(
-    post.path,
-    text,
-    `content: 更新文章「${title}」\n\n（经后台编辑，只改动实际修改的字段）`,
-    post.sha
-  );
+  // sha 为空 = 这个文件在仓库里还不存在（暂存着的新文章第一次落盘）→ 不带 sha 就是"新建"
+  const verb = post.sha ? '更新' : '新建';
+  await gh.putText(post.path, text, `content: ${verb}文章「${title}」\n\n（经后台编辑，只改动实际修改的字段）`, post.sha);
 }
 
 export function newPostTemplate(title: string, date: string, tags: string[], draft = false): string {
@@ -107,17 +106,42 @@ export function newPostTemplate(title: string, date: string, tags: string[], dra
 }
 
 /**
- * 新建条目的默认文件名：`draft-20261016`（同一天第二篇往后是 `-2`、`-3`…）。
+ * 造一条**还没写进仓库**的文章（`sha: ''`）。
  *
- * 原来这一步是弹个 prompt 让人当场起名 —— 现在不问了，因为**新建这一下只是"开个头"**，
- * 名字等真要发的时候再说。用日期开头是因为它一定合法（小写英文 + 数字），
- * 而且同一天的几篇会排在一起、看得出是同一批草稿。
+ * 先把模板文字解析成 `parsed`，是为了让后面走的是同一条路：保存时 `buildPost(parsed, …)`
+ * 照常把用户改过的字段写进去，跟"改一篇已有文章"没有任何区别 —— 不用另写一条"新建"分支。
  */
+export function newPostEntry(id: string, date: string): PostEntry | null {
+  const parsed = parsePost(newPostTemplate('草稿', date, [], true));
+  if (!parsed) return null;
+  return { path: `${DIRS.posts}/${id}.md`, sha: '', id, parsed };
+}
+
+/** 文章还是照片墙 —— 暂存那一套要按这个分岔（墙没有 parsed，用 extra 记着不认识的键） */
+export function isPost(e: PostEntry | WallEntry): e is PostEntry {
+  return 'parsed' in e;
+}
+
 export function draftId(taken: (id: string) => boolean): string {
   const base = `draft-${isoDate(new Date()).replace(/-/g, '')}`;
   let id = base;
   for (let n = 2; taken(id); n++) id = `${base}-${n}`;
   return id;
+}
+
+/** 造一面**还没写进仓库**的照片墙（`sha: ''`）。日期一定要给：墙按日期倒序排，没有日期的沉到底。 */
+export function newWallEntry(id: string, date: string): WallEntry {
+  return {
+    path: `${DIRS.walls}/${id}.json`,
+    sha: '',
+    id,
+    title: '草稿',
+    date,
+    place: '',
+    note: '',
+    photos: [],
+    extra: {},
+  };
 }
 
 export async function createPost(gh: Github, slug: string, text: string): Promise<void> {
@@ -205,7 +229,9 @@ export function wallToJson(w: WallEntry): Record<string, unknown> {
 }
 
 export async function saveWall(gh: Github, wall: WallEntry): Promise<void> {
-  await gh.putText(wall.path, buildJson(wallToJson(wall)), `content: 更新照片墙「${wall.title || wall.id}」`, wall.sha);
+  // sha 为空 = 仓库里还没有这个文件（暂存着的新墙第一次落盘）
+  const verb = wall.sha ? '更新' : '新建';
+  await gh.putText(wall.path, buildJson(wallToJson(wall)), `content: ${verb}照片墙「${wall.title || wall.id}」`, wall.sha);
 }
 
 export async function createWall(gh: Github, id: string, wall: WallEntry): Promise<void> {

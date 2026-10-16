@@ -142,6 +142,9 @@ export function buildPost(parsed: ParsedFile, changed: Record<string, unknown>, 
 
   const fm = lines.filter((l, i, arr) => !(l.trim() === '' && i === arr.length - 1)).join('\n');
   const cleanBody = body.replace(/\r\n/g, '\n').replace(/\s+$/, '');
+  // 正文一个字都没有（刚暂存下来的草稿就是这样）：收在 `---` 那一行，别在末尾留个空行 ——
+  // 留了的话文件看起来像"少了点什么"，而它其实只是还没写
+  if (!cleanBody) return `---\n${fm}\n---\n`;
   // separator 照原样：有的文章是 `---` 紧接着正文，有的空一行。
   // 固定写死会在每次保存时给正文前面多加/少一个空行，整个正文便整体位移一行。
   return `---\n${fm}\n---${parsed.separator}${cleanBody}\n`;
@@ -162,6 +165,9 @@ export function effectiveChanges(parsed: ParsedFile, changed: Record<string, unk
       continue;
     }
     if (value === '' || value === undefined || value === null) continue;
+    // 空数组同理：界面上"一个标签都没加"跟"没填"是一回事，不该为它写一行 `tags: []`
+    // （文件里原本**有**这个键的走不到这儿 —— 那种情况是"把标签全删了"，得写下去）
+    if (Array.isArray(value) && value.length === 0) continue;
     // 「开关」字段关掉 = 回到缺省，不为它写一行（autoUpdated 同理：缺省就是跟随全局）
     if ((key === 'draft' || key === 'autoUpdated') && value === false) continue;
     out[key] = value;

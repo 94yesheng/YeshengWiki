@@ -5,23 +5,31 @@
  * 「哪些改动真算改动」的判断。保存逻辑跟视图放在一起，是因为它读的正是这个视图的草稿。
  */
 import {
-  createPost,
-  deletePost,
+  buildPostText,
   diffFields,
   draftId,
-  newPostTemplate,
+  newPostEntry,
   POST_FIELDS,
   postTitle,
   savePost,
   type PostEntry,
 } from '../content';
+import { effectiveChanges, parsePost } from '../frontmatter';
 import { createEditor } from '../editor';
 import { normalizeHtml, renderMarkdown } from '../md';
-import { parsePost } from '../frontmatter';
 import { openPreview } from '../preview';
 import { chineseFullDate, isoDate } from '../../utils/date';
-import { $, esc, reportError, setBusy, toast } from '../ui';
-import { state, markDirty, reload, rerender, type Draft } from '../state';
+import { $, esc, toast } from '../ui';
+import {
+  isStagedNew,
+  markDirty,
+  rerender,
+  settleBeforeLeaving,
+  stageAdd,
+  stageRemove,
+  state,
+  type Draft,
+} from '../state';
 import type { Github } from '../github';
 
 /**
@@ -184,7 +192,7 @@ export function renderPostView(): void {
       renderPostView();
     })
   );
-  $('#st-del-post')?.addEventListener('click', () => void removePost(d.entry));
+  $('#st-del-post')?.addEventListener('click', () => removePost(d.entry));
 
   // 右侧那一栏 = 「格式」面板：工具栏搬进来了；预览改由右下角的悬浮球打开
   const panel = $('#st-preview');
@@ -227,73 +235,143 @@ export function previewCurrentPost(): void {
 }
 
 /**
- * 新建文章：**不再问标题和文件名**，点一下就出来一条空壳（标题「草稿」、日期今天），
- * 出现在列表最上面，然后自己滑开。
+ * 新建文章：**不问标题和文件名，也不碰仓库** —— 点一下就出来一条空壳
+ * （标题「草稿」、日期今天），落在列表最上面，然后自己滑开。
  *
- * 【为什么落盘时就标 draft: true】后台是直接往仓库写的，而仓库的 main 一有提交就触发
- * 部署 —— 不标草稿的话，这个空壳会**立刻变成线上一篇文章**（标题「草稿」、没有正文）。
+ * 【为什么是"暂存"】点一下就要等 API 往返、还要重新拉一遍全库，既慢又白费 ——
+ * 用户这一刻只是"想开个头"。所以先记进 `state.staged`，等点右上角「保存」时
+ * 才真正写进仓库（见 app.ts 的 flushStaged）。**点「重新读取」就能把这一笔作废。**
+ *
+ * 【落盘时会带上 draft: true】后台是往仓库写的，仓库 main 一有提交就触发部署 ——
+ * 不标草稿的话，这个空壳会立刻变成线上一篇文章（标题「草稿」、没有正文）。
  * 勾着草稿它就不生成页面；等真写完，在右边把「草稿」那一栏取消勾选就发布了。
  *
- * 【代价，得知道】文件名在创建时就定了（draft-20261016 这种），而且后台还没有"改网址"
- * 这个功能 —— 想让某篇的链接好看，得等你动手改名。要加这个功能说一声。
+ * 【代价，得知道】文件名在这一下就定了（draft-20261016 这种），而且后台还没有"改网址"
+ * 这个功能 —— 想让某篇的链接好看，得自己改文件名。要加这个功能说一声。
  */
-export async function createNewPost(): Promise<void> {
-  const gh = state.gh;
-  if (!gh) return;
-  const slug = draftId((id) => state.posts.some((p) => p.id === id));
-  setBusy(true, '创建中…');
-  try {
-    await createPost(gh, slug, newPostTemplate('草稿', isoDate(new Date()), [], true));
-    await reload();
-    state.selected = slug;
-    state.justAdded = slug; // 让这一条在列表里滑出来（画完就清）
-    rerender();
-    state.justAdded = null;
-    toast('已新建一条草稿 —— 在右边写，写完记得保存');
-  } catch (e) {
-    reportError(e);
-  } finally {
-    setBusy(false);
+export function createNewPost(): void {
+  // 换掉当前打开的这篇之前先收尾（暂存的那条并进去、仓库里已有的问一句）
+  if (!settleBeforeLeaving()) return;
+
+  const date = isoDate(new Date());
+  const id = draftId((x) => state.posts.some((p) => p.id === x));
+  const entry = newPostEntry(id, date);
+  if (!entry) {
+    toast('新建失败：模板没能解析', true);
+    return;
   }
+  state.posts.unshift(entry); // 日期是今天，本来就排在最前面
+  stageAdd(entry);
+  state.selected = id;
+  state.draft = {};
+  markDirty();
+
+  state.justAdded = id; // 让这一条在列表里滑出来（rerender 是同步的，画完就清）
+  rerender();
+  state.justAdded = null;
+
+  toast('已加了一条草稿 —— 还没进仓库，点右上角「保存」才写进去');
 }
 
-async function removePost(entry: PostEntry): Promise<void> {
-  const gh = state.gh;
-  if (!gh) return;
-  if (!confirm(`确定删除「${postTitle(entry)}」？\n\n会从仓库删掉这个文件（git 历史里还能找回）。`)) return;
-  setBusy(true, '删除中…');
-  try {
-    await deletePost(gh, entry);
+/**
+ * 删除文章：**同样不碰仓库**，只记一笔（列表里立刻不画它了），等「保存」时才真删。
+ * 刚加进来还没写下去的那条，等于撤销新增 —— 直接从列表里拿掉就完事。
+ */
+function removePost(entry: PostEntry): void {
+  if (isStagedNew(entry)) {
+    if (!confirm(`把「${postTitle(entry)}」从列表里拿掉？\n\n它还没写进仓库，拿掉就没了。`)) return;
+    state.posts = state.posts.filter((p) => p.path !== entry.path);
+    stageRemove(entry); // 会把它从"新增"那一笔里划掉
     state.selected = null;
     state.draft = {};
-    state.dirty = false;
-    await reload();
-    toast('已删除');
-  } catch (e) {
-    reportError(e);
-  } finally {
-    setBusy(false);
+    rerender();
+    toast('已拿掉（它本来就没写进仓库）');
+    return;
   }
+
+  if (
+    !confirm(
+      `确定删除「${postTitle(entry)}」？\n\n先只是从列表里拿掉 —— 点右上角「保存」才真正从仓库删` +
+        `（git 历史里还能找回）。在那之前点「重新读取」可以取消。`
+    )
+  )
+    return;
+
+  stageRemove(entry);
+  state.selected = null;
+  state.draft = {};
+  markDirty(); // 让「保存」亮起来 —— 这一笔还等着落盘
+  rerender();
+  toast('已从列表移除 —— 点右上角「保存」才真正删除');
 }
 
-export async function savePostCurrent(gh: Github): Promise<void> {
+/**
+ * 这次到底有没有改动 —— **拿"真正会写进文件的那几个字段"比**，而不是原始 diff。
+ *
+ * 原始 diff 会把两样东西误判成"改过"：
+ *   · `draft: false`（文件里根本没有这一行，而界面的复选框默认就是没勾）
+ *   · `updatedDate: ''`（界面的空串 vs 文件里没有这个字段）
+ * 它们一个字节都不会写下去（见 frontmatter.ts 的 `effectiveChanges`），所以按原始 diff
+ * 算的话**每一篇文章一打开就是"有改动"** —— 后果有两个，都踩过：
+ * 切文章时每次都弹"确定丢弃吗"（无头浏览器里 `confirm` 还会把渲染进程卡死），
+ * 以及"什么都没改就点保存"真的提交一个内容没变的 commit。
+ */
+function realChanges(d: NonNullable<Draft['post']>): Record<string, unknown> {
+  return effectiveChanges(d.entry.parsed, diffFields(d.entry.parsed.data, d.fields, [...POST_FIELDS]));
+}
+
+/** 当前打开的这条有没有"还没保存的字段或正文改动"（判据必须和 savePostCurrent 一致） */
+export function postDraftEdited(): boolean {
   const d = state.draft.post;
-  if (!d) return;
+  if (!d) return false;
+  const changed = realChanges(d);
+  // 手填/清空「修订于」本身算一次改动，但它不该被当成"又改了一版"（同 savePostCurrent）
+  const manualDate = d.dateTouched === true && 'updatedDate' in changed;
+  delete changed.updatedDate;
+  if (manualDate || Object.keys(changed).length) return true;
+  const body = d.editor?.getMarkdown() ?? d.body;
+  return normalizeHtml(renderMarkdown(body)) !== normalizeHtml(renderMarkdown(d.body));
+}
+
+/**
+ * 把当前正在改的东西**并进那条还没写进仓库的草稿**里。
+ *
+ * 为什么要这一步：`state.draft.post` 只装"当前打开的这一条"，一换选中就重建 ——
+ * 于是"改了草稿标题 → 又点了一下「＋」"本来会把它丢掉。而暂存的草稿本来就还没落盘，
+ * 把改动并进去什么都不损失，也就不用弹窗问（用户刚说过不要弹窗）。
+ *
+ * 走的是保存时同一套 buildPostText：文件会怎么写，这里就怎么更新那条 entry，
+ * 所以列表上显示的和最后写下去的一定一致。
+ */
+export function foldStagedPostDraft(): void {
+  const d = state.draft.post;
+  if (!d || !isStagedNew(d.entry)) return; // 仓库里已有的条目并不了（那要写文件，不能偷偷写）
+  const parsed = parsePost(buildPostText(d.entry, diffFields(d.entry.parsed.data, d.fields, [...POST_FIELDS]), d.editor?.getMarkdown() ?? d.body));
+  if (!parsed) return;
+  d.entry.parsed = parsed; // 就地改：state.posts 与 staged.added 里是同一个对象
+  d.body = parsed.body;
+}
+
+export async function savePostCurrent(gh: Github): Promise<boolean> {
+  const d = state.draft.post;
+  if (!d) return true;
+  /** 暂存着的新文章：仓库里还没有这个文件，这次是"新建"而不是"更新" */
+  const isNew = isStagedNew(d.entry);
 
   // 先挡一道：这几样写坏了不是"后台难看"，而是**整站构建失败**（内容集合校验不过），
   // 所以宁可在这儿拦住、让人当场改。空字段在 buildPost 里会整行删掉 → 必填项就没了。
   const dateOk = (v: unknown) => /^\d{4}-\d{2}-\d{2}$/.test(String(v ?? ''));
   if (!String(d.fields.title ?? '').trim()) {
     toast('标题不能为空 —— 空标题写下去，站点会构建失败', true);
-    return;
+    return false;
   }
   if (!dateOk(d.fields.pubDate)) {
     toast('「日期」要写成 2026-03-09 这样（它决定文章在时间轴上的位置）', true);
-    return;
+    return false;
   }
   if (d.fields.updatedDate && !dateOk(d.fields.updatedDate)) {
     toast('「修订于」要么留空，要么写成 2026-03-09 这样', true);
-    return;
+    return false;
   }
 
   const body = d.editor?.getMarkdown() ?? d.body;
@@ -316,52 +394,27 @@ export async function savePostCurrent(gh: Github): Promise<void> {
   // 「除了修订时间以外，这次有没有实质改动」。
   // 单独手填/清空「修订于」本身算一次改动（要能存下去），但它**不该**反过来被当成
   // "又改了一版" —— 否则你手填的日期存一次就被今天顶掉。
-  const changedExceptDate = diffFields(d.entry.parsed.data, d.fields, [...POST_FIELDS]);
+  const changedExceptDate = realChanges(d);
   const manualDate = d.dateTouched === true && 'updatedDate' in changedExceptDate;
   delete changedExceptDate.updatedDate;
-  const hasRealEdit = Object.keys(changedExceptDate).length > 0 || !bodySame || manualDate;
+  // 新加的这条**即使一个字都没改也要写**（仓库里还没有它）；已有的才看"有没有真改动"
+  const hasRealEdit = isNew || Object.keys(changedExceptDate).length > 0 || !bodySame || manualDate;
 
   if (!hasRealEdit) {
     toast('没有任何改动');
-    return;
+    return true;
   }
 
   // 开了自动记录、这次确实改了东西、而且你没亲手填过「修订于」→ 盖成今天。
   // 用 isoDate（本地日期）而不是 toISOString —— 后者是 UTC，UTC+8 的凌晨会写成前一天。
-  if (!d.dateTouched && postAutoUpdated(d.fields)) {
+  // **新文章不记**：它还没有"上一版"，第一次写下去就是初版，标个"修订于今天"没有意义。
+  if (!isNew && !d.dateTouched && postAutoUpdated(d.fields)) {
     d.fields.updatedDate = isoDate(new Date());
   }
 
   const changed = diffFields(d.entry.parsed.data, d.fields, [...POST_FIELDS]);
   await savePost(gh, d.entry, changed, bodySame ? d.body : body);
-  await refreshPost(d.entry.id);
-}
-
-/** 保存后重新拉这个文件：确认写入结果，并拿到新的 sha */
-async function refreshPost(id: string): Promise<void> {
-  const gh = state.gh;
-  if (!gh) return;
-  const entry = state.posts.find((p) => p.id === id);
-  if (!entry) return;
-  const remote = await gh.getFile(entry.path);
-  if (!remote) return;
-  const parsed = parsePost(remote.text);
-  if (!parsed) return;
-  entry.sha = remote.sha;
-  entry.parsed = parsed;
-  state.draft.post = {
-    entry,
-    fields: {
-      title: parsed.data.title ?? '',
-      pubDate: String(parsed.data.pubDate ?? ''),
-      description: parsed.data.description ?? '',
-      tags: [...(Array.isArray(parsed.data.tags) ? (parsed.data.tags as string[]) : [])],
-      updatedDate: parsed.data.updatedDate ? String(parsed.data.updatedDate) : '',
-      draft: parsed.data.draft === true,
-      autoUpdated: typeof parsed.data.autoUpdated === 'boolean' ? parsed.data.autoUpdated : undefined,
-    },
-    body: parsed.body,
-    dateTouched: false,
-  };
-  rerender();
+  // 不在这里刷 sha / 重画：保存是**一批**（可能还有别的暂存要落盘），
+  // 由 app.ts 收尾时统一 reload 一次 —— 那里会把新的 sha 和顺序都取回来。
+  return true;
 }

@@ -73,6 +73,18 @@
   font-size: var(--text-xs);
 }
 .st-bar .st-spacer { margin-left: auto; }
+/* 顶栏里的栏目导航：和左边那组（站名 + 「后台」小标）之间拉一条细线 ——
+   不拉的话"文章 6 照片墙 7"跟在站名后面读起来像一串，看不出是导航。
+   用 --rule（不是文字色），和 .ed-group 的分组线是同一套语言。 */
+.st-bar .st-nav {
+  margin-left: var(--space-2);
+  padding-left: var(--space-4);
+  border-left: 1px solid var(--rule);
+}
+
+/* 「未保存」这个小标：暂存着、还没写进仓库的那一条才有（见 app.ts 的 unsaved()）。
+   用 --accent 是为了和旁边那串灰标签拉开 —— 这一条是"还在你手上"的提醒，不是信息。 */
+.st-tag-sub { color: var(--accent); }
 
 /* --------------------------------------------------------------------------
    按钮
@@ -382,13 +394,14 @@
 /* --------------------------------------------------------------------------
    集合导航与列表
    -------------------------------------------------------------------------- */
+/* 四个栏目 —— **在顶栏里**（2026-10-16 从左栏搬上来）。
+   在左栏时它自己带内边距和一条分隔线；进了顶栏这些交给 .st-bar，
+   它只管把自己排成一行、并且和站名对齐基线。 */
 .st-nav {
-  padding: 0 var(--space-4) var(--space-4);
   display: flex;
   flex-wrap: wrap;
-  gap: var(--space-3);
-  /* 和下面那串条目之间拉一条细线，两块功能分开 */
-  border-bottom: 1px solid var(--rule);
+  align-items: baseline;
+  gap: var(--space-4);
 }
 .st-nav button {
   font: inherit;
