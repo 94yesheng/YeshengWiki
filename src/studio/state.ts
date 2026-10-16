@@ -44,6 +44,11 @@ export const state = {
   user: '',
   collection: 'posts' as Collection,
   selected: null as string | null,
+  /**
+   * 刚刚新建的那一条（文章的 slug / 墙的 id）。只为了让它出现在列表里时**滑出来**，
+   * 画完就清掉 —— 留着的话每次重画都会重放一遍动画。
+   */
+  justAdded: null as string | null,
   busy: false,
   dirty: false,
   posts: [] as PostEntry[],

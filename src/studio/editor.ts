@@ -73,6 +73,17 @@ const ALIGN_BUTTONS = [
   { kind: 'right', title: '右对齐' },
 ] as const;
 
+/**
+ * 「添加」那一组只有图标 —— 文字去掉之后，图标得自己说清楚是"插链接"还是"插图片"。
+ * 和 ALIGN_ICONS 同一套路：14×14 的框、只描边、颜色跟着字走（夜间模式不用另写一套）。
+ */
+const ADD_ICONS: Record<string, string> = {
+  // 两个相扣的环 = 链接
+  createLink: '<path d="M6.2 8.6a2.4 2.4 0 0 1 0-3.4l1.7-1.7a2.4 2.4 0 0 1 3.4 3.4l-.8.8"/><path d="M7.8 5.4a2.4 2.4 0 0 1 0 3.4l-1.7 1.7a2.4 2.4 0 0 1-3.4-3.4l.8-.8"/>',
+  // 相框里一座山 = 图片
+  insertImage: '<rect x="1.6" y="2.6" width="10.8" height="8.8" rx="1.3"/><circle cx="4.9" cy="5.7" r="1"/><path d="M2.2 10.3l2.8-2.8 2.3 2.3L9.4 7.7l2.4 2.4"/>',
+};
+
 export function createEditor(
   areaHost: HTMLElement,
   barHost: HTMLElement,
@@ -87,7 +98,7 @@ export function createEditor(
 
   barHost.innerHTML = `
     <div class="ed-bar" role="toolbar" aria-label="正文格式">
-      <div class="ed-group">
+      <div class="ed-group ed-group--presets">
         <span class="ed-glabel">预设</span>
         <div class="ed-row">
           ${BLOCK_PRESETS.map(
@@ -119,12 +130,24 @@ export function createEditor(
       </div>
 
       <div class="ed-group">
-        <span class="ed-glabel">列表与图片</span>
-        <div class="ed-row">
+        <span class="ed-glabel">列表</span>
+        <div class="ed-row ed-row--list">
           <button class="ed-btn" data-cmd="insertUnorderedList" title="无序列表">• 列表</button>
           <button class="ed-btn" data-cmd="insertOrderedList" title="有序列表">1. 列表</button>
-          <button class="ed-btn" data-cmd="createLink" title="链接">链接</button>
-          <button class="ed-btn" data-cmd="insertImage" title="插入图片">图片</button>
+        </div>
+      </div>
+
+      <div class="ed-group">
+        <span class="ed-glabel">添加</span>
+        <div class="ed-row">
+          ${(['createLink', 'insertImage'] as const).map(
+            (cmd) => `<button class="ed-btn ed-btn--icon" data-cmd="${cmd}"
+              title="${cmd === 'createLink' ? '插入链接' : '插入图片'}"
+              aria-label="${cmd === 'createLink' ? '插入链接' : '插入图片'}">
+              <svg viewBox="0 0 14 14" width="14" height="14" aria-hidden="true" fill="none"
+                   stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">${ADD_ICONS[cmd]}</svg>
+            </button>`
+          ).join('')}
         </div>
       </div>
 

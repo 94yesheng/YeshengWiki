@@ -189,18 +189,31 @@ function renderNav(): void {
   );
 }
 
+/**
+ * 列表最上面那一行：一个「＋」，点一下就新建。
+ *
+ * 原来是标题栏右边的「新建」按钮（点开还弹两个 prompt 问标题和文件名）。挪进来是因为
+ * 它本来就该是"列表里的第一行" —— 新条目加在哪儿、长什么样，一眼就看得见。
+ * 它是 `<li>` 而不是按钮包一层壳：这样和下面每一条走的是同一套行样式（高度、分隔线、悬停底）。
+ */
+function ADD_ROW(id: string, label: string): string {
+  return `<li class="st-list-add"><button id="${id}" title="${label}" aria-label="${label}">＋</button></li>`;
+}
+
 function renderList(): void {
   const box = $('#st-list');
   const title = $('#st-list-title');
   if (!box || !title) return;
 
   if (state.collection === 'posts') {
-    title.innerHTML = `<span>共 ${state.posts.length} 篇</span><button class="st-btn" id="st-new-post">新建</button>`;
-    box.innerHTML = `<ul class="st-list">${state.posts
+    title.innerHTML = `<span>共 ${state.posts.length} 篇</span>`;
+    box.innerHTML = `<ul class="st-list">${ADD_ROW('st-new-post', '新建文章')}${state.posts
       .map((p) => {
         const d = p.parsed.data;
         const draft = d.draft === true;
-        return `<li><button data-id="${esc(p.id)}" aria-current="${state.selected === p.id}">
+        return `<li${state.justAdded === p.id ? ' class="is-new"' : ''}><button data-id="${esc(p.id)}" aria-current="${
+          state.selected === p.id
+        }">
           <span class="st-line"><span class="st-date">${esc(d.pubDate ?? '无日期')}</span><span class="st-name">${esc(
             d.title ?? p.id
           )}${draft ? ' <span class="st-sub">（草稿）</span>' : ''}</span></span>
@@ -210,10 +223,12 @@ function renderList(): void {
       .join('')}</ul>${state.posts.length ? '' : '<p class="st-empty">还没有文章。</p>'}`;
     $('#st-new-post')?.addEventListener('click', () => void createNewPost());
   } else if (state.collection === 'walls') {
-    title.innerHTML = `<span>共 ${state.walls.length} 面墙</span><button class="st-btn" id="st-new-wall">新建</button>`;
-    box.innerHTML = `<ul class="st-list">${state.walls
+    title.innerHTML = `<span>共 ${state.walls.length} 面墙</span>`;
+    box.innerHTML = `<ul class="st-list">${ADD_ROW('st-new-wall', '新建照片墙')}${state.walls
       .map(
-        (w) => `<li><button data-id="${esc(w.id)}" aria-current="${state.selected === w.id}">
+        (w) => `<li${state.justAdded === w.id ? ' class="is-new"' : ''}><button data-id="${esc(w.id)}" aria-current="${
+          state.selected === w.id
+        }">
           <span class="st-line"><span class="st-date">${esc(w.date || '无日期')}</span><span class="st-name">${esc(
             w.title || '（未填标题）'
           )}</span></span>
@@ -371,10 +386,10 @@ async function boot(): Promise<void> {
   else renderNoVault();
 }
 
-void boot();
-
 // 把真正的「重画」和「重拉」注册进钩子：视图只调用 rerender()/reload()，
 // 不必 import 这个文件（那会形成 app ⇄ 视图 的循环依赖）
+// 注意顺序：**先注册钩子再启动** —— 反过来的话，首次 loadAll 里视图调的 rerender()
+// 会落空（6909caf 拆分这个文件时 boot() 被留成了两行，踩过）。
 registerHooks({ render: renderApp, reload: loadAll });
 
 void boot();

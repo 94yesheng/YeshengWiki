@@ -4,6 +4,7 @@
 import {
   createWall,
   deleteWall,
+  draftId,
   prepareImage,
   saveWall,
   uploadPhoto,
@@ -11,6 +12,7 @@ import {
 } from '../content';
 import { $, esc, reportError, setBusy, toast } from '../ui';
 import { state, markDirty, reload, rerender } from '../state';
+import { isoDate } from '../../utils/date';
 import type { Github } from '../github';
 
 function currentWall(): WallEntry | null {
@@ -33,7 +35,7 @@ export function renderWallView(): void {
 
   const w = wallDraft();
   if (!w) {
-    edit.innerHTML = '<p class="st-empty">左边选一面墙，或者点「新建」。</p>';
+    edit.innerHTML = '<p class="st-empty">左边选一面墙；新建就点列表最上面那一行的「＋」。</p>';
     preview.innerHTML = '';
     return;
   }
@@ -203,28 +205,34 @@ async function uploadImages(w: WallEntry, files: File[]): Promise<void> {
   }
 }
 
+/**
+ * 新建照片墙：和新建文章同一套 —— 不问名字，直接出来一面空墙（标题「草稿」、日期今天）。
+ * 日期一定要给：照片墙是按日期倒序排的，**没有日期的会沉到最后**，那就看不见刚加的这一面了。
+ */
 export async function createNewWall(): Promise<void> {
   const gh = state.gh;
   if (!gh) return;
-  const title = prompt('新照片墙的标题（可以先留空，以后在后台填）：') ?? '';
-  if (title === null) return;
-  const id = prompt(
-    '文件名（英文小写加连字符，例如 chongqing-2024）：',
-    (title || 'new-wall').replace(/[^\w]+/g, '-').replace(/^-|-$/g, '').toLowerCase() || 'new-wall'
-  );
-  if (!id) return;
-  if (state.walls.some((w) => w.id === id)) {
-    toast(`已经有一面叫 ${id} 的墙了`, true);
-    return;
-  }
-  const wall: WallEntry = { path: `src/content/photos/${id}.json`, sha: '', id, title, date: '', place: '', note: '', photos: [], extra: {} };
+  const id = draftId((x) => state.walls.some((w) => w.id === x));
+  const wall: WallEntry = {
+    path: `src/content/photos/${id}.json`,
+    sha: '',
+    id,
+    title: '草稿',
+    date: isoDate(new Date()),
+    place: '',
+    note: '',
+    photos: [],
+    extra: {},
+  };
   setBusy(true, '创建中…');
   try {
     await createWall(gh, id, wall);
     await reload();
     state.selected = id;
+    state.justAdded = id; // 让它滑出来（画完就清）
     rerender();
-    toast('已创建');
+    state.justAdded = null;
+    toast('已新建一面空墙 —— 往里面拖图片就行');
   } catch (e) {
     reportError(e);
   } finally {

@@ -66,8 +66,11 @@ function renderLinksPreview(): void {
     <div class="st-preview">${links
       .map(
         (l) =>
+          // 名字这一行用 --text-lg 而不是站点上的 --text-md：站点那边 md 是 23px，
+          // 但后台在 .st-body 里把整套字号压回了旧值（md = 18px），18px 配楷体违反
+          // 「楷体不得低于 20px」。这里取后台能给的最高一档，也离站点的 23px 更近一点。
           `<div style="text-indent:0;padding:var(--space-3) 0;border-bottom:1px solid var(--rule)">
-            <div style="font-family:var(--kai);font-size:var(--text-md)">${esc(l.name || '（未命名）')}</div>
+            <div style="font-family:var(--kai);font-size:var(--text-lg)">${esc(l.name || '（未命名）')}</div>
             <div style="color:var(--seal);font-size:var(--text-xs)">${esc(l.url)}</div>
             <div style="color:var(--muted);font-size:var(--text-xs)">${esc(l.description)}</div>
           </div>`

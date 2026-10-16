@@ -8,6 +8,7 @@ import {
   createPost,
   deletePost,
   diffFields,
+  draftId,
   newPostTemplate,
   POST_FIELDS,
   postTitle,
@@ -72,7 +73,7 @@ export function renderPostView(): void {
 
   const d = postDraft();
   if (!d) {
-    edit.innerHTML = '<p class="st-empty">左边选一篇文章，或者点「新建」。</p>';
+    edit.innerHTML = '<p class="st-empty">左边选一篇文章；新建就点列表最上面那一行的「＋」。</p>';
     return;
   }
 
@@ -225,28 +226,30 @@ export function previewCurrentPost(): void {
   });
 }
 
+/**
+ * 新建文章：**不再问标题和文件名**，点一下就出来一条空壳（标题「草稿」、日期今天），
+ * 出现在列表最上面，然后自己滑开。
+ *
+ * 【为什么落盘时就标 draft: true】后台是直接往仓库写的，而仓库的 main 一有提交就触发
+ * 部署 —— 不标草稿的话，这个空壳会**立刻变成线上一篇文章**（标题「草稿」、没有正文）。
+ * 勾着草稿它就不生成页面；等真写完，在右边把「草稿」那一栏取消勾选就发布了。
+ *
+ * 【代价，得知道】文件名在创建时就定了（draft-20261016 这种），而且后台还没有"改网址"
+ * 这个功能 —— 想让某篇的链接好看，得等你动手改名。要加这个功能说一声。
+ */
 export async function createNewPost(): Promise<void> {
   const gh = state.gh;
   if (!gh) return;
-  const title = prompt('新文章的标题：');
-  if (!title) return;
-  const slug = prompt(
-    '文件名（英文小写加连字符，决定网址，例如 my-first-post）：',
-    title.replace(/[^\w一-龥]+/g, '-').replace(/^-|-$/g, '').toLowerCase() || 'new-post'
-  );
-  if (!slug) return;
-  if (state.posts.some((p) => p.id === slug)) {
-    toast(`已经有一篇叫 ${slug} 的文章了`, true);
-    return;
-  }
-  const date = new Date().toISOString().slice(0, 10);
+  const slug = draftId((id) => state.posts.some((p) => p.id === id));
   setBusy(true, '创建中…');
   try {
-    await createPost(gh, slug, newPostTemplate(title, date, []));
+    await createPost(gh, slug, newPostTemplate('草稿', isoDate(new Date()), [], true));
     await reload();
     state.selected = slug;
+    state.justAdded = slug; // 让这一条在列表里滑出来（画完就清）
     rerender();
-    toast('已创建');
+    state.justAdded = null;
+    toast('已新建一条草稿 —— 在右边写，写完记得保存');
   } catch (e) {
     reportError(e);
   } finally {

@@ -6,6 +6,7 @@
  */
 import { Github, type DirEntry } from './github';
 import { buildJson, buildPost, effectiveChanges, parsePost, parseJson, type ParsedFile } from './frontmatter';
+import { isoDate } from '../utils/date';
 
 /* --------------------------------------------------------------------------
    路径常量 —— 与站点结构一一对应，改这里就能换目录
@@ -96,11 +97,27 @@ export async function savePost(
   );
 }
 
-export function newPostTemplate(title: string, date: string, tags: string[]): string {
+export function newPostTemplate(title: string, date: string, tags: string[], draft = false): string {
   const lines = [`title: ${JSON.stringify(title)}`, `pubDate: ${date}`];
   if (tags.length) lines.push(`tags: [${tags.map((t) => JSON.stringify(t)).join(', ')}]`);
-  // 结尾与正文之间不留空行 —— 和现有 5 篇文章的写法一致
-  return `---\n${lines.join('\n')}\n---\n在这里写正文。Markdown 语法，空行分段。\n`;
+  if (draft) lines.push('draft: true');
+  // 正文留白：新条目是"空壳"，想写什么写什么 —— 不再预置一句占位文字（那行会被存进
+  // 文件，等于每次新建都得先删一句废话）
+  return `---\n${lines.join('\n')}\n---\n`;
+}
+
+/**
+ * 新建条目的默认文件名：`draft-20261016`（同一天第二篇往后是 `-2`、`-3`…）。
+ *
+ * 原来这一步是弹个 prompt 让人当场起名 —— 现在不问了，因为**新建这一下只是"开个头"**，
+ * 名字等真要发的时候再说。用日期开头是因为它一定合法（小写英文 + 数字），
+ * 而且同一天的几篇会排在一起、看得出是同一批草稿。
+ */
+export function draftId(taken: (id: string) => boolean): string {
+  const base = `draft-${isoDate(new Date()).replace(/-/g, '')}`;
+  let id = base;
+  for (let n = 2; taken(id); n++) id = `${base}-${n}`;
+  return id;
 }
 
 export async function createPost(gh: Github, slug: string, text: string): Promise<void> {
