@@ -3,6 +3,33 @@
    改这里就能改全站，不要在任何组件里写死颜色或字号
    ========================================================================== */
 
+/* ---------- 阿拉伯数字走黑体的两个「复合字体」 ----------
+   同一个族名下两条 @font-face，靠 unicode-range 分工：数字取黑体，其余取本体。
+   ① 第一条只管"除 0–9 以外的一切"（U+0000–002F 与 U+003A 往后），用本机的中文字体；
+   ② 第二条只管 0–9，用本机的黑体（雅黑 / 苹方）。
+   `src: local(...)` = 从本机取，不下载任何文件 —— 全站零 webfont 的取向不能破。
+   说明与取舍写在 :root 里 --kai 那一段后面。 */
+@font-face {
+  font-family: 'KaiDigits';
+  src: local('KaiTi'), local('楷体'), local('STKaiti'), local('Kaiti SC'), local('Noto Serif SC');
+  unicode-range: U+0000-002F, U+003A-10FFFF;
+}
+@font-face {
+  font-family: 'KaiDigits';
+  src: local('Microsoft YaHei'), local('Noto Sans SC'), local('PingFang SC'), local('Helvetica Neue'), local(Arial);
+  unicode-range: U+0030-0039;
+}
+@font-face {
+  font-family: 'SongDigits';
+  src: local('Songti SC'), local('SimSun'), local('宋体'), local('Noto Serif SC');
+  unicode-range: U+0000-002F, U+003A-10FFFF;
+}
+@font-face {
+  font-family: 'SongDigits';
+  src: local('Microsoft YaHei'), local('Noto Sans SC'), local('PingFang SC'), local('Helvetica Neue'), local(Arial);
+  unicode-range: U+0030-0039;
+}
+
 :root {
   /* ---------- 颜色：文章区 ----------
      【2026-10 换过一版】原来走的是「纸墨朱红」（纯白纸 + 印泥红），
@@ -49,9 +76,20 @@
 
   /* ---------- 字体 ----------
      刻意不使用任何 webfont：Windows / macOS 都自带这些中文字体，
-     零下载、不依赖 CDN、也不让任何第三方看到访客的 IP。 */
-  --kai:  KaiTi, 楷体, STKaiti, "Kaiti SC", "Noto Serif SC", serif;
-  --song: "Songti SC", SimSun, 宋体, "Noto Serif SC", serif;
+     零下载、不依赖 CDN、也不让任何第三方看到访客的 IP。
+
+     **阿拉伯数字一律走黑体**（2026-10-16 用户要求）。零 webfont 的前提下，做法不是去每个
+     组件里挑数字，而是给正文那两个族各做一个「复合字体」——同一族名下两条 @font-face，
+     用 `unicode-range` 分工：0–9 取黑体，其余字符取原来的楷体 / 宋体。
+     `src: local(...)` 是**从本机取字体**、不下载任何东西，和上面那条取向一致。
+
+     两个族都要把两边的平台列全：Windows 是 KaiTi / SimSun / Microsoft YaHei，
+     macOS 是 Kaiti SC / Songti SC / PingFang SC —— 漏了哪一边，那一边的数字就退回本体字体。
+
+     不受影响的两处：代码块是 ui-monospace（代码里的数字跟着代码的字体走），
+     后台右侧那一栏整块是 --sans（本来就是黑体）。 */
+  --kai:  'KaiDigits',  KaiTi, 楷体, STKaiti, "Kaiti SC", "Noto Serif SC", serif;
+  --song: 'SongDigits', "Songti SC", SimSun, 宋体, "Noto Serif SC", serif;
   --sans: "Noto Sans SC", "Microsoft YaHei", 微软雅黑, "PingFang SC", system-ui, sans-serif;
 
   /* ---------- 字号 ----------

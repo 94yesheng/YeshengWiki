@@ -630,7 +630,9 @@
   transition-delay: calc(var(--i, 0) * 35ms);
 }
 
-/* 一条文章：左边「日」（楷体、强调色 —— 全站唯一的彩色只给时间用），右边标题 */
+/* 一条文章，两行：
+     第一行「日」+ 标签      第二行 标题（整行）
+   标签和标题的位置是用户点名调换过的，理由见 views/postlist.ts 里 itemHtml 的注释。 */
 .tl-item button {
   width: 100%;
   display: grid;
@@ -653,16 +655,33 @@
 /* 选中：这一栏紧挨着轴线，用底色 + 强调色标题表示，不再画左边框（会跟轴线挤在一起） */
 .tl-item button[aria-current='true'] { background: color-mix(in srgb, var(--accent) 6%, transparent); }
 .tl-item button[aria-current='true'] .tl-name { color: var(--accent); }
+
+/* 第一行：「日」（楷体、强调色 —— 全站唯一的彩色只给时间用）+ 标签 */
 .tl-day {
+  grid-area: 1 / 1;
   font-family: var(--kai);
   font-size: var(--text-lg);     /* 20px：楷体的下限 */
   letter-spacing: 0.04em;
   color: var(--accent);
   white-space: nowrap;
 }
-.tl-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tl-meta {
+  grid-area: 1 / 2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--muted);
+  font-size: var(--text-sm);
+}
+
+/* 第二行：标题**独占整行**。左端停在第一列（日）的左边界上 —— 再往左就压到日期和轴线上了 */
+.tl-name {
+  grid-area: 2 / 1 / 3 / -1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .tl-mark { font-size: var(--text-sm); color: var(--muted); }
-.tl-sub { grid-column: 2; color: var(--muted); font-size: var(--text-sm); }
 
 /* 新加的那一条：从上面滑出来、把下面的推下去（和列表行同一个动画） */
 .tl-item.is-new { overflow: hidden; animation: st-row-in var(--dur-base) var(--ease); }

@@ -52,7 +52,16 @@ function postTags(p: PostEntry): string[] {
   return Array.isArray(tags) ? tags.map(String) : [];
 }
 
-/** 一条文章：左边「日」，右边标题 + 一行小字标签。整个是按钮 —— 点了就选中它 */
+/**
+ * 一条文章。整个是按钮 —— 点了就选中它。
+ *
+ * 两行，**标签和标题的位置是用户点名调换过的**（2026-10-16）：
+ *   第一行：「日」+ 标签
+ *   第二行：标题（**独占一行**）
+ * 这么换是因为左栏只有 17rem：标题原来挤在「日」右边只剩 ~128px，现在整行都是它的，
+ * 而标签本来就不长、跟「日」挤一行正好。标题那一行的左端**停在「日」那一列的左边界上**，
+ * 不越过它（再往左就压到轴线/日期上了）。
+ */
 function itemHtml(p: PostEntry): string {
   const date = postDate(p);
   const title = String(p.parsed.data.title ?? p.id);
@@ -63,10 +72,10 @@ function itemHtml(p: PostEntry): string {
        data-tags="${esc(tags.join(','))}">
     <button data-id="${esc(p.id)}" aria-current="${state.selected === p.id}">
       <span class="tl-day">${esc(day)}</span>
-      <span class="tl-name">${esc(title)}${draft ? ' <span class="tl-mark">草稿</span>' : ''}</span>
-      <span class="tl-sub">${esc(tags.length ? tags.join(' · ') : '无标签')}${
+      <span class="tl-meta">${esc(tags.length ? tags.join(' · ') : '无标签')}${
         isStagedNew(p) ? ' · <span class="st-tag-sub">未保存</span>' : ''
       }</span>
+      <span class="tl-name">${esc(title)}${draft ? ' <span class="tl-mark">草稿</span>' : ''}</span>
     </button>
   </div>`;
 }
