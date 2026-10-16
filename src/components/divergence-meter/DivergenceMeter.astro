@@ -1,0 +1,211 @@
+---
+/**
+ * 世界线变动率探测仪 —— 藏在页脚里的彩蛋（《命运石之门》里那台用辉光管做的机器）。
+ *
+ * 这个文件夹是**自包含**的，搬走就能用：
+ *   · `glyphs.ts`  —— 十个灯丝字形（纯数据，改字形只动这里）
+ *   · `meter.ts`   —— 客户端行为（与站点/框架无关，只认 DOM 约定）
+ *   · 本文件        —— 结构 + 样式 + 挂载
+ *   · `README.md`  —— 怎么用、怎么搬到别处、有哪些坑
+ *
+ * 行为：滚到页脚时七位数字一起乱跳，跳够了**同时**定下来，停在某个 1.xxxxxx 上；
+ * **每次刷新都是一个新的随机数**，所以没有哪一次是"对的"。
+ *
+ * ===== 灯管 =====
+ *
+ * 每根管两层 SVG：
+ *   · `dm-ghost` —— **虚影层**：0–9 十位全部叠着，暗橙细线。实物里那十根阴极丝
+ *     一直都在，没通电的会被辉光映亮；小数点那根管里同样有这一层（丝是整个
+ *     阴极堆栈共用的，不挑管子）。
+ *   · `dm-lit`   —— **点亮层**：只画当前这一位，带三层辉光。小数点那根管点的是
+ *     一个圆点（阴极装在管内右下角，所以亮点不在正中）。
+ *
+ * 8 根管 = 整数位 + 小数点 + 六位小数。小数点**独占一整根管**，不是挤在字缝里。
+ *
+ * ===== 只在夜间模式出现 =====
+ *
+ * 白天整台 `display: none`。**DOM 不删** —— 主题是客户端定的（localStorage /
+ * `prefers-color-scheme`，见 BaseLayout 的首屏脚本），服务端不知道；留着它，等切到
+ * 夜间模式、元素有了布局，`IntersectionObserver` 会自己报一次，然后就地开播。
+ *
+ * ===== 没有底板、没有管壳 =====
+ *
+ * 数字直接浮在页脚纸面上（视觉值照原出处那份文件，一处没改）。
+ *
+ * **已知效果**：原出处是给黑页面设计的。同样的值放到本站的暖白纸底上，虚影层会显得
+ * 比点亮那位更重 —— 在黑底上它是"暗"，在纸底上它是"中调"。
+ * **这是 2026-10-16 确认要的效果，不是 bug，不要再加回深色底板。**
+ *
+ * 【为什么 aria-hidden】它是彩蛋不是内容，读屏念一串随机数字没有意义。
+ */
+import { DIGITS, DOT, GLYPHS, VIEWBOX, glyphTransform } from './glyphs';
+import { initDivergenceMeters } from './meter';
+
+interface Props {
+  /** 整台的大小旋钮 —— 管子宽 3.2em，所以这就是"1em 多高" */
+  size?: string;
+  /** 小数位数（管子总数 = 1 整数位 + 1 小数点 + 这么多个） */
+  decimals?: number;
+  /** 只在夜间模式出现（宿主用 `<html data-theme="dark">` 定调） */
+  onlyInDark?: boolean;
+}
+
+const { size = 'clamp(8px, 2.5vw, 12px)', decimals = 6, onlyInDark = true } = Astro.props;
+
+/**
+ * 一根管一个条目：`dot` 是小数点那根（它点的是个圆，没有数字位），
+ * `init` 是**还没滚到页脚时**点亮的那一位 —— 整数位写 1（世界线变动率都是 1 开头），
+ * 这样"没通电"的状态读出来就是 1.000000 而不是一串零。
+ */
+const TUBES: Array<{ dot: boolean; init: number }> = [
+  { dot: false, init: 1 },
+  { dot: true, init: 0 },
+  ...Array.from({ length: decimals }, () => ({ dot: false, init: 0 })),
+];
+---
+
+<div
+  class:list={['dm', onlyInDark && 'dm--dark-only']}
+  data-dm
+  aria-hidden="true"
+  style={`--dm-size: ${size}`}
+>
+  <div class="dm-tubes">
+    {
+      TUBES.map((tube) => (
+        <span class="dm-tube">
+          {/* 虚影层：十根丝一直都在，也是 meter.ts 抄字形的地方 */}
+          <svg class="dm-ghost" viewBox={VIEWBOX}>
+            {DIGITS.map((n) => (
+              <g data-n={n} transform={glyphTransform(n)}>
+                <path class="g" d={GLYPHS[n].g} />
+                <path class="c" d={GLYPHS[n].c} />
+              </g>
+            ))}
+          </svg>
+
+          {/* 点亮层：一次只亮一位 */}
+          {tube.dot ? (
+            <svg class="dm-lit" viewBox={VIEWBOX}>
+              <circle class="dm-dot" cx={DOT.cx} cy={DOT.cy} r={DOT.r} />
+            </svg>
+          ) : (
+            <svg class="dm-lit" viewBox={VIEWBOX}>
+              <g class="dm-lit-digit" data-value={tube.init} transform={glyphTransform(tube.init)}>
+                <path class="g" d={GLYPHS[tube.init].g} />
+                <path class="c" d={GLYPHS[tube.init].c} />
+              </g>
+            </svg>
+          )}
+        </span>
+      ))
+    }
+  </div>
+</div>
+
+<script>
+  import { initDivergenceMeters } from './meter';
+  initDivergenceMeters();
+</script>
+
+<style>
+  .dm {
+    /* 整台的缩放：管子宽 3.2em，所以 font-size 就是它。外面用 style 传进来覆盖 */
+    --dm-size: clamp(8px, 2.5vw, 12px);
+
+    /* 视觉值 —— 照原出处那份文件，一处没改 */
+    --lit: #ffb13b;
+    --glow: #ff7a00;
+    --ghost: rgba(255, 110, 35, 0.2);
+
+    display: flex;
+    justify-content: center;
+    padding: 1.2em 0;
+    font-size: var(--dm-size);
+  }
+
+  /* 只在夜间出现 —— 白天整个不显示（DOM 留着，见文件头说明） */
+  .dm--dark-only {
+    display: none;
+  }
+  :root[data-theme='dark'] .dm--dark-only {
+    display: flex;
+  }
+
+  .dm-tubes {
+    display: inline-flex;
+    gap: 0.5em;
+  }
+
+  .dm-tube {
+    position: relative;
+    width: 3.2em;
+    height: calc(3.2em * 110 / 60);
+  }
+
+  .dm-tube svg {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    overflow: visible;
+    fill: none;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+
+  /* ---------- 虚影：0–9 全部叠着，暗橙细线 ---------- */
+  .dm-ghost {
+    stroke: var(--ghost);
+  }
+  .dm-ghost .g {
+    stroke-width: 1.6;
+  }
+  .dm-ghost .c {
+    stroke-width: 0.9;
+  }
+
+  /* ---------- 点亮层：整层加发光 ---------- */
+  .dm-lit {
+    stroke: var(--lit);
+    filter: drop-shadow(0 0 2px #ffd9a0) drop-shadow(0 0 5px var(--glow))
+      drop-shadow(0 0 12px rgba(255, 90, 0, 0.7));
+  }
+  .dm-lit .g {
+    stroke-width: 2.3;
+  }
+  .dm-lit .c {
+    stroke-width: 1.2;
+    opacity: 0.9;
+  }
+
+  /* 小数点：阴极装在管内右下角，所以亮点不在正中 */
+  .dm-dot {
+    fill: var(--lit);
+    stroke: none;
+  }
+
+  /* 跳动时闪烁 / 固定后呼吸 —— 这两个类由 meter.ts 挂上去 */
+  .dm-tube.is-spinning .dm-lit {
+    animation: dm-flicker 0.09s steps(2) infinite;
+  }
+  @keyframes dm-flicker {
+    0% { opacity: 1; }
+    50% { opacity: 0.72; }
+    100% { opacity: 0.95; }
+  }
+  .dm-tube.is-settled .dm-lit {
+    animation: dm-breathe 4s ease-in-out infinite;
+  }
+  @keyframes dm-breathe {
+    0%,
+    100% { opacity: 1; }
+    50% { opacity: 0.88; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .dm-lit {
+      animation: none !important;
+    }
+  }
+</style>
