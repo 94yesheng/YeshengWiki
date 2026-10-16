@@ -61,55 +61,72 @@ async function loadAll(): Promise<void> {
 }
 
 /* --------------------------------------------------------------------------
-   顶栏
+   左右两栏的收起 / 展开
    -------------------------------------------------------------------------- */
-/* --------------------------------------------------------------------------
-   左栏收起 / 展开
-   -------------------------------------------------------------------------- */
+
+type Col = 'nav' | 'tools';
+
+/** 每一栏的名字与把手，界面文案也在这儿统一 */
+const COLS: Array<{ key: Col; name: string; handle: string }> = [
+  { key: 'nav', name: '左栏', handle: '#st-nav-handle' },
+  { key: 'tools', name: '格式面板', handle: '#st-tools-handle' },
+];
 
 /**
  * 只记"收起没收起"这一个偏好。放在 localStorage 而不是 site.data.json ——
  * 它是**这台机器上这个人的界面习惯**，不是站点内容，为它提交一次仓库没道理。
  */
-const NAV_KEY = 'studio.nav';
+const colKey = (col: Col) => `studio.col.${col}`;
 
-function navHidden(): boolean {
+function colHidden(col: Col): boolean {
   try {
-    return localStorage.getItem(NAV_KEY) === 'hidden';
+    return localStorage.getItem(colKey(col)) === 'hidden';
   } catch {
     return false; // 隐私模式读不了 localStorage —— 那就当没收起
   }
 }
 
-/** 把 "收起" 这个状态落到界面上（骨架可能刚被重建过，所以每次重画都要调） */
-function applyNavHidden(): void {
+/** 把两栏的收起状态落到界面上（骨架可能刚被重建过，所以每次重画都要调） */
+function applyCols(): void {
   const app = $('#st-app');
   if (!app) return;
-  const hidden = navHidden();
-  app.classList.toggle('is-nav-hidden', hidden);
-  const btn = $('#st-nav-toggle');
-  if (!btn) return;
-  btn.setAttribute('aria-pressed', String(hidden));
-  btn.setAttribute('title', hidden ? '展开左栏' : '收起左栏');
-  btn.setAttribute('aria-label', hidden ? '展开左栏' : '收起左栏');
-  const icon = btn.querySelector('[data-nav-icon]');
-  if (icon) icon.textContent = hidden ? '»' : '«';
+
+  for (const { key, name, handle } of COLS) {
+    const hidden = colHidden(key);
+    app.classList.toggle(key === 'nav' ? 'is-nav-hidden' : 'is-tools-hidden', hidden);
+
+    const btn = $(handle);
+    if (!btn) continue;
+    const label = hidden ? `展开${name}` : `收起${name}`;
+    btn.setAttribute('aria-pressed', String(hidden));
+    btn.setAttribute('title', label);
+    btn.setAttribute('aria-label', label);
+
+    // 箭头指向"点下去会往哪边动"：左栏收起时朝右（展开回来），右栏正好相反
+    const icon = btn.querySelector('[data-col-icon]');
+    if (icon) {
+      const pointsRight = key === 'nav' ? hidden : !hidden;
+      icon.textContent = pointsRight ? '›' : '‹';
+    }
+  }
 }
 
-function setNavHidden(hidden: boolean): void {
+function setColHidden(col: Col, hidden: boolean): void {
   try {
-    localStorage.setItem(NAV_KEY, hidden ? 'hidden' : 'shown');
+    localStorage.setItem(colKey(col), hidden ? 'hidden' : 'shown');
   } catch {
     /* 记不住就只是记不住，本次照样生效 */
   }
-  applyNavHidden();
+  applyCols();
 }
 
+/* --------------------------------------------------------------------------
+   顶栏
+   -------------------------------------------------------------------------- */
 function renderBar(): void {
   const bar = $('#st-bar');
   if (!bar) return;
   bar.innerHTML = `
-    <button class="st-btn st-btn--icon" id="st-nav-toggle" aria-pressed="false" title="收起左栏" aria-label="收起左栏"><span data-nav-icon aria-hidden="true">«</span></button>
     <h1>夜笙的小世界</h1>
     <span class="st-tag">后台</span>
     <span class="st-meta">${esc(REPO.owner)}/${esc(REPO.repo)} · ${esc(REPO.branch)}${
@@ -121,7 +138,6 @@ function renderBar(): void {
     ${state.vault ? '<button class="st-btn" id="st-lock">锁定</button>' : ''}`;
   $('#st-refresh')?.addEventListener('click', () => void loadAll());
   $('#st-save')?.addEventListener('click', () => void saveCurrent());
-  $('#st-nav-toggle')?.addEventListener('click', () => setNavHidden(!navHidden()));
 
   // 锁定：令牌从内存里丢掉，回到解锁页（站点上的密文还在，输账密即可再进）
   // 没有单独的"退出" —— 账密模型下两者是同一件事，本机不留任何凭据要清
@@ -258,8 +274,15 @@ function renderShell(): void {
       </div>
       <div class="st-col st-col--edit" id="st-edit"></div>
       <div class="st-col st-col--preview" id="st-preview"></div>
+
+      <!-- 两个收放把手：绝对定位挂在 .st-app 的边缘上，所以某一栏收到 0 宽时它们还在 -->
+      <button class="st-col-handle st-col-handle--nav" id="st-nav-handle" aria-pressed="false"><span data-col-icon aria-hidden="true">‹</span></button>
+      <button class="st-col-handle st-col-handle--tools" id="st-tools-handle" aria-pressed="false"><span data-col-icon aria-hidden="true">›</span></button>
     </div>
     <div id="st-fab-host"></div>`;
+
+  $('#st-nav-handle')?.addEventListener('click', () => setColHidden('nav', !colHidden('nav')));
+  $('#st-tools-handle')?.addEventListener('click', () => setColHidden('tools', !colHidden('tools')));
 
   // 悬浮球挂在这里而不是 studio.astro 的静态骨架里：登录页会把 #st-main 整体换掉，
   // 挂外面会在登录页右下角留一个球。
@@ -290,7 +313,7 @@ function renderApp(): void {
   }
 
   // 收栏状态要在这里应用：renderShell 在骨架已存在时直接 return，不会重刷
-  applyNavHidden();
+  applyCols();
 
   renderBar();
   renderNav();

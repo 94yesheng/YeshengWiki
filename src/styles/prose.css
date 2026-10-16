@@ -16,15 +16,15 @@
   text-indent: 2em;
 }
 
-.prose > p.center,
-.prose > p.right {
-  text-indent: 0;          /* 居中和右对齐都不能留那两个字的首行缩进 */
-  margin: var(--space-6) 0;
-}
-.prose > p.center { text-align: center; }
-.prose > p.right { text-align: right; }
+/* 对齐类可以是正文、大/小标题、引用上任意一个（后台设成标题之后照样要能居中） */
+.prose > .center,
+.prose > .right,
+.prose > .left { text-indent: 0; }   /* 居中/右对齐都不留那两个字的首行缩进 */
+.prose > .center { text-align: center; }
+.prose > .right { text-align: right; }
 /* 左对齐是默认，不需要类；后台点「左」就是把类去掉 */
-.prose > p.left { text-indent: 0; }
+.prose > p.center,
+.prose > p.right { margin: var(--space-6) 0; }
 
 /* 着重色：后台编辑器上的「着重」按钮插入的就是 <mark>，这里给它上强调色 */
 .prose mark {
@@ -59,10 +59,16 @@
     linear-gradient(var(--rule), var(--rule)) right 50% / calc(50% - 2.2em) 1px no-repeat;
 }
 
+/* 花用**内联 SVG 当蒙版**，不用字体字形：字形长什么样、朝哪个方向，全看系统拿哪个
+   字体来兜底（实机上就画歪了），而蒙版是我们自己画的，永远正着、跨平台一致。
+   想换颜色只改 background-color。 */
 .prose > hr.sakura::before {
-  content: "❀";
-  font-size: var(--text-base);
-  color: var(--sakura);
+  content: "";
+  width: 1.05em;
+  height: 1.05em;
+  background-color: var(--sakura);
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cg fill='black'%3E%3Cg transform='translate(12 12)'%3E%3Cellipse cx='0' cy='-6.2' rx='3.1' ry='4.9'/%3E%3Cellipse cx='0' cy='-6.2' rx='3.1' ry='4.9' transform='rotate(72)'/%3E%3Cellipse cx='0' cy='-6.2' rx='3.1' ry='4.9' transform='rotate(144)'/%3E%3Cellipse cx='0' cy='-6.2' rx='3.1' ry='4.9' transform='rotate(216)'/%3E%3Cellipse cx='0' cy='-6.2' rx='3.1' ry='4.9' transform='rotate(288)'/%3E%3C/g%3E%3Ccircle cx='12' cy='12' r='1.6'/%3E%3C/g%3E%3C/svg%3E") center / contain no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cg fill='black'%3E%3Cg transform='translate(12 12)'%3E%3Cellipse cx='0' cy='-6.2' rx='3.1' ry='4.9'/%3E%3Cellipse cx='0' cy='-6.2' rx='3.1' ry='4.9' transform='rotate(72)'/%3E%3Cellipse cx='0' cy='-6.2' rx='3.1' ry='4.9' transform='rotate(144)'/%3E%3Cellipse cx='0' cy='-6.2' rx='3.1' ry='4.9' transform='rotate(216)'/%3E%3Cellipse cx='0' cy='-6.2' rx='3.1' ry='4.9' transform='rotate(288)'/%3E%3C/g%3E%3Ccircle cx='12' cy='12' r='1.6'/%3E%3C/g%3E%3C/svg%3E") center / contain no-repeat;
   letter-spacing: 0;
   text-indent: 0;
 }

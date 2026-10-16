@@ -185,11 +185,41 @@ export function createEditor(
     changed();
   }
 
-  /** 段落预设：把当前块换成 h2 / h3 / p / blockquote */
+  /** 能加对齐类的顶层块（列表项、分隔线不算） */
+  const ALIGNABLE = new Set(['P', 'H2', 'H3', 'BLOCKQUOTE']);
+
+  /**
+   * 段落预设：把当前块换成 h2 / h3 / p / blockquote。
+   * **点已经亮着的那一档 = 取消，回到正文** —— 不然设成引用之后就没法还原了（踩过）。
+   */
   function applyBlock(tag: string): void {
     area.focus();
-    document.execCommand('formatBlock', false, tag);
+    const cur = currentBlock()?.tagName.toLowerCase();
+    const next = cur === tag && tag !== 'p' ? 'p' : tag;
+    document.execCommand('formatBlock', false, next);
     changed();
+  }
+
+  /**
+   * 选区是不是已经在 `<mark>` 里；是就把那层壳脱掉。
+   * 「着重」要能再点一次取消 —— execCommand 没有 mark，包裹和解开都得自己来。
+   */
+  function unwrapMark(): boolean {
+    const sel = window.getSelection();
+    const node = sel?.anchorNode;
+    let el: HTMLElement | null =
+      node?.nodeType === Node.ELEMENT_NODE ? (node as HTMLElement) : (node?.parentElement ?? null);
+    while (el && el !== area) {
+      if (el.tagName === 'MARK') {
+        const parent = el.parentNode;
+        if (!parent) return false;
+        while (el.firstChild) parent.insertBefore(el.firstChild, el);
+        parent.removeChild(el);
+        return true;
+      }
+      el = el.parentElement;
+    }
+    return false;
   }
 
   /**
@@ -206,15 +236,16 @@ export function createEditor(
    */
   function alignBlock(kind: 'left' | 'center' | 'right'): void {
     const block = currentBlock();
-    if (!block || block.tagName !== 'P') {
-      toast('对齐只能用在整段文字上：把光标放进那一段再点', true);
+    // 正文、大/小标题、引用都能对齐（设成标题之后照样要能居中）
+    if (!block || !ALIGNABLE.has(block.tagName)) {
+      toast('对齐用在整段上：正文、标题、引用都行 —— 把光标放进那一段再点', true);
       return;
     }
     if (block.querySelector('img')) {
       toast('这一段里有图片 —— 对齐会让图片丢掉构建时重写的路径（线上打不开）。把图片单独放一段就行', true);
       return;
     }
-    block.classList.remove('center', 'right');
+    block.classList.remove('center', 'right', 'left');
     if (kind !== 'left') block.classList.add(kind);
     changed();
   }
@@ -232,7 +263,10 @@ export function createEditor(
     strikeThrough: () => document.execCommand('strikeThrough'),
     insertUnorderedList: () => document.execCommand('insertUnorderedList'),
     insertOrderedList: () => document.execCommand('insertOrderedList'),
-    mark: () => wrapSelection('mark'),
+    // 再点一次取消：包裹和解开都得自己来（execCommand 没有 mark）
+    mark: () => {
+      if (!unwrapMark()) wrapSelection('mark');
+    },
     createLink: () => {
       const sel = window.getSelection();
       if (!sel || sel.isCollapsed) {

@@ -183,10 +183,10 @@ function makeTurndown(): TurndownService {
   });
 
   /**
-   * 对齐段：正文里写成原始 HTML `<p class="center">…</p>`。
+   * 对齐段：正文里写成原始 HTML `<p class="center">…</p>`（标题、引用同理，标签照搬）。
    *
-   * 为什么这么写而不是加个 Markdown 扩展语法：站点那边本来就有 `.prose > p.center` 这个钩子，
-   * 而 `p` 不在 BLOCK_HTML 白名单里 —— 所以它**不会被抽成不可编辑的原始 HTML 块**，
+   * 为什么这么写而不是加个 Markdown 扩展语法：站点那边本来就有 `.prose > p.center` 这类钩子，
+   * 而 `p/h2/h3/blockquote` 都不在 BLOCK_HTML 白名单里 —— 所以**不会被抽成不可编辑的原始 HTML 块**，
    * markdown-it 原样输出、编辑器里是真 DOM、光标能进去改字。
    *
    * 【两头必须带空行】否则 markdown-it 会把它当成上一段的**内联** HTML，
@@ -196,14 +196,19 @@ function makeTurndown(): TurndownService {
    * **不会被解析** —— 里面的 `<strong>粗</strong>` 若转成 `**粗**`，渲染出来就是两个星号。
    */
   td.addRule('alignParagraph', {
-    filter: (node) =>
-      node.nodeName === 'P' &&
-      ((node as HTMLElement).classList?.contains('center') || (node as HTMLElement).classList?.contains('right')),
+    filter: (node) => {
+      // 正文、大/小标题、引用都能带对齐类（设成标题之后照样要能居中）
+      if (!['P', 'H2', 'H3', 'BLOCKQUOTE'].includes(node.nodeName)) return false;
+      const cls = (node as HTMLElement).classList;
+      return !!cls && (cls.contains('center') || cls.contains('right'));
+    },
     replacement: (_content, node) => {
-      const cls = (node as HTMLElement).classList.contains('center') ? 'center' : 'right';
+      const el = node as HTMLElement;
+      const tag = el.nodeName.toLowerCase();
+      const cls = el.classList.contains('center') ? 'center' : 'right';
       return `
 
-<p class="${cls}">${(node as HTMLElement).innerHTML}</p>
+<${tag} class="${cls}">${el.innerHTML}</${tag}>
 
 `;
     },

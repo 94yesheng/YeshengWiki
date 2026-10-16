@@ -227,23 +227,68 @@
 /* 撑满顶栏以下的高度：不然三栏会缩到内容高度，页面下半截空着 */
 .st-body > #st-main { min-height: 0; overflow: hidden; }
 
+/* 左右两栏的宽度各走一个自定义属性。**先注册成 <length>，它们才可过渡** ——
+   没注册的 custom property 是"字符串"，transition 不认，收起/展开会瞬间跳变。 */
+@property --nav-w { syntax: '<length>'; inherits: true; initial-value: 17rem; }
+@property --tools-w { syntax: '<length>'; inherits: true; initial-value: 17rem; }
+
 .st-app {
-  /* 左栏宽度只在这一个变量里 —— 收起（is-nav-hidden）时把它归零即可 */
   --nav-w: 17rem;
+  --tools-w: 17rem;   /* 右栏和左栏差不多宽：它只是排按钮，没必要占半个屏 */
+  position: relative; /* 两个收放把手绝对定位挂在这上面，列收到 0 宽也还在 */
   display: grid;
-  grid-template-columns: var(--nav-w) minmax(0, 1fr) minmax(0, 1fr);
+  grid-template-columns: var(--nav-w) minmax(0, 1fr) var(--tools-w);
   grid-template-rows: minmax(0, 1fr);
   height: 100%;
   min-height: 0;
+  transition:
+    --nav-w var(--dur-base) var(--ease),
+    --tools-w var(--dur-base) var(--ease);
 }
 
-/* 收起左栏。**光把宽度设 0 不够** —— 那一列还有 1px 右边框和上下 padding，
-   它们照样占地方，要一起清掉。 */
+/* 收起某一栏。**光把宽度设 0 不够** —— 那一列还有 1px 边框，会留在原地一条线。 */
 .st-app.is-nav-hidden { --nav-w: 0rem; }
-.st-app.is-nav-hidden .st-col--nav { border-right: 0; padding: 0; overflow: hidden; }
+.st-app.is-tools-hidden { --tools-w: 0rem; }
+.st-app.is-nav-hidden .st-col--nav { border-right-color: transparent; }
+
+/* 收起来时把内容淡掉并挡掉点击 —— 不然它只是被"压扁"，还能 Tab 进去 */
+.st-col--nav,
+.st-col--tools { transition: opacity var(--dur-fast) var(--ease); }
+.st-app.is-nav-hidden .st-col--nav,
+.st-app.is-tools-hidden .st-col--tools { opacity: 0; pointer-events: none; }
+
+/* 收放把手：贴在那一栏的边缘、垂直居中 */
+.st-col-handle {
+  position: absolute;
+  top: 50%;
+  z-index: 3;
+  width: 1.4rem;
+  height: 2.6rem;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--rule);
+  border-radius: 999px;
+  background: var(--paper);
+  color: var(--muted);
+  font: inherit;
+  font-size: var(--text-xs);
+  line-height: 1;
+  cursor: pointer;
+  transition:
+    left var(--dur-base) var(--ease),
+    right var(--dur-base) var(--ease),
+    color var(--dur-fast) ease,
+    border-color var(--dur-fast) ease;
+}
+/* 位置跟着栏宽走；**但收起来时要留住一个最小值** —— 否则把手会有一半被推出屏幕，
+   虽然还点得到，看着像缺了一块。max() 就是干这个的。 */
+.st-col-handle--nav { left: max(var(--nav-w), 0.85rem); transform: translate(-50%, -50%); }
+.st-col-handle--tools { right: max(var(--tools-w), 0.85rem); transform: translate(50%, -50%); }
+.st-col-handle:hover { color: var(--accent); border-color: var(--accent); }
 
 @media (max-width: 1180px) {
-  .st-app { --nav-w: 15rem; }
+  .st-app { --nav-w: 15rem; --tools-w: 15rem; }
   /* 这里只藏**静态预览**那一栏（照片墙 / 友链 / 站点）。
      文章集合的第三栏是「格式」工具面板（.st-col--tools），窄屏下也得留着 ——
      工具栏一旦被藏掉，那几档宽度下就完全没有退路了。 */
@@ -252,13 +297,15 @@
 .st-col { min-width: 0; overflow-y: auto; overflow-x: hidden; }
 .st-col--nav { border-right: 1px solid var(--rule); padding: var(--space-4) 0; }
 .st-col--edit { padding: var(--space-5) var(--space-6) var(--space-7); border-right: 1px solid var(--rule); }
+
+/* 正文那一栏**不画滚动条** —— 三栏各有一条竖条并排，中间那根最碍眼。
+   仍然能滚（滚轮 / 键盘 / 触控板都照旧），只是不画那根条。 */
+.st-col--edit { scrollbar-width: none; }
+.st-col--edit::-webkit-scrollbar { width: 0; height: 0; }
 .st-col--preview { padding: var(--space-5) var(--space-6) var(--space-7); background: var(--canvas); }
 /* 「格式」面板（文章集合的第三栏）。和预览栏同底色，但**窄屏不隐藏** */
 .st-col--tools { padding: var(--space-5) var(--space-5) var(--space-7); background: var(--canvas); }
 .st-tools-hint { padding: 0 var(--space-3); }
-/* 顶栏最左边那个「收起左栏」的箭头：方形小按钮，只有图标 */
-.st-btn--icon { padding: 4px 9px; line-height: 1; font-size: var(--text-sm); }
-
 .st-panel-title {
   /* 同上：这枚小标只有 12px，配楷体必糊 —— 换成界面字体 --sans */
   font-family: var(--sans);
@@ -455,12 +502,15 @@
   letter-spacing: 0.5em;
   text-indent: 0.5em;
 }
-/* 正文里的对齐类：编辑器里就得看得见效果，不然"所见"和"所得"对不上 */
+/* 正文里的对齐类：编辑器里就得看得见效果，不然"所见"和"所得"对不上。
+   和文章页一样，正文 / 标题 / 引用都能带。 */
+.ed-area .center,
+.ed-area .right,
+.ed-area .left { text-indent: 0; }
+.ed-area .center { text-align: center; }
+.ed-area .right { text-align: right; }
 .ed-area p.center,
-.ed-area p.right { text-indent: 0; margin: var(--space-6) 0; }
-.ed-area p.center { text-align: center; }
-.ed-area p.right { text-align: right; }
-.ed-area p.left { text-indent: 0; }
+.ed-area p.right { margin: var(--space-6) 0; }
 
 /* 樱花分隔线（编辑器与右栏预览都要长得和文章页一样，见 prose.css） */
 .ed-area hr.sakura,
@@ -472,11 +522,17 @@
     linear-gradient(var(--rule), var(--rule)) left 50% / calc(50% - 2.2em) 1px no-repeat,
     linear-gradient(var(--rule), var(--rule)) right 50% / calc(50% - 2.2em) 1px no-repeat;
 }
+/* 花用**内联 SVG 当蒙版**，不用字体字形：字形长什么样、朝哪个方向，全看系统拿哪个
+   字体来兜底（实机上就画歪了），而蒙版是我们自己画的，永远正着、跨平台一致。
+   想换颜色只改 background-color。 */
 .ed-area hr.sakura::before,
 .st-preview hr.sakura::before {
-  content: "❀";
-  font-size: var(--text-base);
-  color: var(--sakura);
+  content: "";
+  width: 1.05em;
+  height: 1.05em;
+  background-color: var(--sakura);
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cg fill='black'%3E%3Cg transform='translate(12 12)'%3E%3Cellipse cx='0' cy='-6.2' rx='3.1' ry='4.9'/%3E%3Cellipse cx='0' cy='-6.2' rx='3.1' ry='4.9' transform='rotate(72)'/%3E%3Cellipse cx='0' cy='-6.2' rx='3.1' ry='4.9' transform='rotate(144)'/%3E%3Cellipse cx='0' cy='-6.2' rx='3.1' ry='4.9' transform='rotate(216)'/%3E%3Cellipse cx='0' cy='-6.2' rx='3.1' ry='4.9' transform='rotate(288)'/%3E%3C/g%3E%3Ccircle cx='12' cy='12' r='1.6'/%3E%3C/g%3E%3C/svg%3E") center / contain no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cg fill='black'%3E%3Cg transform='translate(12 12)'%3E%3Cellipse cx='0' cy='-6.2' rx='3.1' ry='4.9'/%3E%3Cellipse cx='0' cy='-6.2' rx='3.1' ry='4.9' transform='rotate(72)'/%3E%3Cellipse cx='0' cy='-6.2' rx='3.1' ry='4.9' transform='rotate(144)'/%3E%3Cellipse cx='0' cy='-6.2' rx='3.1' ry='4.9' transform='rotate(216)'/%3E%3Cellipse cx='0' cy='-6.2' rx='3.1' ry='4.9' transform='rotate(288)'/%3E%3C/g%3E%3Ccircle cx='12' cy='12' r='1.6'/%3E%3C/g%3E%3C/svg%3E") center / contain no-repeat;
   letter-spacing: 0;
   text-indent: 0;
 }
