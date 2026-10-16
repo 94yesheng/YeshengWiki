@@ -1,0 +1,281 @@
+---
+/**
+ * 主页上的「文章」那一屏。
+ *
+ * 版式（用户画的稿）：**左边一列近期文章 ｜ 竖向分割线 ｜ 右边最新一篇**
+ *   左边：近期几篇的标题，一条一条排下来，每一条下面一条细线
+ *   右边：最新那篇的标题在上，下面一行是【封面（固定 4:3）】+【摘要】
+ *
+ * 【为什么单独一个组件，不塞进 SectionEntry】
+ * 另外三个板块（照片 / 程序 / 友链）是"整屏都是一个大链接、点哪儿都进板块主页"。
+ * 这一屏不行 —— 左边那列标题各自要能点进**那一篇**，一个<a>里嵌<a>是非法的。
+ * 所以这一屏自己是一个 <section>，链接落在每一处该落的地方：
+ * 板块名 → 文章列表页；左边每条 → 那一篇；右边的标题和封面 → 最新那一篇。
+ *
+ * 封面固定 4:3（用户指定）：`aspect-ratio: 4/3` + `object-fit: cover`，
+ * 所以原图是横是竖都不会把版式撑变形。
+ */
+import { Image } from 'astro:assets';
+import type { ImageMetadata } from 'astro';
+import SectionHead from './SectionHead.astro';
+
+interface RecentLink {
+  title: string;
+  href: string;
+}
+
+interface Spot {
+  title: string;
+  href: string;
+  cover: ImageMetadata | null;
+  /** 摘要：正文开头那一段（utils/posts.ts 的 getPostLead） */
+  text?: string;
+  /** 时间 —— 全站唯一的彩色只留给时间用 */
+  date?: string;
+  /** 灰字补充：标签 */
+  extra?: string;
+}
+
+interface Props {
+  href: string;
+  title: string;
+  desc: string;
+  recent: RecentLink[];
+  spot: Spot;
+}
+
+const { href, title, desc, recent, spot } = Astro.props;
+---
+
+<section class="screen section-posts">
+  <div class="wrap">
+    <SectionHead href={href} title={title} desc={desc} />
+
+    <div class="posts-split">
+      <!-- 左：近期文章。每一条自己是一个链接 -->
+      <ul class="posts-recent">
+        {
+          recent.map((r) => (
+            <li>
+              <a href={r.href}><span>{r.title}</span></a>
+            </li>
+          ))
+        }
+      </ul>
+
+      <!-- 右：最新一篇。**标题在上、日期标签在下**（用户要求对调过） -->
+      <div class="posts-spot">
+        <h3 class="posts-spot-title"><a href={spot.href}>{spot.title}</a></h3>
+        <p class="posts-spot-meta">
+          {spot.date && <time>{spot.date}</time>}
+          {spot.date && spot.extra && <span class="dot">·</span>}
+          {spot.extra && <span>{spot.extra}</span>}
+        </p>
+
+        <div class:list={['posts-spot-body', !spot.cover && 'posts-spot-body--textonly']}>
+          {
+            spot.cover && (
+              <a class="posts-spot-cover" href={spot.href} tabindex="-1" aria-hidden="true">
+                <Image
+                  src={spot.cover}
+                  alt=""
+                  widths={[320, 480, 640, 900]}
+                  sizes="23rem"
+                  loading="lazy"
+                  decoding="async"
+                />
+              </a>
+            )
+          }
+          {
+            spot.text && (
+              <p class="posts-spot-text">
+                {/* 梗概整块也能点进那一篇（用户要求）。<a> 放在 <p> 里面：
+                    在外面套一层会让 line-clamp 那一套失效 */}
+                <a href={spot.href}>{spot.text}</a>
+              </p>
+            )
+          }
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<style>
+  /* 整块再往上一点（用户要求）。.screen 是 align-content:center + 底部留 16vh，
+     所以**底部多留一些 = 内容整体上移**，上移量约等于多留的一半。
+     +6vh（≈80px）→ 上移约 40px。只覆盖 padding-bottom，别把上边距也冲掉 */
+  .section-posts { padding-bottom: calc(16vh + 6vh); }
+
+  /* ---------- 两栏：左列 ｜ 竖线 ｜ 右边最新一篇 ---------- */
+  .posts-split {
+    display: grid;
+    grid-template-columns: 16rem minmax(0, 1fr);
+    gap: var(--space-7);
+    margin-top: var(--space-7);
+  }
+
+  /* ---------- 左列：从下往上排，每一条一样高 ----------
+     · `column-reverse`：DOM 里还是"新的在前"，但**视觉上最新的落在最下面**，
+       往上依次变旧（用户要的"从下往上"）。
+     · 高度统一成 --row-h：标题一行两行的差别不再让每格高矮不齐。
+       定高的同时得把标题截到两行，不然三行的标题会撑破格子。 */
+  .posts-recent {
+    --row-h: 5.7rem;   /* 两行 23px 楷体 + 上下内边距 —— 改字号要回来重算 */
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column-reverse;   /* 新的在最下面 */
+    border-bottom: 1px solid var(--rule);
+  }
+
+  /* 每一条上面一条细线（最上面那条也有），整列看起来像一张表格 */
+  .posts-recent a {
+    display: flex;
+    align-items: center;      /* 一行/两行都在这格里竖直居中 */
+    height: var(--row-h);
+    padding: 0 var(--space-2) 0 0;
+    font-family: var(--kai);
+    /* 23px：楷体要 23–24px 才干净（见 tokens.css 的「楷体的下限」） */
+    font-size: var(--text-md);
+    letter-spacing: 0.06em;
+    line-height: 1.45;
+    color: var(--ink);
+    border-top: 1px solid var(--rule);
+    transition: color var(--dur-fast) ease, padding-left var(--dur-fast) var(--ease);
+  }
+
+  /* 截断要放在内层：外层是 flex（用来居中），而 line-clamp 得靠 -webkit-box */
+  .posts-recent a span {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    overflow: hidden;
+  }
+
+  .posts-recent a:hover {
+    color: var(--accent);
+    padding-left: 6px;   /* 整条轻轻右移，比变色更容易看出点中了哪一条 */
+  }
+
+  .posts-spot {
+    /* 竖分割线画在右栏的左边线上 —— 这样两栏的高度不用互相对齐也能成一条线。
+       用 --ink 混出来的**深**线（不是 --rule 那种淡线）：用户稿子里这一根是全块最重的，
+       但要保持 1px —— 3px 的黑条会跳出现有这套细线的语言 */
+    border-left: 1px solid color-mix(in srgb, var(--ink) 40%, transparent);
+    padding-left: var(--space-7);
+    min-width: 0;
+  }
+
+  .posts-spot-meta {
+    display: flex;
+    align-items: baseline;
+    flex-wrap: wrap;
+    gap: 0.4em;
+    margin: 0.6rem 0 0;
+    font-family: var(--kai);
+    font-size: var(--text-md);
+    letter-spacing: 0.1em;
+  }
+
+  .posts-spot-meta time { color: var(--accent); }
+  .posts-spot-meta .dot { color: var(--faint); }
+  .posts-spot-meta span { color: var(--muted); }
+
+  .posts-spot-title {
+    margin: 0;
+    font-family: var(--kai);
+    font-size: var(--text-xl);
+    font-weight: 400;
+    letter-spacing: 0.04em;
+    line-height: 1.45;
+  }
+
+  .posts-spot-title a { color: inherit; transition: color var(--dur-fast) ease; }
+  .posts-spot-title a:hover { color: var(--accent); }
+
+  /* 高度关系（2026-10-17 用户把要求说准了）：
+       · 封面高度 = --spot-h（由 --lines 行 × 行高定死，4:3 反推宽度）
+       · 梗概**只要求顶部和封面平齐**，可以比封面短（不再垫白撑到一样高）
+       · 竖向分割线画在右栏左边上，所以它的底 = 右栏的底 = 两者中更高的那个；
+         而封面被定死在 --spot-h、梗概又被 line-clamp 卡在同样的行数之内，
+         于是**永远是封面最高 → 分割线的底正好和照片的底平齐**（用户要求） */
+  .posts-spot-body {
+    --lines: 9;
+    --line: calc(var(--text-base) * 1.85);
+    --spot-h: calc(var(--lines) * var(--line));
+    display: grid;
+    /* 高度锁在 --spot-h（两边都是）：封面那一栏的宽 = --spot-h × 4/3，
+       它的高自然就是 --spot-h；摘要那一栏 min-height 也是 --spot-h。
+       试过让 flex 的 stretch 决定高度（"谁高听谁的"）—— 高度是拉对了，
+       但宽度还是原来的，**4:3 被拉变形**（量到 1.105，踩过）。 */
+    grid-template-columns: calc(var(--spot-h) * 4 / 3) minmax(0, 1fr);
+    gap: var(--space-6);
+    align-items: start;
+    margin-top: var(--space-5);
+  }
+
+  .posts-spot-body--textonly { display: block; }
+
+  .posts-spot-cover {
+    display: block;
+    overflow: hidden;
+    /* 小倒角（用户指定）。站里其它配图是 2–3px，这里给 6px —— 再小就看不出有倒角了 */
+    border-radius: 6px;
+    /* 固定 4:3（用户指定）：原图横竖都不会把版式撑变形 */
+    aspect-ratio: 4 / 3;
+  }
+
+  .posts-spot-cover :global(img) {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+    /* **没有 hover 缩放**（用户指定）：原来会 scale(1.04)，现在鼠标放上去纹丝不动 */
+  }
+
+  /* 梗概那一块整段可点：悬停时从灰变墨色（比整段变橙安静得多） */
+  .posts-spot-text a {
+    color: inherit;
+    transition: color var(--dur-fast) ease;
+  }
+
+  .posts-spot-text a:hover { color: var(--ink); }
+
+  .posts-spot-text {
+    margin: 0;
+    font-size: var(--text-base);
+    line-height: 1.85;
+    /* 首行缩进两字符 —— 和正文、自我介绍同一套中文排版（用户要求） */
+    text-indent: 2em;
+    color: var(--muted);
+    /* 摘要就是正文开头那一段，通常够铺满这一块；真遇到超长的一段就让它到九行收住。
+       **不要自己拼 "…"** —— 换行位置是浏览器算的，手拼的省略号会对不上（见 SectionEntry） */
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: var(--lines);
+    line-clamp: var(--lines);
+    max-height: var(--spot-h);   /* 双保险：行数算出来的高度就是封面那个高度 */
+    overflow: hidden;
+  }
+
+  /* ---------- 窄屏：两栏叠起来，竖线改成横线 ---------- */
+  @media (max-width: 56rem) {
+    .posts-split { grid-template-columns: minmax(0, 1fr); gap: var(--space-6); }
+    .posts-spot { border-left: 0; padding-left: 0; border-top: 1px solid color-mix(in srgb, var(--ink) 40%, transparent); padding-top: var(--space-6); }
+  }
+
+  /* 48rem：再窄就"封面在上、摘要在下"。断点别等到 40rem ——
+     封面那一栏定死 23rem，700px 宽时留给摘要的只剩 250px，一行挤不下十个字了 */
+  @media (max-width: 48rem) {
+    .posts-spot-body { grid-template-columns: minmax(0, 1fr); gap: var(--space-4); }
+    /* 叠起来之后高度不再需要对齐（上下排），去掉最小高度，
+       免得短摘要下面拖一大片空白 */
+    .posts-spot-text { min-height: 0; }
+    /* 叠起来之后封面别铺到满宽（700px 的屏上会变成 650×490 的一大块，喧宾夺主） */
+    .posts-spot-cover { max-width: 26rem; }
+  }
+</style>

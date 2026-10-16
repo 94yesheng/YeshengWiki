@@ -1,0 +1,60 @@
+---
+/**
+ * 主页板块那一屏的**头**：板块名（可点，进板块主页）+ 箭头 + 一句描述。
+ *
+ * 抽出来是因为「文章」和「照片」两屏的头一模一样 —— 之前是各写一份，
+ * 改个字号要改两处（而且它们都受「楷体 ≥20px」那条硬规则管，更容易改漏）。
+ *
+ * ⚠️ 这里只管**能点的那两屏**。SectionEntry 那一套的头不能共用：
+ * 那三屏是"整屏一个大链接"，头在链接里面，结构不一样。
+ */
+interface Props {
+  href: string;
+  title: string;
+  desc: string;
+}
+
+const { href, title, desc } = Astro.props;
+---
+
+<div class="shead">
+  <h2 class="shead-title"><a href={href}>{title}</a></h2>
+  <span class="shead-arrow" aria-hidden="true">→</span>
+</div>
+<p class="shead-desc">{desc}</p>
+
+<style>
+  .shead {
+    display: flex;
+    align-items: baseline;
+    gap: var(--space-4);
+  }
+
+  .shead-title {
+    margin: 0;
+    font-family: var(--kai);
+    font-size: var(--text-2xl);
+    font-weight: 400;
+    letter-spacing: 0.12em;
+  }
+
+  .shead-title a { color: inherit; transition: color var(--dur-fast) ease; }
+  .shead-title a:hover { color: var(--accent); }
+
+  .shead-arrow {
+    font-size: var(--text-md);
+    color: var(--faint);
+    transition: color var(--dur-fast) ease, transform var(--dur-fast) var(--ease);
+  }
+
+  /* 箭头跟着标题一起动 —— 它属于"去板块主页"这件事，不属于整屏 */
+  .shead-title:hover + .shead-arrow { color: var(--accent); transform: translateX(4px); }
+
+  /* 描述往右缩两格 —— 像中文段首空两格，一眼看出是从属关系 */
+  .shead-desc {
+    margin: var(--space-4) 0 0 2em;
+    font-size: var(--text-base);
+    line-height: 1.75;
+    color: var(--muted);
+  }
+</style>

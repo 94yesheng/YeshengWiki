@@ -1,0 +1,176 @@
+---
+/**
+ * 主页上的「照片」那一屏 —— **直接把一面照片墙摊开**。
+ *
+ * 版式：板块名 + 描述 → 那面墙（标题 / 记录 / 一组照片）→ 页脚一行「摄于：时间 · 地点」。
+ *
+ * 【为什么复用 PhotoWall，而不是自己再画一遍】
+ * 照片墙的排法是"对齐的行"（justified rows）：每张按自己的宽高比给 flex-grow，
+ * 同一行被拉成等高、整行填满，**比例不变、不裁切** —— 那套在 gallery.css 里，
+ * 加上点击放大的覆盖层，都是现成的。这一屏要的就是"照片页上那面墙的样子"，
+ * 重画一遍只会走样，所以直接调它。
+ *
+ * 【日期为什么挪到页脚】PhotoWall 自己会把「时间 · 地点」印在标题下面。
+ * 传 `hideDate` 让它只留地点，时间由这一屏在页脚补一行「摄于：…」——
+ * 时间是"摄于"的一部分，放页脚更像一张照片的说明签。
+ *
+ * 【这一屏同样不能是"整屏一个大链接"】照片本身是 lightbox 的链接（点开放大），
+ * <a> 里嵌 <a> 非法。所以板块名各自成链接，照片各管各的。
+ */
+import PhotoWall from './PhotoWall.astro';
+import SectionHead from './SectionHead.astro';
+import { chineseFullDate } from '../utils/date';
+import type { PhotoWall as Wall } from '../utils/photos';
+/* 照片墙的排法（.wall / .wall-photos / .lightbox 那一套）在 gallery.css 里。
+   整份引进来是安全的：里面每条规则都挂在 .wall/.photo/.lightbox 这些类上，
+   主页别的地方没有这些类，不会被波及。 */
+import '../styles/gallery.css';
+
+interface Props {
+  href: string;
+  title: string;
+  desc: string;
+  wall: Wall;
+}
+
+const { href, title, desc, wall } = Astro.props;
+
+/* 这一屏渲染**全部**照片，放不下的由下面那段脚本按实际高度收起来 ——
+   纯 CSS 卡不出"刚好一屏"（照片墙是按容器宽度铺满的，行高是宽度推出来的），
+   而在服务端也算不出来（构建时不知道视口多高）。 */
+const total = wall.photos.length;
+
+/** 「摄于：二〇二四年十月七日 · 重庆」—— 地点没填就只留时间 */
+const shotAt = [wall.date ? chineseFullDate(wall.date) : '未标注时间', wall.place].filter(Boolean);
+---
+
+<section class="screen section-photos">
+  <div class="wrap">
+    <SectionHead href={href} title={title} desc={desc} />
+
+    <div class="photos-wall">
+      <PhotoWall wall={wall} hideDate />
+    </div>
+
+    <p class="photos-foot">
+      {total > 1 && <span class="photos-rest">这面墙共 {total} 张</span>}
+      <span class="photos-shotat">摄于：{shotAt.join(' · ')}</span>
+    </p>
+  </div>
+</section>
+
+<script>
+  /**
+   * 让这一屏**刚好一屏**：塞不下的照片直接不画。
+   *
+   * 【为什么非得在浏览器里算】
+   * 照片墙是按"铺满容器宽度"排的（justified rows）：行高不是给定的，是被容器宽度
+   * 推出来的。于是这一屏到底多高，取决于**墙上有几张、窗口多宽多高** —— 构建时
+   * 算不出来（静态站不知道视口），纯 CSS 也卡不出来（想定高就得裁照片，而照片页的
+   * 规矩是**不裁不拉**）。
+   * 所以退一步：先照常排，排完量一下，超了就把最后一张收起来再量，直到整屏 ≤ 一屏。
+   *
+   * 【两个细节】
+   *   · **最少留两张**：只留一张的话它会独自铺满整行、反倒比两行还高。
+   *   · 窗口变大要**放回来**：所以是 hidden 而不是 remove，重新排一遍即可。
+   * 没有 JS 时这一屏就是"墙照常铺开"—— 会长过一屏，但内容完整、排版不乱。
+   */
+  const sec = document.querySelector<HTMLElement>('.section-photos');
+  const list = sec?.querySelector<HTMLElement>('.wall-photos');
+  if (sec && list) {
+    const items = [...list.querySelectorAll<HTMLElement>('.photo')];
+    const navH = document.querySelector<HTMLElement>('.site-nav-bar')?.offsetHeight ?? 0;
+
+    /** 这一屏是不是还高过一屏。留 4px 容差：--nav-h 和顶栏实测高度能差 1px，
+        严格比较的话会永远"差一点点"、把照片一路缩到最小（踩过） */
+    const over = (max: number) => sec.offsetHeight > max + 4;
+
+    let naturalWidth = 0; // 没缩之前的照片区宽度
+
+    /** 把照片区按 k 等比缩小（容器宽和每张的基准宽一起乘 k） */
+    const scaleTo = (k: number) => {
+      list.style.setProperty('--photo-k', String(k));
+      list.style.maxWidth = k === 1 ? '' : `${Math.round(naturalWidth * k)}px`;
+    };
+
+    const fit = () => {
+      const max = window.innerHeight - navH; // .screen 的 min-height 就是它
+      for (const el of items) el.hidden = false;
+
+      // 先回到原尺寸量一次 —— 缩放后的宽度量不准，得拿原始宽度做基数
+      scaleTo(1);
+      naturalWidth = list.clientWidth;
+
+      /* 第一步：**等比缩小照片**（用户要求：每张缩一点，让这一屏刚好一屏）。
+         容器宽和基准宽一起乘 k，所以**排版一模一样、只是整体变小** ——
+         高度随 k 线性下降，这个循环一定收敛。 */
+      /* 底线 0.55：再往下缩每张就只剩一百多像素宽了，与其"全放但小到看不清"，
+         不如少放两张、每张看得清（试过 0.45，1080p 上四张全放、每张 ~120px 宽，太小） */
+      let k = 1;
+      while (k > 0.55 && over(max)) {
+        k = Math.round((k - 0.05) * 100) / 100;
+        scaleTo(k);
+      }
+
+      /* 第二步：缩到 55% 还塞不下（很矮的窗口），就把最后几张**直接不显示**
+         （用户要求：多余的不显示）。最少留两张 —— 只留一张的话它会独自铺满
+         整行，反倒比两行还高。 */
+      for (let i = items.length - 1; i >= 2 && over(max); i--) items[i].hidden = true;
+    };
+
+    fit();
+    let timer = 0;
+    window.addEventListener('resize', () => {
+      clearTimeout(timer);
+      timer = window.setTimeout(fit, 150);
+    });
+  }
+</script>
+
+<style>
+  .photos-wall { margin-top: var(--space-6); }
+
+  /* 照片页有一道 56rem 的护栏（那边内容区只有 61rem，撑满会显顶格）。
+     主页这一屏的容器是 72rem，而板块名、描述、页脚那条线都铺满整个宽度 ——
+     照片若还卡在 896px，右边会空出一大截、和上面的字对不齐。这里放开护栏。
+     （`.wall-photos` 是 PhotoWall 组件里的元素，所以必须用 :global） */
+  /* 居中：脚本缩小照片区之后（max-width 变窄），块要是靠左，右边就空出一大片 —— 居中才像
+     "一块整体缩小的照片墙"。原尺寸时它是满宽的，这条不起作用，所以不会动到不缩时的外观。 */
+  .photos-wall :global(.wall-photos) { max-width: none; margin-inline: auto; }
+  /* 光放开护栏还不够：照片页那边每一行的宽度**正好**是"两张并排"（约 880px），
+     所以不需要撑。主页容器 1104，每张图仍按 calc(比例 × 16rem) 的基准宽排，
+     一行只占 880、右边空一块。给每张按自己的宽高比加 flex-grow ——
+     一行内的剩余空间按比例分掉，整行就铺满了，而比例不变（这正是 justified rows） */
+  /* 每张的基准宽乘上一个缩放系数 --photo-k（脚本按需要调它）。
+     系数同时作用在**容器宽**和**基准宽**上，两件事必须一起动：
+     只缩容器的话，基准宽没变，4 张会从两行变成四行 —— 反而更高（踩过）。 */
+  .photos-wall :global(.wall-photos .photo) {
+    flex-grow: var(--ar);
+    width: calc(var(--ar) * 16rem * var(--photo-k, 1));
+  }
+
+  /* 页脚那一行：上面一条细线，右对齐 —— 像照片背面那行说明 */
+  .photos-foot {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: var(--space-4);
+    margin: var(--space-5) 0 0;
+    padding-top: var(--space-4);
+    border-top: 1px solid var(--rule);
+  }
+
+  /* 两边分：左边放"共 N 张"，右边放"摄于"。只有右边那一项时靠 margin-left:auto 顶到右边 ——
+     光靠 space-between 的话，只有一个子元素时它会被推到**左边**（踩过） */
+  .photos-shotat { margin-left: auto; }
+
+  .photos-rest { font-size: var(--text-sm); color: var(--faint); letter-spacing: 0.08em; }
+
+  .photos-shotat {
+    font-family: var(--kai);
+    /* 23px：楷体的下限（见 tokens.css） */
+    font-size: var(--text-md);
+    letter-spacing: 0.1em;
+    color: var(--muted);
+  }
+</style>

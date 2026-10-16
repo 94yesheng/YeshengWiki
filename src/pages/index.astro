@@ -11,18 +11,19 @@
  */
 import BaseLayout from '../layouts/BaseLayout.astro';
 import SectionEntry from '../components/SectionEntry.astro';
+import SectionPosts from '../components/SectionPosts.astro';
+import SectionPhotos from '../components/SectionPhotos.astro';
 import { home, site } from '../site.config';
 import { getPostCover, getPostLead, getPublishedPosts } from '../utils/posts';
 import { getPhotoWalls } from '../utils/photos';
-import { chineseFullDate, chineseMonthDay } from '../utils/date';
+import { chineseMonthDay } from '../utils/date';
 import { cjkSpacing } from '../utils/typography';
 
 const posts = await getPublishedPosts();
 
-/* 各栏「最新的一条」：文章栏放最新那篇文章，照片栏放最新的那面墙。
-   日期格式各随自己那个板块 —— 文章栏跟列表页用中文月日，照片栏跟照片页用中文全日期。 */
+/* 各栏「最新的一条」：文章栏拿最新那篇文章（日期跟列表页一样用中文月日） */
 const newestPost = posts.length > 0 ? posts[0] : undefined;
-const newestWall = (await getPhotoWalls())[0];
+const walls = await getPhotoWalls();
 
 const postPreview = newestPost && {
   cover: getPostCover(newestPost),
@@ -32,19 +33,23 @@ const postPreview = newestPost && {
   /* 用正文的开头，不用 frontmatter 的 description —— 后者是搬站时硬截断的
      55 字，末句常常断在半句甚至没闭合的括号里。见 utils/posts.ts 的 getPostLead */
   text: getPostLead(newestPost),
+  /* 文章那一屏要按篇点进去，所以这里带上它自己的网址（其它板块用不到） */
+  href: `/posts/${newestPost.id}/`,
 };
 
-const wallPreview = newestWall && {
-  cover: newestWall.cover,
-  date: newestWall.date ? chineseFullDate(newestWall.date) : '',
-  extra: newestWall.place,
-  title: cjkSpacing(newestWall.title),
-  text: newestWall.note,
-};
+/* 文章那一屏左边那一列：**最新那篇之外**的近期几篇。
+   最新的已经在右边单独亮着了，左边就不重复它了 —— 想去掉这个"去重"很容易，
+   把 slice(1, …) 改成 slice(0, …) 就行 */
+const recentPosts = posts.slice(1, 7).map((p) => ({
+  title: cjkSpacing(p.data.title),
+  href: `/posts/${p.id}/`,
+}));
 
-/** 只给这两栏配最新一条；程序、友链没有"条目"这个概念，保持标题 + 描述 */
-const previewFor = (href: string) =>
-  href === '/posts/' ? postPreview : href === '/photos/' ? wallPreview : undefined;
+/* 照片那一屏：直接摊开一面照片墙。
+   **演示期**先用 2024 年 10 月那面墙看效果（照片多、看得出排法）；正式上线时
+   把 DEMO_WALL 这一行删掉，就回到"最新的一面墙"（getPhotoWalls 已经按时间倒序）。 */
+const DEMO_WALL = '2024-10';
+const featuredWall = walls.find((w) => w.dateText.startsWith(DEMO_WALL)) ?? walls[0];
 ---
 
 <BaseLayout bodyClass="home" masthead={false}>
@@ -59,13 +64,51 @@ const previewFor = (href: string) =>
     </div>
   </section>
 
-  <!-- 之后每个板块各占满一屏 -->
-  {home.sections.map((section) => <SectionEntry {...section} preview={previewFor(section.href)} />)}
+  <!-- 之后每个板块各占满一屏。「文章」和「照片」两屏版式特殊，各有自己的组件；
+       剩下两屏（程序、友链）还是 SectionEntry 的"整屏一个大链接" -->
+  {
+    home.sections.map((section) =>
+      section.href === '/posts/' && postPreview && recentPosts.length ? (
+        <SectionPosts
+          href={section.href}
+          title={section.title}
+          desc={section.desc}
+          recent={recentPosts}
+          spot={postPreview}
+        />
+      ) : section.href === '/photos/' && featuredWall ? (
+        <SectionPhotos
+          href={section.href}
+          title={section.title}
+          desc={section.desc}
+          wall={featuredWall}
+        />
+      ) : (
+        <SectionEntry {...section} />
+      )
+    )
+  }
 </BaseLayout>
 
 <style>
+  /* 主页这一页的容器比全站默认的宽一档（用户：主题栏展示区域再往两边加宽一些）。
+     **不能改 --shell** —— 那是全站共用的（文章页/照片页/列表页都用它），
+     为了一页改全局，别的页会跟着变。这里用 body.home 圈住，顺带把同页的顶栏和页脚
+     一起放宽：它们也是 .wrap，不一起放宽的话内容区和导航的左右边缘会对不齐。 */
+  /* 必须用 :global —— Astro 会给本页 <style> 里的选择器加本页的作用域 id，
+     而各板块的 .wrap 在**组件**里、带的是组件的 id，`body.home .wrap` 只会匹配到
+     第一屏那个（踩过：改完一看只有第一屏变宽了）。 */
+  :global(body.home .wrap) { max-width: 72rem; }
+
   /* 第一屏不画上边线 —— 它上面就是顶栏，已经有一条了 */
-  .screen--hero { border-top: 0; }
+  .screen--hero {
+    border-top: 0;
+    /* 动效那一层是绝对定位贴在这一屏上的，所以这里要成为它的定位参照 */
+    position: relative;
+  }
+  /* 文字压在动效上面：canvas 是定位元素、会盖过普通流里的内容，
+     所以把 .wrap 也变成定位元素 —— 同在定位层里就按 DOM 顺序走，它在后面、就在上面 */
+  .screen--hero .wrap { position: relative; }
 
   .hero-title {
     margin: 0;

@@ -10,7 +10,6 @@ import {
   draftId,
   newPostEntry,
   POST_FIELDS,
-  postTitle,
   savePost,
   type PostEntry,
 } from '../content';
