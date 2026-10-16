@@ -31,7 +31,8 @@
        · ≥ 20px：楷体。这些地方都单独声明了 --kai（顶栏站名、栏目标题、编辑区的文章
          标题、列表顶部的「＋」、悬浮球…），一个都不用在这里写。
        · < 20px：宋体。列表条目、按钮、输入框、字段名、提示、日期 —— 也就是这里这个默认。
-       · 唯一的例外是右侧「预设」那一组，它保持界面字体（黑体），见 .ed-group--presets。
+       · 唯一的例外是**右侧那一栏**（「格式」面板），它整块走界面字体（黑体）：那一栏讲的
+         是界面本身，不是文章 —— 见 .st-col--tools。
 
      实测过：后台一共 76 个元素会落到这些规则里，其中 71 个是 12–17px ——
      也就是说"全都换楷体"等于 71 处发虚，所以才有这条分档。
@@ -389,6 +390,9 @@
   justify-content: space-between;
   align-items: center;
   gap: var(--space-3);
+  /* 这一行下面也拉一条线（用户要求）—— 它和列表之间从此有条明确的分界，
+     时间轴那一套本来就是"没有行边框"的，不划线的话标题像浮在半空 */
+  border-bottom: 1px solid var(--rule);
 }
 
 /* --------------------------------------------------------------------------
@@ -461,6 +465,210 @@
 .st-list .st-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .st-list .st-sub { color: var(--muted); font-size: var(--text-sm); }
 .st-empty { padding: var(--space-6) var(--space-5); color: var(--muted); font-size: var(--text-xs); }
+
+/* --------------------------------------------------------------------------
+   文章那一栏的时间轴 + 标签筛选
+   （结构、动画都照访客侧 Timeline.astro / TagChips.astro 那一套，
+     尺寸按左栏只有 17rem 收过；两份 CSS 不会撞 —— /studio/ 不加载组件的作用域样式）
+   -------------------------------------------------------------------------- */
+
+/* 筛选条 */
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-4);
+  padding: 0 var(--space-5) var(--space-3);
+}
+.chip {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.35em;
+  padding: 0.1rem 0;
+  font: inherit;
+  font-size: var(--text-sm);
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  background: none;
+  border: 0;
+  border-bottom: 1px solid transparent;
+  cursor: pointer;
+  transition: color var(--dur-fast) ease, border-color var(--dur-fast) ease;
+}
+.chip:hover { color: var(--ink); border-bottom-color: var(--rule); }
+.chip--active { color: var(--accent); border-bottom-color: var(--accent); }
+.chip-count { font-size: var(--text-xs); opacity: 0.6; font-variant-numeric: tabular-nums; }
+
+/* 轴线：顶端是"现在"，底端收在起点圆环上（同访客侧，只是那圈内边距小一档） */
+.tl {
+  position: relative;
+  margin-left: 0.5rem;
+  padding-left: var(--space-4);
+  padding-top: var(--space-3);
+}
+.tl::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 6px;      /* 收在起点圆环的圆心，别垂到底 */
+  width: 1px;
+  background: var(--rule);
+}
+.tl-start { position: relative; height: 10px; margin-top: var(--space-4); }
+.tl-start::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: calc(-1 * var(--space-4) - 5.5px);   /* 轴线在 left:0 且本身 1px 宽，中心在 +0.5px —— 那 0.5 不能漏 */
+  box-sizing: border-box;
+  width: 11px;
+  height: 11px;
+  border: 2px solid var(--accent);
+  border-radius: 50%;
+}
+.tl-start::after {
+  content: '';
+  position: absolute;
+  top: 3.5px;
+  left: calc(-1 * var(--space-4) - 2px);
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+
+.tl-year + .tl-year { margin-top: var(--space-6); }
+.tl-month + .tl-month { margin-top: var(--space-4); }
+.tl-body { padding-top: var(--space-3); }
+.tl-month-head { margin-bottom: var(--space-1); }
+.tl-items { padding-left: var(--space-1); }
+
+/* 年月都是按钮，但看着要像标题 */
+.tl-year-head,
+.tl-month-head {
+  position: relative;
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  text-align: left;
+  color: inherit;
+  cursor: pointer;
+  transition: color var(--dur-fast) ease;
+}
+.tl-year-head:hover,
+.tl-month-head:hover { color: var(--accent); }
+
+/* 钉在轴线上的节点 */
+.tl-year-head::before,
+.tl-month-head::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: calc(-1 * var(--space-4) - 2.5px);
+  width: 6px;
+  height: 6px;
+  margin-top: -3px;
+  border-radius: 50%;
+  background: var(--rule);
+  transition: background-color var(--dur-fast) ease, transform var(--dur-base) var(--ease);
+}
+.tl-year-head::before {
+  left: calc(-1 * var(--space-4) - 3.5px);
+  width: 8px;
+  height: 8px;
+  margin-top: -4px;
+  background: var(--accent);
+}
+.tl-year-head:hover::before,
+.tl-month-head:hover::before { background: var(--accent); transform: scale(1.2); }
+
+/* 字号：访客侧是 24/23，后台这套字号被压回过旧值（见 .st-body），
+   所以取 --text-xl(24) / --text-lg(20) —— 两档都仍在「楷体 ≥20px」之上 */
+.tl-year-label { font-family: var(--kai); font-size: var(--text-xl); letter-spacing: 0.12em; }
+.tl-month-label { font-family: var(--kai); font-size: var(--text-lg); letter-spacing: 0.1em; color: var(--muted); }
+.tl-count { font-size: var(--text-xs); letter-spacing: 0.08em; color: var(--faint); font-variant-numeric: tabular-nums; }
+
+/* 折叠：高度 0fr → 1fr（不用知道内容多高），缓动带一点点过冲，展开到头会轻轻回弹 */
+.tl-panel {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 400ms cubic-bezier(0.22, 1.12, 0.32, 1);
+}
+.tl-panel[data-open] { grid-template-rows: 1fr; }
+/* 月份节点会探到轴线左边，所以 .tl-body 要留出安全区（往左多留、再用等量负外边距推回来） */
+.tl-body {
+  padding-left: calc(var(--space-4) + 6px);
+  margin-left: calc(-1 * var(--space-4) - 6px);
+}
+.tl-body,
+.tl-items {
+  overflow: hidden;      /* 0fr 时把内容裁掉，不然会溢出来 */
+  visibility: hidden;
+  transition: visibility 0s linear 480ms;   /* 收起时等错峰动画跑完再真正隐藏 */
+}
+.tl-panel[data-open] > .tl-body,
+.tl-panel[data-open] > .tl-items { visibility: visible; transition: visibility 0s; }
+
+/* 子项依次入场（展开从上往下、收起从下往上）—— 容器给 --n、每项给 --i */
+.tl-body > *,
+.tl-items > * {
+  opacity: 0;
+  transform: translateY(-0.5rem);
+  transition: opacity 200ms ease, transform 300ms cubic-bezier(0.34, 1.3, 0.5, 1);
+  transition-delay: calc((var(--n, 1) - 1 - var(--i, 0)) * 25ms);
+}
+.tl-panel[data-open] > .tl-body > *,
+.tl-panel[data-open] > .tl-items > * {
+  opacity: 1;
+  transform: none;
+  transition-delay: calc(var(--i, 0) * 35ms);
+}
+
+/* 一条文章：左边「日」（楷体、强调色 —— 全站唯一的彩色只给时间用），右边标题 */
+.tl-item button {
+  width: 100%;
+  display: grid;
+  /* 日那一列的宽度是**按最宽的一天倒推的**：二十X日 是 4 个字，
+     楷体 20px → 80px + 字距 ≈ 84px。窄了的话那天的字数会溢出格子、跟标题挤在一起（踩过） */
+  grid-template-columns: 5.25rem minmax(0, 1fr);
+  align-items: baseline;
+  gap: 0 var(--space-2);
+  padding: 0.3rem var(--space-3);
+  border: 0;
+  border-radius: 3px;
+  background: none;
+  font: inherit;
+  text-align: left;
+  color: var(--ink);
+  cursor: pointer;
+  transition: background-color var(--dur-fast) ease;
+}
+.tl-item button:hover { background: color-mix(in srgb, var(--ink) 4%, transparent); }
+/* 选中：这一栏紧挨着轴线，用底色 + 强调色标题表示，不再画左边框（会跟轴线挤在一起） */
+.tl-item button[aria-current='true'] { background: color-mix(in srgb, var(--accent) 6%, transparent); }
+.tl-item button[aria-current='true'] .tl-name { color: var(--accent); }
+.tl-day {
+  font-family: var(--kai);
+  font-size: var(--text-lg);     /* 20px：楷体的下限 */
+  letter-spacing: 0.04em;
+  color: var(--accent);
+  white-space: nowrap;
+}
+.tl-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tl-mark { font-size: var(--text-sm); color: var(--muted); }
+.tl-sub { grid-column: 2; color: var(--muted); font-size: var(--text-sm); }
+
+/* 新加的那一条：从上面滑出来、把下面的推下去（和列表行同一个动画） */
+.tl-item.is-new { overflow: hidden; animation: st-row-in var(--dur-base) var(--ease); }
+@media (prefers-reduced-motion: reduce) {
+  .tl-item.is-new { animation: none; }
+}
 
 /* --------------------------------------------------------------------------
    表单
@@ -555,10 +763,10 @@
 .ed-group + .ed-group { border-top: 1px solid var(--rule); }
 .ed-glabel { font-size: var(--text-sm); color: var(--muted); letter-spacing: 0.16em; }
 
-/* 唯一的一处黑体：右侧「预设」那一组（大标题 / 小标题 / 正文 / 引用 / 着重）。
-   用户点名把它排除在"换字体"之外 —— 它是整个后台剩下的最后一块界面字体。 */
-.ed-group--presets .ed-glabel,
-.ed-group--presets .ed-btn { font-family: var(--sans); }
+/* 右侧那一栏（文章集合下就是「格式」面板）**整块走界面字体**（黑体，用户指定）。
+   它讲的是界面、不是文章 —— 正文和预览在中间那栏，各自是 --song / --kai，不受这里影响；
+   所以"楷体不得低于 20px"那条硬规则跟这一栏无关（这里最大的字也不过 17px）。 */
+.st-col--tools { font-family: var(--sans); }
 .ed-row { display: flex; flex-wrap: wrap; gap: 6px; }
 
 .ed-btn {

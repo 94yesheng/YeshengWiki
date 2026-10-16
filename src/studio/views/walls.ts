@@ -229,33 +229,24 @@ export function createNewWall(): void {
   toast('已加了一面空墙 —— 还没进仓库，点右上角「保存」才写进去');
 }
 
-/** 删除：同样只记一笔，点「保存」才真从仓库删。刚加还没写下去的那面，等于撤销新增。 */
+/** 删除：同样**不问确认框**（可逆，见 posts.ts 里同一段说明），点「保存」才真从仓库删。 */
 function removeWall(wall: WallEntry): void {
   if (isStagedNew(wall)) {
-    if (!confirm(`把「${wall.title || wall.id}」从列表里拿掉？\n\n它还没写进仓库，拿掉就没了。`)) return;
     state.walls = state.walls.filter((w) => w.path !== wall.path);
     stageRemove(wall); // 会把它从"新增"那一笔里划掉
     state.selected = null;
     state.draft = {};
     rerender();
-    toast('已拿掉（它本来就没写进仓库）');
+    toast('已拿掉（它还没写进仓库）');
     return;
   }
-
-  if (
-    !confirm(
-      `确定删除照片墙「${wall.title || wall.id}」？\n\n先只是从列表里拿掉 —— 点右上角「保存」才真正从仓库删。` +
-        `照片文件本身不会删。在那之前点「重新读取」可以取消。`
-    )
-  )
-    return;
 
   stageRemove(wall);
   state.selected = null;
   state.draft = {};
   markDirty(); // 「保存」要亮起来 —— 这一笔还等着落盘
   rerender();
-  toast('已从列表移除 —— 点右上角「保存」才真正删除');
+  toast('已从列表移除 —— 点「保存」才真删（照片文件本身不删），点「重新读取」可以撤销');
 }
 
 /** 当前这面墙有没有"还没保存的字段改动" */

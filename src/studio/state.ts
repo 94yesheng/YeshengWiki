@@ -83,6 +83,14 @@ export const state = {
   staged: { added: [], removed: [] } as Staged,
   /** 站点上的密文（没有就是 null —— 此时显示令牌登录页） */
   vault: null as VaultBlob | null,
+  /**
+   * 左栏时间轴：收起来的年 / 月（键是 `y:2026`、`m:2026-3`）与当前的标签筛选。
+   *
+   * **为什么不像访客侧那样只放在 DOM 上**：后台每改一处都会重画左栏，DOM 会被整块换掉；
+   * 访客页渲染一次就不再重画，所以那边放 DOM 上没问题（见 views/postlist.ts 的说明）。
+   */
+  listCollapsed: new Set<string>(),
+  tagFilter: '',
 };
 
 /** 把当前会话的凭据从内存里丢掉（不动本机存的密文） */

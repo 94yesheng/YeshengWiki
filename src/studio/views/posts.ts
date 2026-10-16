@@ -274,35 +274,29 @@ export function createNewPost(): void {
 }
 
 /**
- * 删除文章：**同样不碰仓库**，只记一笔（列表里立刻不画它了），等「保存」时才真删。
- * 刚加进来还没写下去的那条，等于撤销新增 —— 直接从列表里拿掉就完事。
+ * 删除文章：**不碰仓库、也不弹确认框**（用户嫌啰嗦），只记一笔、列表里立刻不画它。
+ *
+ * 敢省掉确认框，是因为这一下**是可逆的**：在点「保存」之前，点「重新读取」就把它还回来了
+ * —— 提示语里写明了这点，比弹个框点一下"确定"更省事也不更危险。
+ * 刚加进来还没写下去的那条，等于撤销新增（仓库里本来就没有它）。
  */
 function removePost(entry: PostEntry): void {
   if (isStagedNew(entry)) {
-    if (!confirm(`把「${postTitle(entry)}」从列表里拿掉？\n\n它还没写进仓库，拿掉就没了。`)) return;
     state.posts = state.posts.filter((p) => p.path !== entry.path);
     stageRemove(entry); // 会把它从"新增"那一笔里划掉
     state.selected = null;
     state.draft = {};
     rerender();
-    toast('已拿掉（它本来就没写进仓库）');
+    toast('已拿掉（它还没写进仓库）');
     return;
   }
-
-  if (
-    !confirm(
-      `确定删除「${postTitle(entry)}」？\n\n先只是从列表里拿掉 —— 点右上角「保存」才真正从仓库删` +
-        `（git 历史里还能找回）。在那之前点「重新读取」可以取消。`
-    )
-  )
-    return;
 
   stageRemove(entry);
   state.selected = null;
   state.draft = {};
   markDirty(); // 让「保存」亮起来 —— 这一笔还等着落盘
   rerender();
-  toast('已从列表移除 —— 点右上角「保存」才真正删除');
+  toast('已从列表移除 —— 点「保存」才真删，点「重新读取」可以撤销');
 }
 
 /**

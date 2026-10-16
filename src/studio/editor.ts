@@ -98,7 +98,7 @@ export function createEditor(
 
   barHost.innerHTML = `
     <div class="ed-bar" role="toolbar" aria-label="正文格式">
-      <div class="ed-group ed-group--presets">
+      <div class="ed-group">
         <span class="ed-glabel">预设</span>
         <div class="ed-row">
           ${BLOCK_PRESETS.map(

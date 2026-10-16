@@ -61,6 +61,7 @@ import {
   saveWallCurrent,
   wallDraftEdited,
 } from './views/walls';
+import { postListHtml, wirePostList } from './views/postlist';
 import { renderLinksView } from './views/links';
 import { renderSiteView } from './views/site';
 import type { Github } from './github';
@@ -282,24 +283,13 @@ function renderList(): void {
   if (!box || !title) return;
 
   if (state.collection === 'posts') {
-    // 待删的那几条不画 —— 但仍在 state.posts 里（"丢弃暂存"时它们要回来）
+    // 文章走**时间轴 + 标签筛选**（和访客侧 /posts/ 同一套交互与动画），见 views/postlist.ts
     const list = state.posts.filter((p) => !isStagedGone(p));
     title.innerHTML = `<span>共 ${list.length} 篇</span>`;
-    box.innerHTML = `<ul class="st-list">${ADD_ROW('st-new-post', '新建文章')}${list
-      .map((p) => {
-        const d = p.parsed.data;
-        const draft = d.draft === true;
-        return `<li${state.justAdded === p.id ? ' class="is-new"' : ''}><button data-id="${esc(p.id)}" aria-current="${
-          state.selected === p.id
-        }">
-          <span class="st-line"><span class="st-date">${esc(d.pubDate ?? '无日期')}</span><span class="st-name">${esc(
-            d.title ?? p.id
-          )}${draft ? ' <span class="st-sub">（草稿）</span>' : ''}</span></span>
-          <span class="st-sub">${esc(Array.isArray(d.tags) ? (d.tags as string[]).join(' · ') : '无标签')}${unsaved(p)}</span>
-        </button></li>`;
-      })
-      .join('')}</ul>${list.length ? '' : '<p class="st-empty">还没有文章。</p>'}`;
+    box.innerHTML = postListHtml(ADD_ROW('st-new-post', '新建文章'));
     $('#st-new-post')?.addEventListener('click', () => createNewPost());
+    // 筛选时只重画这一块（不重画整个界面，免得编辑区里的输入框失焦）
+    wirePostList(box, renderList);
   } else if (state.collection === 'walls') {
     const list = state.walls.filter((w) => !isStagedGone(w));
     title.innerHTML = `<span>共 ${list.length} 面墙</span>`;
