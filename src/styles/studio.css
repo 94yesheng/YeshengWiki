@@ -262,29 +262,53 @@
   position: absolute;
   top: 50%;
   z-index: 3;
-  width: 1.4rem;
-  height: 2.6rem;
+  width: 1.7rem;
+  height: 3.2rem;
   padding: 0;
   display: grid;
   place-items: center;
-  border: 1px solid var(--rule);
-  border-radius: 999px;
-  background: var(--paper);
+  /* **和它服务的那一栏同底色、贴着边缘**（不再是自己一块纸色药丸）——
+     看着像从面板边上长出来的一小截，收起展开时跟面板一起动，是一个整体 */
+  background: var(--canvas);
   color: var(--muted);
+  border: 1px solid var(--rule);
   font: inherit;
-  font-size: var(--text-xs);
+  font-size: var(--text-sm);
   line-height: 1;
   cursor: pointer;
   transition:
     left var(--dur-base) var(--ease),
     right var(--dur-base) var(--ease),
+    background-color var(--dur-fast) ease,
+    border-radius var(--dur-fast) ease,
     color var(--dur-fast) ease,
     border-color var(--dur-fast) ease;
 }
-/* 位置跟着栏宽走；**但收起来时要留住一个最小值** —— 否则把手会有一半被推出屏幕，
-   虽然还点得到，看着像缺了一块。max() 就是干这个的。 */
-.st-col-handle--nav { left: max(var(--nav-w), 0.85rem); transform: translate(-50%, -50%); }
-.st-col-handle--tools { right: max(var(--tools-w), 0.85rem); transform: translate(50%, -50%); }
+/* 位置跟着栏宽走；**但收起来时要留住一个最小值** —— 否则把手会被推出屏幕。
+   max() 就是干这个的。 */
+/* 左栏那个：贴住它的右边缘、只往右凸出 —— 贴着的那边不画边框、也不倒角 */
+.st-col-handle--nav {
+  left: max(var(--nav-w), 1.05rem);
+  transform: translateY(-50%);
+  border-left: 0;
+  border-radius: 0 9px 9px 0;
+}
+/* 右栏那个：镜像 */
+.st-col-handle--tools {
+  right: max(var(--tools-w), 1.05rem);
+  transform: translateY(-50%);
+  border-right: 0;
+  border-radius: 9px 0 0 9px;
+}
+/* 收起来之后面板没了，把手边上没有东西可"贴"，就把它变回一个完整的圆角块 */
+.st-app.is-nav-hidden .st-col-handle--nav {
+  border-left: 1px solid var(--rule);
+  border-radius: 9px;
+}
+.st-app.is-tools-hidden .st-col-handle--tools {
+  border-right: 1px solid var(--rule);
+  border-radius: 9px;
+}
 .st-col-handle:hover { color: var(--accent); border-color: var(--accent); }
 
 @media (max-width: 1180px) {
@@ -295,7 +319,9 @@
   .st-col--preview { display: none; }
 }
 .st-col { min-width: 0; overflow-y: auto; overflow-x: hidden; }
-.st-col--nav { border-right: 1px solid var(--rule); padding: var(--space-4) 0; }
+/* 左右两栏同底色（--canvas）—— 中间那栏仍是 --paper 的纸色，
+   这样"两边的工具区"和"中间的正文"一眼分得开 */
+.st-col--nav { border-right: 1px solid var(--rule); padding: var(--space-4) 0; background: var(--canvas); }
 .st-col--edit { padding: var(--space-5) var(--space-6) var(--space-7); border-right: 1px solid var(--rule); }
 
 /* 正文那一栏**不画滚动条** —— 三栏各有一条竖条并排，中间那根最碍眼。
@@ -304,8 +330,7 @@
 .st-col--edit::-webkit-scrollbar { width: 0; height: 0; }
 .st-col--preview { padding: var(--space-5) var(--space-6) var(--space-7); background: var(--canvas); }
 /* 「格式」面板（文章集合的第三栏）。和预览栏同底色，但**窄屏不隐藏** */
-.st-col--tools { padding: var(--space-5) var(--space-5) var(--space-7); background: var(--canvas); }
-.st-tools-hint { padding: 0 var(--space-3); }
+.st-col--tools { padding: var(--space-5) var(--space-4) var(--space-7); background: var(--canvas); }
 .st-panel-title {
   /* 同上：这枚小标只有 12px，配楷体必糊 —— 换成界面字体 --sans */
   font-family: var(--sans);
@@ -323,9 +348,17 @@
 /* --------------------------------------------------------------------------
    集合导航与列表
    -------------------------------------------------------------------------- */
-.st-nav { padding: 0 var(--space-4) var(--space-3); display: flex; flex-wrap: wrap; gap: var(--space-3); }
+.st-nav {
+  padding: 0 var(--space-4) var(--space-4);
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  /* 和下面那串条目之间拉一条细线，两块功能分开 */
+  border-bottom: 1px solid var(--rule);
+}
 .st-nav button {
   font: inherit;
+  font-size: var(--text-base);   /* 抬一档：这些是主要入口，不该跟小字一样大 */
   cursor: pointer;
   border: 0;
   background: none;
@@ -338,10 +371,12 @@
 .st-nav .st-n { color: var(--muted); font-size: 0.85em; }
 
 .st-list { list-style: none; margin: 0; padding: 0; }
+.st-list li + li { border-top: 1px solid color-mix(in srgb, var(--ink) 6%, transparent); }
 .st-list li button {
   width: 100%;
   text-align: left;
   font: inherit;
+  font-size: var(--text-base);
   cursor: pointer;
   background: none;
   border: 0;
@@ -355,9 +390,9 @@
 .st-list li button:hover { background: color-mix(in srgb, var(--ink) 4%, transparent); }
 .st-list li button[aria-current='true'] { border-left-color: var(--accent); background: color-mix(in srgb, var(--accent) 6%, transparent); }
 .st-list .st-line { display: flex; gap: var(--space-2); align-items: baseline; min-width: 0; }
-.st-list .st-date { color: var(--accent); font-size: var(--text-xs); white-space: nowrap; }
+.st-list .st-date { color: var(--accent); font-size: var(--text-sm); white-space: nowrap; }
 .st-list .st-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.st-list .st-sub { color: var(--muted); font-size: var(--text-xs); }
+.st-list .st-sub { color: var(--muted); font-size: var(--text-sm); }
 .st-empty { padding: var(--space-6) var(--space-5); color: var(--muted); font-size: var(--text-xs); }
 
 /* --------------------------------------------------------------------------
@@ -441,33 +476,49 @@
   overflow: hidden;
 }
 
-/* 工具栏现在住在右侧的「格式」面板里，所以是竖排的：一组一段，各自换行 */
+/* 工具栏住在右侧面板里，竖排：一段一组，组与组之间一条细线 */
 .ed-bar {
   display: flex;
   flex-direction: column;
   align-items: stretch;
-  gap: var(--space-4);
-  padding: var(--space-3) var(--space-3) 0;
 }
-.ed-group { display: flex; flex-direction: column; gap: 6px; }
-.ed-glabel { font-size: var(--text-xs); color: var(--faint); letter-spacing: 0.18em; }
-.ed-row { display: flex; flex-wrap: wrap; gap: 4px; }
+.ed-group { display: flex; flex-direction: column; gap: 8px; padding: var(--space-4) 0; }
+.ed-group:first-child { padding-top: 0; }
+/* 分组线：不读文字也看得出这是两块功能 */
+.ed-group + .ed-group { border-top: 1px solid var(--rule); }
+.ed-glabel { font-size: var(--text-sm); color: var(--muted); letter-spacing: 0.16em; }
+.ed-row { display: flex; flex-wrap: wrap; gap: 6px; }
 
 .ed-btn {
   font: inherit;
-  font-size: var(--text-xs);
-  padding: 3px 8px;
-  border: 1px solid transparent;
-  border-radius: 3px;
-  background: none;
+  /* 和左栏那些入口同号 —— 两边的"选项字号"一致，看着才是一套 */
+  font-size: var(--text-base);
+  padding: 5px 11px;
+  border: 1px solid var(--rule);
+  border-radius: 5px;
+  background: var(--paper);
   cursor: pointer;
   color: var(--ink);
+  transition:
+    color var(--dur-fast) ease,
+    border-color var(--dur-fast) ease,
+    background-color var(--dur-fast) ease;
 }
-.ed-btn:hover { border-color: var(--rule); background: var(--paper); }
+.ed-btn:hover { border-color: var(--accent); color: var(--accent); }
 /* 光标所在块决定哪个按钮是"按下"的（段落预设与对齐靠这个反映状态） */
-.ed-btn[aria-pressed='true'] { border-color: var(--accent); color: var(--accent); }
+.ed-btn[aria-pressed='true'] {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+}
 .ed-btn--mark { color: var(--accent); }
-.ed-count { font-size: var(--text-xs); color: var(--muted); text-align: right; padding: 0 var(--space-3) var(--space-2); }
+.ed-count {
+  font-size: var(--text-sm);
+  color: var(--muted);
+  text-align: right;
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--rule);
+}
 
 .ed-area {
   min-height: 30rem;

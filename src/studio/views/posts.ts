@@ -188,8 +188,8 @@ export function renderPostView(): void {
   // 右侧那一栏 = 「格式」面板：工具栏搬进来了；预览改由右下角的悬浮球打开
   const panel = $('#st-preview');
   if (panel) {
-    panel.innerHTML = `<div class="st-panel-title">格式</div><div id="ed-bar-host"></div>
-      <p class="st-hint st-tools-hint">选中文字再点按钮。段落预设、字形、对齐、列表、分隔线都在这里。</p>`;
+    // 面板里只放工具栏 —— 标题和底部提示都去掉了（分组标签自己就是引导）
+    panel.innerHTML = `<div id="ed-bar-host"></div>`;
   }
 
   // 挂上所见即所得编辑器（正文不再裸露 Markdown）。
