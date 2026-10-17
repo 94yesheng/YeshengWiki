@@ -1,0 +1,26 @@
+              <div class="rail-blueprint-card">
+                <div class="rail-card-kicker">
+                  <span>TOPOLOGY // 穿透链路图解</span>
+                  <span>TCP : 25565</span>
+                </div>
+                <svg viewBox="0 0 240 130" style="width:100%; height:auto; display:block;" aria-label="FRP 内网穿透拓扑图">
+                  <rect x="8" y="14" width="66" height="40" rx="2" fill="none" stroke="currentColor" stroke-opacity="0.35"/>
+                  <text x="16" y="31" font-family="monospace" font-size="8.5" fill="#d97757">LOCAL HOST</text>
+                  <text x="16" y="44" font-family="monospace" font-size="8" fill="currentColor" opacity="0.7">Paper :25565</text>
+
+                  <rect x="87" y="14" width="66" height="40" rx="2" fill="none" stroke="#d97757" stroke-width="1.3"/>
+                  <text x="96" y="31" font-family="monospace" font-size="8.5" fill="#d97757">FRP RELAY</text>
+                  <text x="96" y="44" font-family="monospace" font-size="8" fill="currentColor" opacity="0.7">Public :7000</text>
+
+                  <rect x="166" y="14" width="66" height="40" rx="2" fill="none" stroke="currentColor" stroke-opacity="0.35"/>
+                  <text x="175" y="31" font-family="monospace" font-size="8.5" fill="#788c5d">PLAYERS</text>
+                  <text x="175" y="44" font-family="monospace" font-size="8" fill="currentColor" opacity="0.7">Clients 1..N</text>
+
+                  <line x1="74" y1="34" x2="87" y2="34" stroke="#d97757" stroke-width="1.4"/>
+                  <line x1="153" y1="34" x2="166" y2="34" stroke="#d97757" stroke-width="1.4"/>
+
+                  <rect x="8" y="72" width="224" height="46" rx="2" fill="none" stroke="currentColor" stroke-opacity="0.2" stroke-dasharray="3 3"/>
+                  <text x="18" y="90" font-family="monospace" font-size="8.5" fill="currentColor" opacity="0.75">TUNNEL: 127.0.0.1:25565 -&gt; frps:25565</text>
+                  <text x="18" y="106" font-family="monospace" font-size="8.5" fill="#d97757">STATUS: NAT BYPASSED · ZERO PUBLIC IP</text>
+                </svg>
+              </div>

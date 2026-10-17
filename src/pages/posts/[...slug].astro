@@ -1,264 +1,145 @@
 ---
+/**
+ * 文章页 —— artifact 版。
+ *
+ * 骨架来自 code_artifact.html 的 #article-view（原样切出，见 scripts/import-artifact.mjs），
+ * 正文换成 Astro 的 <Content />，标题/日期/标签/字数/目录/上下篇/右栏由这里注入。
+ *
+ * 【几个必须记住的约定】
+ * · 模板里用 @@NAME@@ 占位符；替换一律 split/join（避免 $& 被 String.replace 当替换模式）。
+ * · @@PROSE@@ 是正文插入点：前面那段以 <div class="article-prose-q"> 结尾、
+ *   后面那段以 </div> 开头，所以 <Content /> 必须**直接**夹在两个 Fragment 之间，
+ *   不能额外包一层 div，否则会破坏 .article-workspace-grid 的网格上下文。
+ * · 现有 5 篇正文没有 Markdown 标题（小标题都是 **加粗**），所以 headings 是空的 ——
+ *   TOC 显示空态提示，不伪造目录。
+ */
 import { render } from 'astro:content';
-import BaseLayout from '../../layouts/BaseLayout.astro';
-import { getPublishedPosts, type Post } from '../../utils/posts';
+import ArtifactLayout from '../../layouts/ArtifactLayout.astro';
+import articleTpl from '../../artifact/article.html?raw';
+import railTopology from '../../artifact/rail-topology.html?raw';
+import railSpec from '../../artifact/rail-spec.html?raw';
+import { getPublishedPosts, getPostLead } from '../../utils/posts';
+import type { Post } from '../../utils/posts';
 import { chineseFullDate, readingTime } from '../../utils/date';
 import { cjkSpacing } from '../../utils/typography';
-import '../../styles/prose.css';
+import '../../styles/artifact-prose.css';
 
 export async function getStaticPaths() {
   const posts = await getPublishedPosts();
   return posts.map((post) => ({
-    // 用 [...slug] 而不是 [slug]，这样以后文章放进子目录也能对上。
-    // 个别情况下 id 会带着 .md 后缀，这里统一剥掉。
     params: { slug: post.id.replace(/\.mdx?$/, '') },
     props: { post },
   }));
 }
 
-interface Props {
-  post: Post;
+const { post } = Astro.props as { post: Post };
+
+const posts = await getPublishedPosts();
+const { Content, headings } = await render(post);
+const { chars, minutes } = readingTime(post.body ?? '');
+
+const index = posts.findIndex((p) => p.id === post.id);
+const newer = index > 0 ? posts[index - 1] : null; // 数组是 pubDate 倒序
+const older = index < posts.length - 1 ? posts[index + 1] : null;
+
+const title = cjkSpacing(post.data.title);
+const tags = post.data.tags;
+const tagText = tags.length ? tags.join(' · ') : '未分类';
+const lead = getPostLead(post);
+const dateText = chineseFullDate(post.data.pubDate);
+const entryNo = String(index + 1).padStart(2, '0');
+
+const esc = (s: string) =>
+  s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
+/* ---------- TOC ---------- */
+const toc = headings.filter((h) => h.depth >= 2 && h.depth <= 3);
+const tocHtml = toc.length
+  ? `<ul class="toc-list" id="article-toc-list">${toc
+      .map(
+        (h, i) =>
+          `<li><a href="#${h.slug}"><span class="toc-num">${String(i + 1).padStart(
+            2,
+            '0'
+          )}</span><span>${esc(h.text)}</span></a></li>`
+      )
+      .join('')}</ul>`
+  : `<p class="toc-empty">本文未设置小节标题</p>`;
+
+/* ---------- 相关文章 ---------- */
+const related = posts.filter((p) => p.id !== post.id).slice(0, 4);
+const relatedHtml = `<ul class="rail-related-list">${related
+  .map((p) => {
+    const n = String(posts.findIndex((x) => x.id === p.id) + 1).padStart(2, '0');
+    const cat = p.data.tags[0] ?? 'ARCHIVE';
+    return `<li><a href="/posts/${p.id}/"><span class="r-idx">ENTRY #${n} // ${esc(
+      cat
+    )}</span><span class="r-tit">${esc(cjkSpacing(p.data.title))}</span></a></li>`;
+  })
+  .join('')}</ul>`;
+
+/* ---------- 上一篇 / 下一篇 ---------- */
+const pagerCell = (p: Post | null, dir: 'prev' | 'next') => {
+  const label = dir === 'prev' ? '&lt;- PREV ENTRY' : 'NEXT ENTRY -&gt;';
+  const href = p ? `/posts/${p.id}/` : '/posts/';
+  const text = p ? esc(cjkSpacing(p.data.title)) : '全部文章';
+  return `<a class="article-pager-cell" href="${href}"><span class="pager-kicker">${label}</span><span class="pager-title">${text}</span></a>`;
+};
+const pagerHtml = `<div class="article-pager-grid">${pagerCell(
+  newer,
+  'prev'
+)}${pagerCell(older, 'next')}</div>`;
+
+/* ---------- 右栏 ---------- */
+const isMc = post.id === 'mc-server';
+const genericRail = `<div class="rail-blueprint-card">
+  <div class="rail-card-kicker"><span>DOC SPEC // 文档速查卡</span><span>BASELINE</span></div>
+  <ul class="rail-kv-list">
+    <li><span>PUBLISHED</span><strong>${esc(dateText)}</strong></li>
+    <li><span>CHARS</span><strong>${chars.toLocaleString('zh-CN')} 字</strong></li>
+    <li><span>READING</span><strong>约 ${minutes} 分钟</strong></li>
+    <li><span>TAGS</span><strong>${esc(tagText)}</strong></li>
+  </ul>
+</div>`;
+
+/* ---------- 注入 ---------- */
+const slots: Record<string, string> = {
+  TOPBAR_TITLE: esc(`/posts/${post.id}/ · ${title}`),
+  ENTRY_NO: entryNo,
+  TITLE: esc(title),
+  LEAD: esc(lead),
+  DATE: esc(dateText),
+  TAGS: esc(tagText),
+  WORDS: `约 ${chars.toLocaleString('zh-CN')} 字`,
+  READING: `约 ${minutes} 分钟`,
+  KICKER: `ARCHIVE COORDINATE // ENTRY #${entryNo}`,
+  // 注意：这个值会进 HTML，尖括号必须写成实体，否则会被当标签解析
+  KINETIC_CAPTION: isMc ? 'LOCAL : 25565 &lt;-&gt; FRP' : 'LOCAL : STATIC BUILD',
+  TOC: tocHtml,
+  RAIL_TOPOLOGY: isMc ? railTopology : genericRail,
+  RAIL_SPEC: isMc ? railSpec : '',
+  RAIL_RELATED: relatedHtml,
+  PAGER: pagerHtml,
+};
+
+let html = articleTpl;
+for (const [key, value] of Object.entries(slots)) {
+  const token = `@@${key}@@`;
+  if (!html.includes(token)) console.warn('[article] 缺占位符', token);
+  html = html.split(token).join(value);
 }
 
-const { post } = Astro.props;
-const { Content } = await render(post);
-const { chars, minutes } = readingTime(post.body ?? '');
-const tags = post.data.tags;
+const [before, after] = html.split('@@PROSE@@');
+if (after === undefined) throw new Error('article.html 缺少 @@PROSE@@ 占位符');
 ---
 
-<BaseLayout title={post.data.title} description={post.data.description}>
-  <article class="article">
-    <header class="article-head">
-      <p class="dateline">{chineseFullDate(post.data.pubDate)}</p>
-      <h1 class="article-title">{cjkSpacing(post.data.title)}</h1>
-    </header>
-
-    <div class="article-body">
-      {/*
-        左侧元信息栏 —— 桌面版式里这些"次要但常看"的信息放边上，
-        正文就能独占右边一整栏、不再被压成手机那样的窄条。
-        它是 sticky 的：长文往下滚时字数/标签一直看得见，不会滚没。
-      */}
-      <aside class="article-rail">
-        <div class="rail-block">
-          <p class="rail-k">字数</p>
-          <p class="rail-v">{chars} 字</p>
-        </div>
-        <div class="rail-block">
-          <p class="rail-k">阅读</p>
-          <p class="rail-v">约 {minutes} 分钟</p>
-        </div>
-        {
-          post.data.updatedDate && (
-            <div class="rail-block">
-              <p class="rail-k">修订</p>
-              <p class="rail-v">{chineseFullDate(post.data.updatedDate)}</p>
-            </div>
-          )
-        }
-        {
-          tags.length > 0 && (
-            <div class="rail-block">
-              <p class="rail-k">标签</p>
-              <p class="rail-v">{tags.join(' · ')}</p>
-            </div>
-          )
-        }
-        <nav class="article-end">
-          <a href="/posts/">← 全部文章</a>
-        </nav>
-      </aside>
-
-      <div class="prose">
-        <Content />
-      </div>
-    </div>
-  </article>
-</BaseLayout>
-
-<style>
-  /* 这一页不再整体套 .wrap：正文区要**铺满整个视口宽**，
-     左栏才有地方挪到两侧的空白里去。题头自己定宽（见下），和正文列对齐 */
-  .article { padding-top: var(--space-7); }
-
-  /* 题头和正文**同宽**（50rem）—— 这样两侧的竖线才能把标题和正文一起框住。
-     只加内边距是为了窄屏下不贴边；宽屏时内边距之外正好是 50rem */
-  .article-head {
-    max-width: calc(50rem + 2 * var(--pad-x));
-    margin: 0 auto;
-    padding: 0 var(--pad-x);
-  }
-
-  /* 题头：一条短强调色横线领着日期，和列表页的日期栏呼应 */
-  .dateline {
-    display: flex;
-    align-items: center;
-    gap: var(--space-3);
-    margin: 0 0 var(--space-4);
-    font-family: var(--kai);
-    /* 楷体要 23–24px 才干净（见 tokens.css 的「楷体的下限」），别再往下调 */
-    font-size: var(--text-md);
-    letter-spacing: 0.18em;
-    color: var(--accent);
-  }
-
-  .dateline::before {
-    content: "";
-    width: 2.25rem;
-    height: 1px;
-    background: var(--accent);
-    flex: none;
-  }
-
-  .article-title {
-    margin: 0 0 var(--space-6);
-    font-family: var(--kai);
-    font-size: var(--text-2xl);
-    font-weight: 400;
-    line-height: 1.5;
-    letter-spacing: 0.03em;
-  }
-
-  /* ---------- 正文与左栏 ----------
-     默认（屏幕不够宽）：左栏和正文并排，都待在 64rem 容器里。
-     屏幕够宽时换成下面那套：正文真正居中、左栏挪到左侧空白里。 */
-  .article-body {
-    display: grid;
-    grid-template-columns: 11rem minmax(0, 1fr);
-    gap: 0 var(--space-7);
-    max-width: var(--shell);
-    margin: 0 auto;
-    padding: 0 var(--pad-x);
-    /* 必须是 start：左栏拉满整列高度的话，sticky 就没有可粘的余地了 */
-    align-items: start;
-    /* 两侧竖线的定位基准。放在这一层（而不是 .article 上）是有意的：
-       竖线要**从标题以下才开始**，而 .article 把题头也包在里面 */
-    position: relative;
-  }
-
-  .article-rail {
-    grid-column: 1;
-    position: sticky;
-    /* 顶栏是粘顶的，所以左栏要粘在它**下面**，不是 0 */
-    top: calc(var(--nav-h) + var(--space-5));
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-5);
-    padding-top: var(--space-2);
-  }
-
-  /* 宽屏：三列 minmax(0,1fr) / 正文 / minmax(0,1fr) ——
-     左右两个 1fr 必然相等，所以正文那一列是**真正居中**的；
-     左栏 justify-self:end 塞进左边那片空白。
-     【88rem 这个断点是怎么来的】左栏要塞进"屏幕左边留 1.5rem 余地"到
-     "标题左边线再退 2rem 空隙"之间，于是：
-       宽度 ≥ 2 × (左栏 10rem + 标题间隙 2rem + 31.5rem + 1.5rem) = 90rem，
-     再扣掉滚动条那 15px 的实际损耗，落回 88rem。
-     比这窄就放不下（左栏会被挤出屏幕左边裁掉），退回上面那套并排版式。
-     ⚠️ 别把这个断点卡到"刚好放得下"：实测媒体查询的取值宽度和 clientWidth
-     能差一个滚动条（iframe 里差 15px），留点余量。 */
-  @media (min-width: 88rem) {
-    .article-body {
-      grid-template-columns: minmax(0, 1fr) minmax(0, 50rem) minmax(0, 1fr);
-      gap: 0 var(--space-8);
-      max-width: none;
-    }
-
-    .article-rail {
-      grid-column: 1;
-      justify-self: end;   /* 贴到左边那片空白的右缘 */
-      /* 10rem：够放下"技术 · 服务器"这类值；万一有"修订"日期（十个字）会折成两行，
-         可接受。这个宽度直接决定上面的断点，改它要回去重算 */
-      width: 10rem;
-      /* 再往左推 3rem —— 正文加宽到 50rem 之后，左栏右边线本来就只差 1rem
-         就压到标题的左边线了；推 1rem 抵消它、再推 2rem 做空隙，合起来 3rem。
-         用户要的就是"最右端离标题最左端要有一些空隙" */
-      margin-right: 3rem;
-    }
-
-    /* 正文落在中间那一列；min-width:0 免得长代码行把网格撑宽、把居中位置带偏 */
-    .article-body > .prose {
-      grid-column: 2;
-      min-width: 0;
-    }
-
-    /* 正文两侧那两条竖线。
-       位置 = 视口中心 ± 30rem —— 正文半宽是 25rem，所以线离正文 5rem（80px）、
-       离左栏的右缘只剩 2.5rem。用户要的就是"离文章远一点、靠近元信息栏"。
-       从标题**以下**才开始（挂在 .article-body 上，不在 .article 上），
-       所以标题和日期是在两条线之外的。
-
-       用绝对定位而不是 border：这两条线要跨过好几个块（正文里有图、有引用、
-       有分隔符），border 只能贴在某一个盒子上。
-       只在宽屏版式里画 —— 窄屏那套正文不是 50rem 居中，线会穿进正文里。 */
-    .article-body::before,
-    .article-body::after {
-      content: "";
-      position: absolute;
-      top: 0;
-      bottom: 0;
-      width: 1px;
-      background: var(--rule);   /* 最淡的一档，就是"不太明显" */
-    }
-
-    .article-body::before { left: calc(50% - 30rem); }
-    .article-body::after { right: calc(50% - 30rem); }
-  }
-
-  .rail-block { margin: 0; }
-
-  .rail-k {
-    margin: 0 0 0.25em;
-    font-size: var(--text-xs);
-    letter-spacing: 0.22em;
-    color: var(--faint);
-  }
-
-  .rail-v {
-    margin: 0;
-    font-family: var(--kai);
-    /* 楷体要 23–24px 才干净（见 tokens.css 的「楷体的下限」），别再往下调 */
-    font-size: var(--text-md);
-    line-height: 1.7;
-    color: var(--muted);
-  }
-
-  .article-end {
-    margin-top: var(--space-2);
-    font-size: var(--text-sm);
-    letter-spacing: 0.12em;
-  }
-
-  /* 分割线：不用 border-top（那会撑满整个左栏，比下面的文字宽出一大截），
-     改成一条固定 4rem 的短线，跟"← 全部文章"这几个字同量级 */
-  .article-end::before {
-    content: "";
-    display: block;
-    width: 4rem;
-    height: 1px;
-    margin-bottom: var(--space-4);
-    background: var(--rule);
-  }
-
-  .article-end a {
-    color: var(--muted);
-    transition: color var(--dur-fast) ease;
-  }
-
-  .article-end a:hover { color: var(--accent); }
-
-  /* 窄屏塌成一栏（不专门做手机适配，只是别挤爆） */
-  @media (max-width: 34rem) {
-    .article-body { grid-template-columns: 1fr; gap: var(--space-6); }
-    .article-rail {
-      grid-column: 1;
-      justify-self: stretch;
-      width: auto;
-      position: static;
-      flex-direction: row;
-      flex-wrap: wrap;
-      gap: var(--space-5);
-    }
-    .article-title { font-size: var(--text-xl); }
-  }
-</style>
+<ArtifactLayout
+  page="article"
+  bodyClass="article"
+  title={post.data.title}
+  description={post.data.description}
+>
+  <Fragment set:html={before} />
+  <Content />
+  <Fragment set:html={after} />
+</ArtifactLayout>

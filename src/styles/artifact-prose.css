@@ -1,0 +1,182 @@
+/* ==========================================================================
+   Markdown 正文适配层 —— 只作用于文章页的 .article-prose-q
+   ==========================================================================
+   artifact 原来的正文是手写的四节（h2 + p + .q-callout + .q-spec-table +
+   .q-codeblock）。换成 Astro 的 <Content /> 之后，渲染出来的是**裸标签**
+   （h2 / p / ul / blockquote / pre>code / table / img / hr），原 CSS 认不出来。
+   这里把裸标签补成和 artifact 同一套视觉：颜色、字体、间距全用 artifact 的
+   :root 变量，不引入第二种语言。
+
+   这个文件只在文章路由引入，不影响主页和站内其它页面。
+   ========================================================================== */
+
+.article-prose-q > :first-child { margin-top: 0; }
+
+/* ---------- 列表 ---------- */
+.article-prose-q ul,
+.article-prose-q ol {
+  margin: 0 0 1.2rem;
+  padding-left: 1.7em;
+}
+.article-prose-q li {
+  line-height: 1.98;
+  color: var(--ink);
+}
+/* 中文列表的圆点用强调色，和 artifact 的「理性橙」一致 */
+.article-prose-q li::marker { color: var(--accent); }
+/* 列表项里的段落不要继承正文的 2em 首行缩进 */
+.article-prose-q li > p {
+  margin: 0.35rem 0;
+  text-indent: 0;
+}
+
+/* ---------- 引用 ---------- */
+.article-prose-q blockquote {
+  margin: 1.4rem 0;
+  padding: 0.75rem 1.15rem;
+  border-left: 3px solid var(--accent);
+  background: color-mix(in srgb, var(--accent) 5%, var(--paper));
+  color: var(--muted);
+}
+.article-prose-q blockquote p {
+  margin: 0.3rem 0;
+  text-indent: 0;
+}
+
+/* ---------- 行内代码 ---------- */
+.article-prose-q :not(pre) > code {
+  font-family: var(--mono);
+  font-size: 0.88em;
+  padding: 0.06em 0.35em;
+  border: 1px solid var(--rule);
+  border-radius: 2px;
+  background: var(--code-bg);
+  color: var(--ink);
+}
+
+/* ---------- 代码块（对齐 .q-codeblock 的底/边/字号） ---------- */
+.article-prose-q pre {
+  margin: 1.4rem 0;
+  padding: 1rem 1.2rem;
+  border: 1px solid var(--rule);
+  background: var(--code-block);
+  overflow-x: auto;
+  font-family: var(--mono);
+  font-size: 0.9rem;
+  line-height: 1.68;
+  color: var(--ink);
+  -webkit-overflow-scrolling: touch;
+}
+.article-prose-q pre code {
+  padding: 0;
+  border: 0;
+  background: none;
+  font-size: inherit;
+}
+
+/* ---------- 表格（对齐 .q-spec-table） ---------- */
+.article-prose-q table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.4rem 0;
+  font-size: 1.04rem;
+}
+.article-prose-q th,
+.article-prose-q td {
+  border: 1px solid var(--rule);
+  padding: 0.55rem 0.9rem;
+  text-align: left;
+}
+.article-prose-q th {
+  font-family: var(--kai);
+  font-weight: 400;
+  color: var(--accent);
+  background: color-mix(in srgb, var(--paper) 85%, var(--canvas));
+}
+
+/* ---------- 图片 ---------- */
+.article-prose-q img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin: 1.4rem auto;
+  border: 1px solid var(--rule);
+}
+/* 独占一段的图片不要带首行缩进 */
+.article-prose-q p:has(> img) { text-indent: 0; }
+.article-prose-q figure { margin: 1.4rem 0; }
+.article-prose-q figcaption {
+  margin-top: 0.5rem;
+  text-align: center;
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  color: var(--faint);
+}
+
+/* ---------- 链接 / 强调 / 分隔 ---------- */
+.article-prose-q a {
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 0.18em;
+}
+.article-prose-q a:hover { color: var(--accent-soft); }
+.article-prose-q strong { color: var(--ink); font-weight: 700; }
+.article-prose-q hr {
+  border: 0;
+  height: 1px;
+  width: 40%;
+  margin: 2.2rem auto;
+  background: var(--rule);
+}
+
+/* ---------- 三、四级标题（现有文章没有，留给以后） ---------- */
+.article-prose-q h3,
+.article-prose-q h4 {
+  font-family: var(--kai);
+  font-weight: 400;
+  line-height: 1.5;
+}
+.article-prose-q h3 {
+  margin: 1.9rem 0 0.7rem;
+  font-size: var(--text-lg);
+}
+.article-prose-q h4 {
+  margin: 1.6rem 0 0.6rem;
+  font-size: var(--text-md);
+  color: var(--muted);
+}
+
+/* ---------- 嵌入内容 ---------- */
+.article-prose-q iframe { max-width: 100%; border: 0; }
+
+/* ==========================================================================
+   两处「集成」补丁（不是 Markdown 的事，但同属新模板的必要适配）
+   ========================================================================== */
+
+/* 右栏「相关文章」从 <button> 换成了 <a>，原样式只写了 button */
+.rail-related-list a {
+  width: 100%;
+  text-align: left;
+  border: 1px solid var(--rule);
+  background: color-mix(in srgb, var(--paper) 92%, var(--canvas));
+  padding: 0.48rem 0.68rem;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  transition: all var(--dur-fast) ease;
+}
+.rail-related-list a:hover {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 8%, var(--paper));
+}
+
+/* TOC 空态：现有 5 篇正文没有 Markdown 标题，目录列表会是空的 */
+.toc-empty {
+  margin: 0;
+  padding: 0.45rem 0.6rem;
+  border-left: 2px solid var(--rule);
+  font-family: var(--kai);
+  font-size: var(--text-base);
+  color: var(--faint);
+}

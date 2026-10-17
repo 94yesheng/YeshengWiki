@@ -15,7 +15,8 @@
     "preview": "astro preview",
     "check": "astro check",
     "vault": "node scripts/vault-ui.mjs",
-    "astro": "astro"
+    "astro": "astro",
+    "import:artifact": "node scripts/import-artifact.mjs"
   },
   "dependencies": {
     "@astrojs/rss": "^4.0.19",

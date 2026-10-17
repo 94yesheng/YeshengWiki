@@ -1,0 +1,93 @@
+---
+/**
+ * artifact 主页 / 文章页的独立 shell。
+ *
+ * 【为什么不套 BaseLayout】
+ * code_artifact.html 与现有站点的 CSS / ID 大面积重名（.wrap / .screen /
+ * .site-nav-bar / .site-foot / .fab* / #fab / #fab-actions / #fab-main /
+ * .lightbox* / .dm* / :root 变量）。套 BaseLayout 会同时渲染两套页头、页脚、
+ * 悬浮球，出现重复 ID，两套主题逻辑还会互相覆盖。
+ *
+ * 所以这两页自己写 <html><head><body>（照 src/pages/studio.astro 的先例），
+ * 只加载 artifact 自己的 CSS/JS；站内其它页面继续用 BaseLayout，互不影响。
+ *
+ * 【CSS/JS 为什么用 ?raw + is:inline】
+ * · 前言区直接 import '.js' 会在**构建期**执行，那时没有 document；
+ * · 普通 import CSS 会走 Vite 打包，可能被拆块/加 scope；
+ * · ?raw 拿到原字符串，is:inline 原样吐进 <style>/<script>，一个字节都不改。
+ * 脚本放在 <slot /> 之后，保证所有元素都已存在。
+ */
+
+import css from '../artifact/artifact.css?raw';
+import js from '../artifact/artifact.js?raw';
+import homeSnap from '../artifact/home-snap.js?raw';
+import { site } from '../site.config';
+import { cjkSpacing } from '../utils/typography';
+import { THEME_BOOT } from '../utils/theme';
+
+interface Props {
+  title?: string;
+  description?: string;
+  /** body 上的 class（artifact 原文件是 home；文章页用 article） */
+  bodyClass?: string;
+  /** 交给脚本读：决定初始 state.view 是 home 还是 article */
+  page?: 'home' | 'article';
+}
+
+const { title, description, bodyClass = 'home', page = 'home' } = Astro.props;
+
+const pageTitle = cjkSpacing(
+  title ? `${title} —— ${site.title}` : `${site.title} —— ${site.tagline}`
+);
+const pageDesc = description ?? site.description;
+const canonical = new URL(Astro.url.pathname, Astro.site);
+---
+
+<!doctype html>
+<html lang="zh-CN" data-theme="light">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{pageTitle}</title>
+    <meta name="description" content={pageDesc} />
+    <link rel="canonical" href={canonical} />
+
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link
+      rel="alternate"
+      type="application/rss+xml"
+      title={site.title}
+      href={new URL('/rss.xml', Astro.site)}
+    />
+
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content={site.title} />
+    <meta property="og:title" content={pageTitle} />
+    <meta property="og:description" content={pageDesc} />
+    <meta property="og:url" content={canonical} />
+    <meta name="twitter:card" content="summary" />
+
+    <meta name="generator" content={Astro.generator} />
+    <meta name="theme-color" content="#faf9f5" />
+
+    <!--
+      夜间模式的"定调"脚本 —— 与全站共用同一份（src/utils/theme.ts 的 THEME_BOOT）。
+      artifact 原文件没有这一段，会把系统深色用户先闪一下浅色；这里补上，
+      视觉上不变（脚本末尾的 applyTheme 会读同一个 data-theme，不再自己决定主题）。
+    -->
+    <script is:inline set:html={THEME_BOOT}></script>
+
+    <!-- artifact 的全部样式，原样内联 -->
+    <style is:inline set:html={css}></style>
+  </head>
+
+  <body class={bodyClass} data-page={page} data-scale="ultrawide">
+    <slot />
+
+    <!-- artifact 的全部行为，原样内联；放在 slot 之后，元素都在 -->
+    <script is:inline set:html={js}></script>
+
+    <!-- 主页的滚动吸附（站点自己的行为，不写回 artifact 生成物） -->
+    {page === 'home' && <script is:inline set:html={homeSnap}></script>}
+  </body>
+</html>
