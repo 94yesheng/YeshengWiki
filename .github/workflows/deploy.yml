@@ -68,4 +68,4 @@ jobs:
         run: |
           echo "::warning::还没配置 FTP 凭据，本次只做了类型检查与构建，产物没有上传。"
           echo "配好后到 Actions 页面重新运行一次即可上线。"
-          echo "需要配的四个值见 .github/workflows/deploy.yml 顶部注释与 后台说明.md。"
+          echo "需要配的四个值见 .github/workflows/deploy.yml 顶部注释与 README.md 的「8. 构建与部署」。"
