@@ -69,7 +69,7 @@ curl -sS http://127.0.0.1:4322/api/health
 
 ```bash
 cp -a /etc/nginx/sites-available/blog /root/blog-static.conf.bak
-cp /path/to/blog-dynamic.nginx.conf /etc/nginx/sites-available/blog
+cp docs/nginx-dynamic.conf /etc/nginx/sites-available/blog
 nginx -t && systemctl reload nginx
 ```
 
