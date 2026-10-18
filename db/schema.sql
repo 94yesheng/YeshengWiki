@@ -25,6 +25,7 @@ CREATE TABLE IF NOT EXISTS posts (
   description        TEXT,
   lead               TEXT,
   body_markdown      TEXT NOT NULL DEFAULT '',
+  raw_markdown       TEXT NOT NULL DEFAULT '',
   cover              TEXT,
   cover_caption      TEXT,
   entry_badge        TEXT,
@@ -53,6 +54,7 @@ CREATE TABLE IF NOT EXISTS photo_walls (
   place      TEXT NOT NULL DEFAULT '',
   note       TEXT NOT NULL DEFAULT '',
   sort_order INTEGER NOT NULL DEFAULT 0,
+  version    INTEGER NOT NULL DEFAULT 1,
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );

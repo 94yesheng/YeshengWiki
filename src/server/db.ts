@@ -27,8 +27,18 @@ export function getDb(): Db {
   db.pragma('temp_store = MEMORY');
 
   migrate(db);
+  ensureColumn(db, 'posts', 'raw_markdown', "raw_markdown TEXT NOT NULL DEFAULT ''");
+  ensureColumn(db, 'photo_walls', 'version', 'version INTEGER NOT NULL DEFAULT 1');
   globalForDb.__blogDb = db;
   return db;
+}
+
+/** 老库补列：SQLite 的 ALTER TABLE 只支持 ADD COLUMN，正好够用。 */
+function ensureColumn(db: Db, table: string, column: string, ddl: string): void {
+  const cols = db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>;
+  if (!cols.some((c) => c.name === column)) {
+    db.exec(`ALTER TABLE ${table} ADD COLUMN ${ddl}`);
+  }
 }
 
 /** 测试/脚本用：关掉单例，下次 getDb() 重新打开 */

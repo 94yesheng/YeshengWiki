@@ -15,9 +15,15 @@ export interface PreviewInput {
 
 function fixImagePaths(html: string): string {
   return html.replace(/(<img\b[^>]*\bsrc=")([^"]+)(")/g, (_whole, head: string, src: string, tail: string) => {
-    if (/^(https?:|data:|blob:|\/)/.test(src)) return `${head}${src}${tail}`;
-    const m = /\.\.\/\.\.\/(assets\/[^"]+)$/.exec(src);
-    return `${head}${m ? `/src/${m[1]}` : src}${tail}`;
+    if (/^(https?:|data:|blob:)/.test(src)) return `${head}${src}${tail}`;
+    const fixed = src
+      .replace(/^\.\.\/\.\.\/assets\/posts\//, '/uploads/posts/')
+      .replace(/^\.\.\/\.\.\/assets\/photos\//, '/uploads/photos/')
+      .replace(/^\/src\/assets\/posts\//, '/uploads/posts/')
+      .replace(/^\/src\/assets\/photos\//, '/uploads/photos/')
+      .replace(/^assets\/posts\//, '/uploads/posts/')
+      .replace(/^assets\/photos\//, '/uploads/photos/');
+    return `${head}${fixed}${tail}`;
   });
 }
 

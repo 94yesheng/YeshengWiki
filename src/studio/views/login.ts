@@ -1,14 +1,12 @@
 /**
- * 登录 / 解锁页 —— HUD 象限蓝图设计语言版
+ * 登录页 —— HUD 象限蓝图设计语言版。
  *
- * 既支持原有的「账号 + 密码 → PBKDF2 解密 vault.json 连接 GitHub API」流程，
- * 也新增了「免接口 UI 交互演示模式（无需密文一键进入工作台）」入口，
- * 方便在未配置接口或仅调试界面交互时直接体验全部后台功能。
+ * 账号密码由 `/api/auth/login` 验证；成功后用 HttpOnly Cookie 维持会话，
+ * 后台的读写走 `/api/fs`。不再需要 GitHub PAT 或 vault 密文。
  */
-import { Github } from '../github';
+import { ApiGithub } from '../api';
 import { $, esc, setBusy, toast } from '../ui';
-import { REPO, state, reload, rerender } from '../state';
-import { unlockVault } from '../vault';
+import { state, reload, rerender } from '../state';
 import { site } from '../../site.config';
 import { loadMockAll } from '../mock';
 
@@ -23,6 +21,8 @@ export function enterDemoMode(): void {
   const mock = loadMockAll();
   state.demoMode = true;
   state.user = 'yesheng (LOCAL-UI)';
+  state.csrf = null;
+  state.gh = null;
   state.posts = mock.posts;
   state.walls = mock.walls;
   state.links = mock.links;
@@ -37,23 +37,31 @@ export function enterDemoMode(): void {
   toast('已进入 UI 交互演示模式 · 所有编辑、EXIF 解析与乱码预览均可直接交互');
 }
 
-async function useToken(token: string, fromVault = false): Promise<void> {
-  setBusy(true, '验证令牌…');
+async function useLogin(username: string, password: string): Promise<void> {
+  setBusy(true, '登录中…');
   try {
-    const gh = new Github(token, REPO);
-    const me = await gh.whoAmI();
-    state.token = token;
-    state.gh = gh;
+    const res = await fetch('/api/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, password }),
+    });
+    if (!res.ok) {
+      const data = (await res.json().catch(() => ({}))) as { error?: string };
+      throw new Error(data.error ?? '登录失败');
+    }
+    const data = (await res.json()) as { user: { username: string }; csrf: string };
+    state.user = data.user.username;
+    state.csrf = data.csrf;
+    state.gh = new ApiGithub(data.csrf);
     state.demoMode = false;
-    state.user = me.login;
+    state.token = null;
     setBusy(false);
     await reload();
-  } catch {
+  } catch (error) {
     setBusy(false);
-    state.token = null;
+    state.csrf = null;
     state.gh = null;
-    if (fromVault) renderUnlock('解出来的令牌已经失效或被撤销了 —— 需要重新生成密文，或直接点击下方进入 UI 演示模式');
-    else renderNoVault();
+    renderUnlock(error instanceof Error ? error.message : '登录失败');
   }
 }
 
@@ -79,26 +87,7 @@ function brandBlock(): string {
 }
 
 export function renderNoVault(): void {
-  showOnly(`
-    <div class="st-login">
-      <div class="st-card q-frame">
-        <span class="q-corner q-corner--tl"></span>
-        <span class="q-corner q-corner--tr"></span>
-        <span class="q-corner q-corner--bl"></span>
-        <span class="q-corner q-corner--br"></span>
-        <div class="q-topbar">
-          <div class="q-topbar-cell"><span class="q-sec-badge">VAULT // 00</span><span>AUTH GATEWAY</span></div>
-          <div class="q-topbar-cell q-topbar-cell--right"><span>PBKDF2 · AES-GCM</span></div>
-        </div>
-        <div class="st-card-body">
-          ${brandBlock()}
-          <p class="st-login-note">当前尚未检测到解锁密文，或你正处于纯前端 UI 交互预览环境。</p>
-          <button class="st-btn st-btn--primary st-btn--block" id="st-enter-demo">进入后台 UI 交互工作台（免接口演示） →</button>
-          <p class="st-login-note" style="margin-top:var(--space-4)">如需连接 GitHub 仓库，可在本地项目目录运行 <code>npm run vault</code> 生成密文。</p>
-        </div>
-      </div>
-    </div>`);
-  $('#st-enter-demo')?.addEventListener('click', () => enterDemoMode());
+  renderUnlock('请使用管理员账号登录');
 }
 
 export function renderUnlock(message?: string): void {
@@ -111,43 +100,33 @@ export function renderUnlock(message?: string): void {
         <span class="q-corner q-corner--br"></span>
         <div class="q-topbar">
           <div class="q-topbar-cell"><span class="q-sec-badge">STUDIO // AUTH</span><span>SECURITY GATEWAY</span></div>
-          <div class="q-topbar-cell q-topbar-cell--right"><span class="telemetry-accent">96REM HUD</span></div>
+          <div class="q-topbar-cell q-topbar-cell--right"><span class="telemetry-accent">SESSION // COOKIE</span></div>
         </div>
         <div class="st-card-body">
           ${brandBlock()}
-          <label class="st-label" for="st-unlock-acct">ACCOUNT // 账号标识</label>
-          <input class="st-input" id="st-unlock-acct" autocomplete="off" spellcheck="false" placeholder="输入管理账号..." />
-          <label class="st-label" for="st-unlock-pw">PASSPHRASE // 解锁口令</label>
-          <input class="st-input" id="st-unlock-pw" type="password" autocomplete="current-password" placeholder="输入解密口令..." />
-          <button class="st-btn st-btn--primary st-btn--block" id="st-unlock-go">解锁仓库读写权限 (UNLOCK)</button>
-          <button class="st-btn st-btn--block" id="st-enter-demo" style="margin-top:0.6rem;">直接进入 UI 交互演示模式（无需口令/接口） →</button>
+          <label class="st-label" for="st-unlock-acct">ACCOUNT // 管理员账号</label>
+          <input class="st-input" id="st-unlock-acct" autocomplete="username" spellcheck="false" placeholder="输入管理员账号..." />
+          <label class="st-label" for="st-unlock-pw">PASSWORD // 登录密码</label>
+          <input class="st-input" id="st-unlock-pw" type="password" autocomplete="current-password" placeholder="输入登录密码..." />
+          <button class="st-btn st-btn--primary st-btn--block" id="st-unlock-go">登录后台 (SIGN IN)</button>
+          <button class="st-btn st-btn--block" id="st-enter-demo" style="margin-top:0.6rem;">直接进入 UI 交互演示模式（不写数据库） →</button>
           ${message ? `<p class="st-error">${esc(message)}</p>` : ''}
         </div>
         <div class="q-footbar">
-          <span>CIPHER: PBKDF2-SHA256</span>
+          <span>SESSION: HTTPONLY COOKIE</span>
           <span>YESHENG.WIKI // STUDIO</span>
         </div>
       </div>
     </div>`);
 
   const go = async () => {
-    const blob = state.vault;
-    if (!blob) return;
     const acct = $<HTMLInputElement>('#st-unlock-acct')?.value ?? '';
     const pw = $<HTMLInputElement>('#st-unlock-pw')?.value ?? '';
     if (!acct || !pw) {
-      enterDemoMode();
+      renderUnlock('请输入账号和密码；只想看界面可以点下方演示模式');
       return;
     }
-    setBusy(true, '解锁中…');
-    try {
-      const token = await unlockVault(blob, acct, pw);
-      setBusy(false);
-      await useToken(token, true);
-    } catch {
-      setBusy(false);
-      renderUnlock('账号或密码不对（如需直接预览后台界面与交互，请点下方按钮）');
-    }
+    await useLogin(acct, pw);
   };
   $('#st-unlock-go')?.addEventListener('click', () => void go());
   $('#st-enter-demo')?.addEventListener('click', () => enterDemoMode());

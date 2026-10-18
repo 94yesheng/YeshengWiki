@@ -15,6 +15,7 @@ export interface Post {
   description: string | null;
   lead: string | null;
   bodyMarkdown: string;
+  rawMarkdown: string;
   cover: string | null;
   coverCaption: string | null;
   entryBadge: string | null;
@@ -39,6 +40,7 @@ export interface PostInput {
   description?: string | null;
   lead?: string | null;
   bodyMarkdown: string;
+  rawMarkdown?: string;
   cover?: string | null;
   coverCaption?: string | null;
   entryBadge?: string | null;
@@ -61,6 +63,7 @@ interface PostRow {
   description: string | null;
   lead: string | null;
   body_markdown: string;
+  raw_markdown: string;
   cover: string | null;
   cover_caption: string | null;
   entry_badge: string | null;
@@ -96,6 +99,7 @@ function mapRow(row: PostRow): Post {
     description: row.description,
     lead: row.lead,
     bodyMarkdown: row.body_markdown,
+    rawMarkdown: row.raw_markdown,
     cover: row.cover,
     coverCaption: row.cover_caption,
     entryBadge: row.entry_badge,
@@ -154,11 +158,11 @@ export function createPost(input: PostInput): Post {
   const info = db
     .prepare(
       `INSERT INTO posts (
-        slug, title, description, lead, body_markdown, cover, cover_caption, entry_badge,
+        slug, title, description, lead, body_markdown, raw_markdown, cover, cover_caption, entry_badge,
         featured, draft, pub_date, updated_date, kinetic_caption, rail_mode,
         rail_specs_json, rail_topology_json, tags_json, auto_updated
       ) VALUES (
-        @slug, @title, @description, @lead, @bodyMarkdown, @cover, @coverCaption, @entryBadge,
+        @slug, @title, @description, @lead, @bodyMarkdown, @rawMarkdown, @cover, @coverCaption, @entryBadge,
         @featured, @draft, @pubDate, @updatedDate, @kineticCaption, @railMode,
         @railSpecsJson, @railTopologyJson, @tagsJson, @autoUpdated
       )`
@@ -169,6 +173,7 @@ export function createPost(input: PostInput): Post {
       description: input.description ?? null,
       lead: input.lead ?? null,
       bodyMarkdown: input.bodyMarkdown,
+      rawMarkdown: input.rawMarkdown ?? input.bodyMarkdown,
       cover: input.cover ?? null,
       coverCaption: input.coverCaption ?? null,
       entryBadge: input.entryBadge ?? null,
@@ -202,6 +207,7 @@ export function updatePost(
     description: input.description === undefined ? current.description : input.description,
     lead: input.lead === undefined ? current.lead : input.lead,
     bodyMarkdown: input.bodyMarkdown ?? current.bodyMarkdown,
+    rawMarkdown: input.rawMarkdown ?? current.rawMarkdown,
     cover: input.cover === undefined ? current.cover : input.cover,
     coverCaption: input.coverCaption === undefined ? current.coverCaption : input.coverCaption,
     entryBadge: input.entryBadge === undefined ? current.entryBadge : input.entryBadge,
@@ -222,7 +228,7 @@ export function updatePost(
     .prepare(
       `UPDATE posts SET
         slug = @slug, title = @title, description = @description, lead = @lead,
-        body_markdown = @bodyMarkdown, cover = @cover, cover_caption = @coverCaption,
+        body_markdown = @bodyMarkdown, raw_markdown = @rawMarkdown, cover = @cover, cover_caption = @coverCaption,
         entry_badge = @entryBadge, featured = @featured, draft = @draft,
         pub_date = @pubDate, updated_date = @updatedDate, kinetic_caption = @kineticCaption,
         rail_mode = @railMode, rail_specs_json = @railSpecsJson,
@@ -237,6 +243,7 @@ export function updatePost(
       description: next.description ?? null,
       lead: next.lead ?? null,
       bodyMarkdown: next.bodyMarkdown,
+      rawMarkdown: next.rawMarkdown ?? next.bodyMarkdown,
       cover: next.cover ?? null,
       coverCaption: next.coverCaption ?? null,
       entryBadge: next.entryBadge ?? null,

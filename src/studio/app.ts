@@ -3,7 +3,7 @@
  *
  * 1. 顶栏与全站 HUD 页面完全统一（.site-nav-bar 风格 + ∞/黑洞平面徽标 + 01..05 编号导航 + 昼夜切换）；
  * 2. 五大板块：01 文章 · 02 照片墙 · 03 程序工坊 · 04 友链矩阵 · 05 站点与右栏；
- * 3. 同时支持「免接口 UI 交互演示模式」与「GitHub API 仓库提交模式」。
+ * 3. 同时支持「免接口 UI 交互演示模式」与「本地 SQLite 数据库模式」。
  */
 import {
   deletePost,
@@ -20,7 +20,8 @@ import {
   saveSite,
   saveWall,
 } from './content';
-import { fetchVault, takeLegacyToken } from './vault';
+import { takeLegacyToken } from './vault';
+import { ApiGithub } from './api';
 import {
   clearStaged,
   discardStaged,
@@ -28,14 +29,13 @@ import {
   isStagedGone,
   isStagedNew,
   registerHooks,
-  REPO,
   stagedDeletes,
   state,
   type Collection,
 } from './state';
 import { $, esc, reportError, setBusy, toast } from './ui';
 import { mountFab, type FabHandle } from './fab';
-import { enterDemoMode, renderNoVault, renderUnlock } from './views/login';
+import { enterDemoMode, renderUnlock } from './views/login';
 import {
   createNewPost,
   foldStagedPostDraft,
@@ -86,7 +86,7 @@ async function loadAll(): Promise<void> {
 
   const gh = state.gh;
   if (!gh) return;
-  setBusy(true, '读取仓库…');
+  setBusy(true, '读取数据…');
   try {
     const [posts, walls, links, site, photoFiles, postAssets] = await Promise.all([
       loadPosts(gh),
@@ -204,7 +204,7 @@ function renderBar(): void {
     <div class="st-bar-right">
       ${state.dirty ? '<span class="st-dirty-badge"><span class="st-dirty-dot"></span>有未保存修改</span>' : ''}
       <span class="st-meta-badge">
-        ${state.demoMode ? '<strong class="telemetry-accent">演示模式</strong>' : `${esc(REPO.branch)}${state.user ? ` · ${esc(state.user)}` : ''}`}
+        ${state.demoMode ? '<strong class="telemetry-accent">演示模式</strong>' : `LOCAL${state.user ? ` · ${esc(state.user)}` : ''}`}
       </span>
       <button type="button" class="st-btn" id="st-theme-btn" title="切换白天 / 夜间模式">
         ${dark ? '昼' : '夜'}
@@ -230,9 +230,9 @@ function renderBar(): void {
 
   $('#st-lock')?.addEventListener('click', () => {
     if (!settleLeaving()) return;
+    void fetch('/api/auth/logout', { method: 'POST' }).catch(() => {});
     forgetSession();
-    if (state.vault) renderUnlock('已锁定会话');
-    else renderNoVault();
+    renderUnlock('已锁定会话');
   });
 
   // renderBar 会重建整个 #st-bar；不在这里补一次，输入第一个字后顶栏导航就会消失。
@@ -529,7 +529,7 @@ async function saveCurrent(): Promise<void> {
       renderApp();
     }
 
-    toast('已提交到仓库。构建完成后线上就会更新');
+    toast('已保存到数据库，页面会立即更新');
   } catch (e) {
     reportError(e);
   } finally {
@@ -549,9 +549,21 @@ async function boot(): Promise<void> {
     return;
   }
 
-  state.vault = await fetchVault();
-  if (state.vault) renderUnlock();
-  else renderNoVault();
+  // 已有会话就直接进工作台；否则显示登录页
+  try {
+    const res = await fetch('/api/auth/me');
+    if (res.ok) {
+      const data = (await res.json()) as { user: { username: string }; csrf: string };
+      state.user = data.user.username;
+      state.csrf = data.csrf;
+      state.gh = new ApiGithub(data.csrf);
+      await loadAll();
+      return;
+    }
+  } catch {
+    // 网络错误也退回登录页
+  }
+  renderUnlock();
 }
 
 registerHooks({ render: renderApp, reload: loadAll, settle: settleLeaving, dirty: renderBar });

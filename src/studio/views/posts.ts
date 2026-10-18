@@ -670,7 +670,7 @@ export function renderPostView(): void {
     }
     void showConfirm({
       title: '删除这篇文章？',
-      body: '会先暂存删除，点「保存当前」才真正提交到仓库；保存前可以点「重新读取」撤销。',
+      body: '会先暂存删除，点「保存当前」才真正从数据库删除；保存前可以点「重新读取」撤销。',
       confirm: '暂存删除',
     }).then((ok) => {
       if (ok) removePost(d.entry);

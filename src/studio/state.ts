@@ -40,9 +40,10 @@ export interface Draft {
 
 export const state = {
   token: null as string | null,
+  csrf: null as string | null,
   gh: null as Github | null,
   user: '',
-  /** 演示模式标记：无需 GitHub Token 即可完整交互体验所有 UI 与逻辑 */
+  /** 演示模式标记：无需登录即可完整交互体验所有 UI 与逻辑 */
   demoMode: false,
   collection: 'posts' as Collection,
   selected: null as string | null,
@@ -65,6 +66,7 @@ export const state = {
 
 export function forgetSession(): void {
   state.token = null;
+  state.csrf = null;
   state.gh = null;
   state.user = '';
   state.demoMode = false;

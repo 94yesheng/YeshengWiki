@@ -18,13 +18,17 @@
 - `/photos/` 检视台数据、胶片条、筛选和档案网格由 SQLite 生成（`window.__PHOTO_DB`）
 - `/links/`、`/programs/`、`/rss.xml` 已改为读库
 - `artifact.js` 的焦点文章/照片数据改为优先读服务端注入，保留静态兜底
+- `/studio/` 传输层已换成 `/api/fs` 虚拟文件接口：`ApiGithub extends Github`，
+  `content.ts`/views 几乎不用改；登录改为账号密码 + HttpOnly 会话，不再需要 PAT/vault
+- 图片上传走 `/api/fs` 的二进制模式，写入 `uploads/`；后台已有 Sharp 压缩与 EXIF 解析
+- 已用无头 Edge 验证：登录 → 6 篇文章列表 → 改标题/取消草稿 → 保存 → 公开页立即 200
 
 注意：
 
 - **所有公开页面已改为动态；此分支的 `npm run build`（静态）不再保证通过。**
 - 线上回滚点：`feat/studio-v2-desktop` 分支 + 服务器 `/var/www/blog` 的静态文件。
 - **`src/artifact/*.html` 和 `artifact.js` 已手工插入 `@@占位符@@` / 服务端数据分支；不要直接重跑 `npm run import:artifact`，否则会覆盖。** 必须重跑时先备份，再重放 `.work/patch-*.mjs` 的替换。
-- 下一步：studio 传输层（GitHub → `/api`）、上传 API/EXIF、staging 部署。
+- 下一步：动态 sitemap、staging（systemd + Nginx + 真实 DB）、切线上。
 
 ## 1. 决策（默认按推荐方案）
 

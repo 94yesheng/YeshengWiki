@@ -32,6 +32,7 @@ import {
 import { listWalls } from '../repositories/photos';
 import { listLinks, replaceLinks } from '../repositories/links';
 import { getSettings, SETTING_KEYS, setSetting, type SettingKey } from '../repositories/settings';
+import { handleFs } from './fs';
 import { fail, json, readJson } from './http';
 
 interface LoginBody {
@@ -52,6 +53,11 @@ export async function handleApi(context: APIContext): Promise<Response | null> {
     .replace(/\/+$/, '')
     .split('/')
     .filter(Boolean);
+
+  // /api/fs/*：后台的虚拟文件接口
+  if (parts[0] === 'fs') {
+    return handleFs(context);
+  }
 
   // /api/health
   if (parts.length === 1 && parts[0] === 'health' && method === 'GET') {

@@ -52,7 +52,7 @@ function parsePostFile(file) {
   const data = YAML.load(m[1]) ?? {};
   const body = m[2] ?? '';
   const slug = path.basename(file, '.md');
-  return { slug, data, body };
+  return { slug, data, body, raw };
 }
 
 function rewriteAssetPaths(markdown) {
@@ -132,11 +132,11 @@ function migratePosts(db) {
   const files = fs.readdirSync(POSTS_DIR).filter((f) => f.endsWith('.md')).sort();
   const stmt = db.prepare(`
     INSERT INTO posts (
-      slug, title, description, lead, body_markdown, cover, cover_caption, entry_badge,
+      slug, title, description, lead, body_markdown, raw_markdown, cover, cover_caption, entry_badge,
       featured, draft, pub_date, updated_date, kinetic_caption, rail_mode,
       rail_specs_json, rail_topology_json, tags_json, auto_updated, version
     ) VALUES (
-      @slug, @title, @description, @lead, @body_markdown, @cover, @cover_caption, @entry_badge,
+      @slug, @title, @description, @lead, @body_markdown, @raw_markdown, @cover, @cover_caption, @entry_badge,
       @featured, @draft, @pub_date, @updated_date, @kinetic_caption, @rail_mode,
       @rail_specs_json, @rail_topology_json, @tags_json, @auto_updated, 1
     )
@@ -145,6 +145,7 @@ function migratePosts(db) {
       description = excluded.description,
       lead = excluded.lead,
       body_markdown = excluded.body_markdown,
+      raw_markdown = excluded.raw_markdown,
       cover = excluded.cover,
       cover_caption = excluded.cover_caption,
       entry_badge = excluded.entry_badge,
@@ -163,8 +164,9 @@ function migratePosts(db) {
 
   let count = 0;
   for (const file of files) {
-    const { slug, data, body } = parsePostFile(path.join(POSTS_DIR, file));
+    const { slug, data, body, raw } = parsePostFile(path.join(POSTS_DIR, file));
     const bodyMarkdown = rewriteAssetPaths(body);
+    const rawMarkdown = rewriteAssetPaths(raw);
     const cover = data.cover ? String(data.cover) : firstMarkdownImage(bodyMarkdown);
     stmt.run({
       slug,
@@ -172,6 +174,7 @@ function migratePosts(db) {
       description: data.description ? String(data.description) : null,
       lead: data.lead ? String(data.lead) : null,
       body_markdown: bodyMarkdown,
+      raw_markdown: rawMarkdown,
       cover,
       cover_caption: data.coverCaption ? String(data.coverCaption) : null,
       entry_badge: data.entryBadge ? String(data.entryBadge) : null,

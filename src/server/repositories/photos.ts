@@ -39,6 +39,7 @@ export interface PhotoWall {
   sortOrder: number;
   photos: Photo[];
   cover: string | null;
+  version: number;
   createdAt: string;
   updatedAt: string;
 }
@@ -83,6 +84,7 @@ interface WallRow {
   place: string;
   note: string;
   sort_order: number;
+  version: number;
   created_at: string;
   updated_at: string;
 }
@@ -164,6 +166,7 @@ function mapWall(row: WallRow, photos: Photo[]): PhotoWall {
     sortOrder: row.sort_order,
     photos,
     cover: photos[0]?.url ?? null,
+    version: row.version,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -264,8 +267,7 @@ export function updateWall(
     | WallRow
     | undefined;
   if (!current) return null;
-  // 照片墙没有 version 列，这里用 updated_at 作为弱校验；暂不强制。
-  void expectedVersion;
+  if (expectedVersion !== undefined && current.version !== expectedVersion) return null;
 
   const next = {
     slug: input.slug ?? current.slug,
@@ -277,7 +279,8 @@ export function updateWall(
   };
   db.prepare(
     `UPDATE photo_walls SET slug = @slug, title = @title, date = @date, place = @place,
-      note = @note, sort_order = @sortOrder, updated_at = datetime('now') WHERE id = @id`
+      note = @note, sort_order = @sortOrder, version = version + 1,
+      updated_at = datetime('now') WHERE id = @id`
   ).run({ ...next, id });
   if (input.photos) writePhotos(id, input.photos);
   return getWallBySlug(next.slug);

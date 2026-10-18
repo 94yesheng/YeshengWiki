@@ -1,0 +1,108 @@
+/**
+ * /studio/ 的传输层：实现 Github 的那些方法，但底层是 /api/fs。
+ *
+ * 继承 Github 只是为了让现有 content.ts / views 的 `gh: Github` 类型原样复用；
+ * 父类的 token/request 永远不会被调用。
+ */
+import { Github, type DirEntry, type RemoteFile } from './github';
+
+function bytesToBase64(bytes: Uint8Array): string {
+  let bin = '';
+  const chunk = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunk) {
+    bin += String.fromCharCode(...bytes.subarray(i, i + chunk));
+  }
+  return btoa(bin);
+}
+
+async function errorOf(res: Response): Promise<string> {
+  try {
+    const data = (await res.json()) as { error?: string };
+    return data.error ?? `请求失败（HTTP ${res.status}）`;
+  } catch {
+    return `请求失败（HTTP ${res.status}）`;
+  }
+}
+
+export class ApiGithub extends Github {
+  constructor(private readonly csrf: string) {
+    super('', { owner: 'local', repo: 'local', branch: 'main' });
+  }
+
+  private fsUrl(path: string, extra = ''): string {
+    return `/api/fs?path=${encodeURIComponent(path)}${extra}`;
+  }
+
+  async getFile(path: string): Promise<RemoteFile | null> {
+    const res = await fetch(this.fsUrl(path), { headers: { 'X-CSRF-Token': this.csrf } });
+    if (res.status === 404) return null;
+    if (!res.ok) throw new Error(await errorOf(res));
+    return (await res.json()) as RemoteFile;
+  }
+
+  async getBinary(path: string): Promise<{ bytes: Uint8Array; sha: string } | null> {
+    const res = await fetch(this.fsUrl(path, '&binary=1'), {
+      headers: { 'X-CSRF-Token': this.csrf },
+    });
+    if (res.status === 404) return null;
+    if (!res.ok) throw new Error(await errorOf(res));
+    return {
+      bytes: new Uint8Array(await res.arrayBuffer()),
+      sha: res.headers.get('X-File-Sha') ?? '',
+    };
+  }
+
+  async listDir(dir: string): Promise<DirEntry[]> {
+    const res = await fetch(this.fsUrl(dir, '&list=1'), {
+      headers: { 'X-CSRF-Token': this.csrf },
+    });
+    if (res.status === 404) return [];
+    if (!res.ok) throw new Error(await errorOf(res));
+    const data = (await res.json()) as { entries?: DirEntry[] };
+    return Array.isArray(data.entries) ? data.entries : [];
+  }
+
+  async putText(
+    path: string,
+    text: string,
+    commitMessage: string,
+    sha?: string
+  ): Promise<void> {
+    const res = await fetch(this.fsUrl(path), {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': this.csrf },
+      body: JSON.stringify({ text, message: commitMessage, sha }),
+    });
+    if (!res.ok) throw new Error(await errorOf(res));
+  }
+
+  async putBinary(
+    path: string,
+    bytes: Uint8Array,
+    commitMessage: string,
+    sha?: string
+  ): Promise<void> {
+    const res = await fetch(this.fsUrl(path, '&binary=1'), {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': this.csrf },
+      body: JSON.stringify({ base64: bytesToBase64(bytes), message: commitMessage, sha }),
+    });
+    if (!res.ok) throw new Error(await errorOf(res));
+  }
+
+  async deleteFile(path: string, sha: string, commitMessage: string): Promise<void> {
+    const res = await fetch(this.fsUrl(path), {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': this.csrf },
+      body: JSON.stringify({ sha, message: commitMessage }),
+    });
+    if (!res.ok) throw new Error(await errorOf(res));
+  }
+
+  async whoAmI(): Promise<{ login: string }> {
+    const res = await fetch('/api/auth/me', { headers: { 'X-CSRF-Token': this.csrf } });
+    if (!res.ok) throw new Error(await errorOf(res));
+    const data = (await res.json()) as { user?: { username?: string } };
+    return { login: data.user?.username ?? 'admin' };
+  }
+}

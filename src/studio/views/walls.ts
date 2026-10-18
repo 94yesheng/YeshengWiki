@@ -193,7 +193,7 @@ export function renderWallView(): void {
           <span>02 // FILMSTRIP &amp; AUTO EXIF INGEST · 胶片序列与自动读取摄影信息（点击任意卡片编辑详情）</span>
           <div style="display:flex;gap:0.4rem;">
             <button type="button" class="stage-mini-btn" id="st-sim-noexif-btn" title="添加一张部分摄影信息缺失的照片，直观测试用户侧的模糊乱码艺术效果">模拟导入缺失 EXIF 照片</button>
-            <button type="button" class="stage-mini-btn" id="st-pick-existing">从仓库图库挑选</button>
+            <button type="button" class="stage-mini-btn" id="st-pick-existing">从媒体库挑选</button>
           </div>
         </div>
 
@@ -487,7 +487,7 @@ function renderPickExisting(w: WallEntry): void {
   box.innerHTML = `<div class="st-pick">${
     free.length
       ? free.map((f) => `<button type="button" data-f="${esc(f)}">＋ ${esc(f)}</button>`).join('')
-      : '<p class="st-empty">仓库图库里的所有照片均已加入当前照片墙。</p>'
+      : '<p class="st-empty">媒体库里的所有照片均已加入当前照片墙。</p>'
   }</div>`;
   box.querySelectorAll<HTMLButtonElement>('button[data-f]').forEach((b) =>
     b.addEventListener('click', () => {
