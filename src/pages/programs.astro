@@ -1,5 +1,35 @@
 ---
 import BaseLayout from '../layouts/BaseLayout.astro';
+import { programsConfig } from '../site.config';
+
+interface ProgModule {
+  code?: string;
+  stack?: string;
+  title?: string;
+  desc?: string;
+  status?: string;
+  progress?: number;
+  metric?: string;
+  href?: string;
+}
+
+interface ProgConsole {
+  kicker?: string;
+  title?: string;
+  desc?: string;
+  buildVersion?: string;
+  terminalLines?: Array<{ cmd?: string; out?: string }>;
+}
+
+const prog = programsConfig as { console?: ProgConsole; modules?: ProgModule[] };
+const consoleData: ProgConsole = prog.console ?? {
+  kicker: 'CORE ENGINE // ACTIVE MODULE',
+  title: 'Dual-Field & 3D Three-Body Engine · 昼夜流形与立体三体引力场',
+  desc: '本站主页与文章页搭载的零依赖数学物理渲染器。',
+  buildVersion: 'BUILD: v6.0-3D-MANIFOLD',
+};
+const modules = prog.modules ?? [];
+const terminalLines = (consoleData.terminalLines ?? []).filter((l) => l.cmd || l.out);
 ---
 
 <BaseLayout masthead={false} title="程序" description="做过的小工具与实验项目。">
@@ -25,49 +55,48 @@ import BaseLayout from '../layouts/BaseLayout.astro';
 
     <div class="prog-grid">
       <article class="prog-card">
-        <div class="prog-kicker">MOD // 01 · CANVAS 2D</div>
-        <h2>Dual-Field &amp; Three-Body Engine · 昼夜粒子与三体引力场</h2>
-        <p>
-          本站主页与文章页搭载的零依赖数学物理渲染器：主页白天模式运行立体伯努利双纽线纯粒子流形，夜间模式运行零断层卡冈图雅黑洞视界与引力透镜光环；文章页右侧运行《三体》三恒星与行星混沌引力数值模拟。
-        </p>
+        <div class="prog-kicker">
+          {consoleData.kicker ?? 'CORE ENGINE'}{consoleData.buildVersion ? ` · ${consoleData.buildVersion}` : ''}
+        </div>
+        <h2>{consoleData.title}</h2>
+        <p>{consoleData.desc}</p>
+        {
+          terminalLines.length > 0 && (
+            <div class="prog-terminal" aria-label="引擎终端遥测">
+              {terminalLines.map((line) => (
+                <div>
+                  <span class="prog-terminal-cmd">$ {line.cmd}</span>
+                  <span class="prog-terminal-out">{line.out}</span>
+                </div>
+              ))}
+            </div>
+          )
+        }
         <div class="prog-foot">
           <a href="/">前往主页体验 →</a>
           <a href="/posts/mc-server/">前往文章页体验三体模型 →</a>
         </div>
       </article>
 
-      <article class="prog-card">
-        <div class="prog-kicker">MOD // 02 · PYTHON GIS</div>
-        <h2>MapToPoster · 城市经纬路网海报生成器</h2>
-        <p>
-          输入任意城市名称或经纬度范围，基于 OpenStreetMap 道路与水系矢量数据，一键渲染极简理性的几何海报壁纸。
-        </p>
-        <div class="prog-foot">
-          <a href="/posts/maptoposter/">阅读项目笔记 →</a>
-        </div>
-      </article>
-
-      <article class="prog-card">
-        <div class="prog-kicker">MOD // 03 · SVG NIXIE</div>
-        <h2>Divergence Meter · 世界线变动率辉光管探测仪</h2>
-        <p>
-          致敬《命运石之门》的纯矢量多层阴极辉光管数字组件，在全站页脚滚动进入视口或切换夜间模式时触发世界线收束跳变。
-        </p>
-        <div class="prog-foot">
-          <span>页脚实时运行中</span>
-        </div>
-      </article>
-
-      <article class="prog-card">
-        <div class="prog-kicker">MOD // 04 · LLM WORKFLOW</div>
-        <h2>WeChat-DeepSeek Bridge · 即时通讯推理接入</h2>
-        <p>
-          将 DeepSeek API 接入日常微信对话流的配置方案与异常重试实践记录。
-        </p>
-        <div class="prog-foot">
-          <a href="/posts/deepseek-wechat/">阅读配置文档 →</a>
-        </div>
-      </article>
+      {
+        modules.map((m) => (
+          <article class="prog-card">
+            <div class="prog-kicker">
+              {m.code ?? 'MODULE'}{m.stack ? ` · ${m.stack}` : ''}
+            </div>
+            <h2>{m.title ?? '未命名模块'}</h2>
+            <p>{m.desc ?? ''}</p>
+            <div class="prog-foot">
+              {m.href && !m.href.startsWith('#') ? (
+                <a href={m.href}>{m.status || '查看项目 →'}</a>
+              ) : (
+                <span>{(m.status || '运行中').replace(/\s*->\s*$/, '')}</span>
+              )}
+              {m.metric && <span class="prog-metric">{m.metric}</span>}
+            </div>
+          </article>
+        ))
+      }
     </div>
   </div>
 </BaseLayout>
@@ -88,7 +117,7 @@ import BaseLayout from '../layouts/BaseLayout.astro';
     padding: var(--space-5);
     display: flex;
     flex-direction: column;
-    justify-content: space-between;
+    justify-content: flex-start;
     gap: var(--space-3);
     transition: border-color var(--dur-fast) ease, transform var(--dur-fast) var(--ease);
   }
@@ -120,7 +149,38 @@ import BaseLayout from '../layouts/BaseLayout.astro';
     color: var(--muted);
   }
 
+  .prog-terminal {
+    display: flex;
+    flex-direction: column;
+    gap: 0.28rem;
+    padding: 0.55rem 0.7rem;
+    border: 1px solid var(--rule);
+    background: color-mix(in srgb, var(--paper) 88%, var(--canvas));
+    font-family: ui-monospace, Consolas, monospace;
+    font-size: 0.68rem;
+    line-height: 1.55;
+    color: var(--muted);
+  }
+
+  .prog-terminal-cmd {
+    display: block;
+    color: var(--accent);
+  }
+
+  .prog-terminal-out {
+    display: block;
+    color: var(--faint);
+  }
+
+  .prog-metric {
+    font-family: ui-monospace, Consolas, monospace;
+    font-size: 0.68rem;
+    letter-spacing: 0.04em;
+    color: var(--faint);
+  }
+
   .prog-foot {
+    margin-top: auto;
     padding-top: var(--space-3);
     border-top: 1px dashed var(--rule);
     display: flex;

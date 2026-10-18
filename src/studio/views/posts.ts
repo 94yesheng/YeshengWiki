@@ -1,24 +1,24 @@
 /**
- * 文章视图 —— 右侧编辑区、新建、删除，以及"保存这一篇"。
- *
- * 正文交给所见即所得编辑器（editor.ts），这里只负责字段表单、标签，和保存时
- * 「哪些改动真算改动」的判断。保存逻辑跟视图放在一起，是因为它读的正是这个视图的草稿。
+ * 文章视图 —— HUD 蓝图双象限元数据表单 + 双模态正文编辑器 + 单篇右侧悬浮栏覆写 + 实时伴读预览
  */
 import {
   buildPostText,
   diffFields,
+  DIRS,
   draftId,
   newPostEntry,
   POST_FIELDS,
+  prepareImage,
   savePost,
+  uploadPostAsset,
   type PostEntry,
 } from '../content';
 import { effectiveChanges, parsePost } from '../frontmatter';
 import { createEditor } from '../editor';
 import { normalizeHtml, renderMarkdown } from '../md';
 import { openPreview } from '../preview';
-import { chineseFullDate, isoDate } from '../../utils/date';
-import { $, esc, toast } from '../ui';
+import { chineseFullDate, isoDate, readingTime } from '../../utils/date';
+import { $, esc, reportError, setBusy, toast } from '../ui';
 import {
   isStagedNew,
   markDirty,
@@ -31,17 +31,31 @@ import {
 } from '../state';
 import type { Github } from '../github';
 
-/**
- * 全局默认：保存时要不要自动记「修订」。存在 site.data.json 的 studio 块里（跟着仓库走，
- * 换台机器打开后台也是同一个设定），缺省开。
- */
+interface RailSpecRow {
+  label: string;
+  value: string;
+}
+
+interface RailTopologyCfg {
+  enabled?: boolean;
+  kicker?: string;
+  badge?: string;
+  node1Title?: string;
+  node1Sub?: string;
+  node2Title?: string;
+  node2Sub?: string;
+  node3Title?: string;
+  node3Sub?: string;
+  line1?: string;
+  line2?: string;
+}
+
 function autoUpdatedDefault(): boolean {
   const data = state.site?.data as Record<string, unknown> | undefined;
   const studio = data?.studio as Record<string, unknown> | undefined;
   return studio?.autoUpdated !== false;
 }
 
-/** 这一篇生效的「自动记修订」：frontmatter 写了就用它，没写就跟随全局 */
 function postAutoUpdated(fields: Record<string, unknown>): boolean {
   const v = fields.autoUpdated;
   return typeof v === 'boolean' ? v : autoUpdatedDefault();
@@ -51,24 +65,58 @@ function currentPost(): PostEntry | null {
   return state.posts.find((p) => p.id === state.selected) ?? null;
 }
 
+function extractAutoLeadFromMarkdown(mdText: string): string {
+  const blocks = mdText.split(/\n\s*\n/);
+  const parts: string[] = [];
+  for (const b of blocks) {
+    const raw = b.trim();
+    if (!raw || /^</.test(raw) || /^\*(\s+\*)+$/.test(raw) || /^(#{1,6}\s|>|\||```)/.test(raw)) continue;
+    const clean = raw
+      .replace(/!\[[^\]]*\]\([^)]*\)/g, '')
+      .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
+      .replace(/`([^`]*)`/g, '$1')
+      .replace(/\*\*([^*]+)\*\*/g, '$1')
+      .replace(/~~([^~]+)~~/g, '$1')
+      .replace(/<[^>]+>/g, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+    if (clean.length < 10) continue;
+    parts.push(clean);
+    if (parts.join(' ').length >= 55 || parts.length >= 2) break;
+  }
+  return parts.join(' ');
+}
+
 function postDraft(): Draft['post'] {
   const entry = currentPost();
   if (!entry) return undefined;
   if (!state.draft.post || state.draft.post.entry.id !== entry.id) {
+    const d = entry.parsed.data;
+    const rawSpecs = Array.isArray(d.railSpecs) ? (d.railSpecs as RailSpecRow[]) : [];
+    const rawTopo = (d.railTopology ?? {}) as RailTopologyCfg;
     state.draft.post = {
       entry,
       fields: {
-        title: entry.parsed.data.title ?? '',
-        pubDate: String(entry.parsed.data.pubDate ?? ''),
-        description: entry.parsed.data.description ?? '',
-        tags: [...(Array.isArray(entry.parsed.data.tags) ? (entry.parsed.data.tags as string[]) : [])],
-        updatedDate: entry.parsed.data.updatedDate ? String(entry.parsed.data.updatedDate) : '',
-        draft: entry.parsed.data.draft === true,
-        // 三态：undefined = 跟随全局；true / false = 这一篇的例外
-        autoUpdated: typeof entry.parsed.data.autoUpdated === 'boolean' ? entry.parsed.data.autoUpdated : undefined,
+        title: d.title ?? '',
+        pubDate: String(d.pubDate ?? ''),
+        description: d.description ?? '',
+        lead: d.lead ?? '',
+        tags: [...(Array.isArray(d.tags) ? (d.tags as string[]) : [])],
+        entryBadge: d.entryBadge ?? '',
+        cover: d.cover ?? '',
+        coverCaption: d.coverCaption ?? '',
+        featured: d.featured === true,
+        kineticCaption: d.kineticCaption ?? '',
+        railMode: d.railMode ?? (entry.id === 'mc-server' ? 'topology' : rawSpecs.length ? 'custom' : 'follow'),
+        railSpecs: rawSpecs.map((r) => ({ label: String(r.label ?? ''), value: String(r.value ?? '') })),
+        railTopology: { ...rawTopo },
+        updatedDate: d.updatedDate ? String(d.updatedDate) : '',
+        draft: d.draft === true,
+        autoUpdated: typeof d.autoUpdated === 'boolean' ? d.autoUpdated : undefined,
       },
       body: entry.parsed.body,
       dateTouched: false,
+      rightTab: 'format',
     };
   }
   return state.draft.post;
@@ -84,87 +132,340 @@ export function renderPostView(): void {
     return;
   }
 
-  // 「自动记修订」的三个状态：跟随全局 / 始终 / 不记录
   const globalAuto = autoUpdatedDefault();
   const curAuto = d.fields.autoUpdated;
   const autoValue = curAuto === true ? 'on' : curAuto === false ? 'off' : 'follow';
+  const railMode = String(d.fields.railMode ?? 'follow');
+  const railSpecs = (d.fields.railSpecs as RailSpecRow[]) ?? [];
+  const railTopo = (d.fields.railTopology as RailTopologyCfg) ?? {};
 
   const tags = (d.fields.tags as string[])
-    .map((t) => `<span class="st-chip">${esc(t)}<button data-rm="${esc(t)}" title="移除">×</button></span>`)
+    .map((t) => `<span class="st-chip">${esc(t)}<button type="button" data-rm="${esc(t)}" title="移除">×</button></span>`)
     .join('');
 
+  const allKnownTags = Array.from(
+    new Set(
+      state.posts.flatMap((p) => (Array.isArray(p.parsed.data.tags) ? p.parsed.data.tags.map(String) : []))
+    )
+  ).filter((t) => !(d.fields.tags as string[]).includes(t));
+
+  const entryIndex = state.posts.findIndex((p) => p.id === d.entry.id) + 1;
+  const entryNo = String(Math.max(1, entryIndex)).padStart(2, '0');
+  const coverUrl = String(d.fields.cover ?? '').trim() || '/artifact/home/images/spot-default-mc.jpg';
+
   edit.innerHTML = `
-    <div class="st-head">
-      <div class="st-kicker">${esc(d.fields.pubDate || '未填日期')} · ${esc(d.entry.path)}</div>
-      <h2 id="st-live-title">${esc(d.fields.title)}</h2>
-      <div class="st-head-actions">
-        <span class="st-hint">想看效果：点<b>右下角悬浮球</b>里的「▤」—— 会打开一篇真实文章页，只把正文换成你现在的草稿</span>
-      </div>
-    </div>
-    <div class="st-form">
-      <div class="st-field"><label>标题</label><div>
-        <input class="st-input" id="st-f-title" value="${esc(d.fields.title)}" />
-      </div></div>
-      <div class="st-field"><label>日期</label><div>
-        <input class="st-input" id="st-f-date" value="${esc(d.fields.pubDate)}" style="max-width:10rem" />
-        <div class="st-hint">格式 2026-03-09。决定文章在时间轴上的位置</div>
-      </div></div>
-      <div class="st-field"><label>标签</label><div>
-        <div class="st-tags" id="st-tags">${tags}
-          <input class="st-input" id="st-f-newtag" placeholder="＋ 加标签后回车" style="max-width:12rem" />
+    <div class="st-q-card">
+      <div class="q-topbar">
+        <div class="q-topbar-cell">
+          <span class="q-sec-badge">#${entryNo}</span>
+          <span>文章编辑</span>
         </div>
-      </div></div>
-      <div class="st-field"><label>摘要</label><div>
-        <textarea class="st-textarea" id="st-f-desc" rows="2">${esc(d.fields.description)}</textarea>
-        <div class="st-hint">只用于 RSS 和搜索引擎，列表页不显示</div>
-      </div></div>
-      <div class="st-field"><label>修订于</label><div>
-        <input class="st-input" id="st-f-updated" value="${esc(d.fields.updatedDate)}" style="max-width:10rem" placeholder="留空则不显示" />
-        <div class="st-hint">留空就是没有「修订」这一栏；你手动填过之后，自动记录不会再覆盖它</div>
-      </div></div>
-      <div class="st-field"><label>修订记录</label><div>
-        <select class="st-select" id="st-f-auto">
-          <option value="follow"${autoValue === 'follow' ? ' selected' : ''}>跟随全局（当前：${globalAuto ? '自动记录' : '不记录'}）</option>
-          <option value="on"${autoValue === 'on' ? ' selected' : ''}>始终自动记录</option>
-          <option value="off"${autoValue === 'off' ? ' selected' : ''}>这一篇不记录</option>
-        </select>
-        <div class="st-hint">自动记录 = 保存时把「修订于」盖成今天。只有你动过这个选择、且和全局不同，才会写进 frontmatter</div>
-      </div></div>
-      <div class="st-field"><label>草稿</label><div class="st-check">
-        <input type="checkbox" id="st-f-draft" ${d.fields.draft ? 'checked' : ''} />
-        <span>打开后不出现在列表、RSS 和站点地图里（也不会生成页面）</span>
-      </div></div>
-    </div>
-    <div class="st-editor-head">
-      <span>正文</span>
-      <span class="st-info">像写文档一样编辑；选中文字再用上面那排按钮加格式</span>
-    </div>
-    <div id="ed-host"></div>
-    <div style="margin-top:var(--space-5);display:flex;gap:var(--space-2)">
-      <button class="st-btn st-btn--danger" id="st-del-post">删除这篇文章</button>
+        <div class="q-topbar-cell q-topbar-cell--right">
+          <span class="telemetry-accent">/posts/${esc(d.entry.id)}/</span>
+        </div>
+      </div>
+
+      <div class="st-head">
+        <div class="st-head-top-row">
+          <div>
+            <div class="st-kicker">${esc(d.fields.pubDate || '未设日期')} · ${esc(d.entry.path)}</div>
+            <h2 id="st-live-title">${esc(d.fields.title || '（未填标题）')}</h2>
+          </div>
+          <div class="st-head-btns">
+            <button type="button" class="stage-mini-btn" id="st-btn-preview-post">页面预览</button>
+            <button type="button" class="stage-mini-btn st-btn--danger" id="st-del-post">删除文章</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 第一象限：核心元数据（对应展示页顶栏、首屏双象限左栏、时间轴卡片） -->
+      <div class="st-section-box">
+        <div class="st-section-head">
+          <span>01 // CORE TELEMETRY · 标题、路由、时间轴坐标与分类（对应 /posts/ 与文章页首屏）</span>
+          <span class="st-sec-tag">REQUIRED</span>
+        </div>
+        <div class="st-grid-2">
+          <div class="st-field">
+            <label>文章标题</label>
+            <div>
+              <input class="st-input" id="st-f-title" value="${esc(d.fields.title)}" placeholder="文章主标题（中英文间自动盘古留白）" />
+            </div>
+          </div>
+          <div class="st-field">
+            <label>路由标识</label>
+            <div>
+              <div style="display:flex;gap:0.4rem;align-items:center;">
+                <input class="st-input" id="st-f-slug" value="${esc(d.entry.id)}" placeholder="英文连字符，如 mc-server" />
+              </div>
+              <div class="st-hint">生成路径：<code>/posts/${esc(d.entry.id)}/</code>（修改即重命名 .md 文件）</div>
+            </div>
+          </div>
+          <div class="st-field">
+            <label>发布日期</label>
+            <div>
+              <input class="st-input" id="st-f-date" value="${esc(d.fields.pubDate)}" placeholder="2026-03-13" />
+              <div class="st-hint">格式 YYYY-MM-DD，决定时间轴年/月/日归档位置</div>
+            </div>
+          </div>
+          <div class="st-field">
+            <label>坐标徽标</label>
+            <div>
+              <input class="st-input" id="st-f-badge" value="${esc(d.fields.entryBadge)}" placeholder="如：LATEST / ESSAY / TOOLKIT / 3D MESH" />
+              <div class="st-hint">对应归档卡片上的 <code>ENTRY #${entryNo} // BADGE</code></div>
+            </div>
+          </div>
+          <div class="st-field">
+            <label>修订日期</label>
+            <div>
+              <input class="st-input" id="st-f-updated" value="${esc(d.fields.updatedDate)}" placeholder="留空则不显示修订时间" />
+            </div>
+          </div>
+          <div class="st-field">
+            <label>自动记修订</label>
+            <div>
+              <select class="st-select" id="st-f-auto">
+                <option value="follow"${autoValue === 'follow' ? ' selected' : ''}>跟随全局（当前：${globalAuto ? '自动记录' : '不记录'}）</option>
+                <option value="on"${autoValue === 'on' ? ' selected' : ''}>始终自动记录</option>
+                <option value="off"${autoValue === 'off' ? ' selected' : ''}>本篇不自动记录</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <div class="st-field" style="margin-top:0.75rem;">
+          <label>象限标签</label>
+          <div>
+            <div class="st-tags" id="st-tags">
+              ${tags}
+              <input class="st-input" id="st-f-newtag" placeholder="＋ 输入标签回车添加" style="max-width:11rem" />
+            </div>
+            ${
+              allKnownTags.length
+                ? `<div class="st-quick-tags">
+                    <span>常用标签快选：</span>
+                    ${allKnownTags
+                      .map((t) => `<button type="button" class="stage-mini-btn" data-add-tag="${esc(t)}">＋ ${esc(t)}</button>`)
+                      .join('')}
+                  </div>`
+                : ''
+            }
+          </div>
+        </div>
+
+        <div class="st-grid-2" style="margin-top:0.75rem;">
+          <div class="st-field">
+            <label>发布状态</label>
+            <div class="st-check">
+              <input type="checkbox" id="st-f-draft" ${d.fields.draft ? 'checked' : ''} />
+              <span>存为草稿（不出现在公开列表、RSS 与 Sitemap 中）</span>
+            </div>
+          </div>
+          <div class="st-field">
+            <label>主页焦点</label>
+            <div class="st-check">
+              <input type="checkbox" id="st-f-featured" ${d.fields.featured ? 'checked' : ''} />
+              <span>设为主页「01 · POSTS」右侧默认高亮焦点文章 (SPOTLIGHT)</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 第二象限：导语梗概、16:9 封面与三体画布遥测接口 -->
+      <div class="st-section-box">
+        <div class="st-section-head">
+          <span>02 // VISUAL &amp; LEAD INTERFACE · 首屏导语、16:9 宽银幕封面与三体画布遥测</span>
+          <button type="button" class="stage-mini-btn" id="st-auto-lead-btn">从正文自动提取导语</button>
+        </div>
+
+        <div class="st-grid-2">
+          <div>
+            <div class="st-field">
+              <label>首屏导语</label>
+              <div>
+                <textarea class="st-textarea" id="st-f-lead" rows="3" placeholder="显示在文章详细页标题下方、主页焦点摘要与归档时间轴卡片上（留空则自动抽取正文首段）">${esc(
+                  d.fields.lead
+                )}</textarea>
+              </div>
+            </div>
+            <div class="st-field" style="margin-top:0.65rem;">
+              <label>SEO 摘要</label>
+              <div>
+                <textarea class="st-textarea" id="st-f-desc" rows="2" placeholder="用于 RSS 源与搜索引擎 meta description">${esc(
+                  d.fields.description
+                )}</textarea>
+              </div>
+            </div>
+            <div class="st-field" style="margin-top:0.65rem;">
+              <label>三体副标题</label>
+              <div>
+                <input class="st-input" id="st-f-kinetic" value="${esc(d.fields.kineticCaption)}" placeholder="默认：3-BODY GRAVITY // CHAOTIC ORBIT（Mc 篇如 LOCAL : 25565 <-> FRP）" />
+                <div class="st-hint">对应文章详细页右上角《三体》引力轨迹画布底栏右侧遥测铭牌</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="st-cover-config-box">
+            <div class="st-cover-preview-wrap">
+              <img id="st-cover-preview-img" src="${esc(coverUrl)}" alt="封面预览" onerror="this.style.opacity='0.25'" />
+              <span class="cover-ratio-pill">16:9</span>
+            </div>
+            <div class="st-field" style="margin-top:0.65rem;">
+              <label>封面图片</label>
+              <div style="display:flex;gap:0.5rem;">
+                <input class="st-input" id="st-f-cover" value="${esc(d.fields.cover)}" placeholder="图片路径或留空自动取正文首图" />
+                <label class="stage-mini-btn" style="cursor:pointer;white-space:nowrap;display:inline-flex;align-items:center;">
+                  <span>上传</span>
+                  <input type="file" id="st-upload-cover" accept="image/*" hidden />
+                </label>
+              </div>
+            </div>
+            <div class="st-field" style="margin-top:0.65rem;">
+              <label>封面图注</label>
+              <div>
+                <input class="st-input" id="st-f-covercap" value="${esc(d.fields.coverCaption)}" placeholder="如：FRP / JAVA 21 / PAPERMC" />
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 右栏伴读定制（可折叠的高级选项）-->
+      <div class="st-section-box is-collapsible" id="st-rail-section">
+        <div class="st-section-head" id="st-rail-head">
+          <span>右栏伴读定制</span>
+          <span class="st-sec-mono" style="font-family:var(--mono);font-size:0.72rem;letter-spacing:0.06em;color:var(--accent);">高级 · 可折叠</span>
+          <button type="button" class="stage-mini-btn" id="st-switch-rail-preview" style="margin-left:auto;">预览 →</button>
+          <span class="st-collapse-icon">›</span>
+        </div>
+        <div class="st-section-body">
+          <div style="padding-top:0.5rem;">
+
+        <div class="st-field">
+          <label>右栏模式</label>
+          <div class="st-seg-row">
+            <button type="button" class="stage-mini-btn" data-rail-mode="follow" aria-pressed="${railMode === 'follow'}">跟随全局默认</button>
+            <button type="button" class="stage-mini-btn" data-rail-mode="custom" aria-pressed="${railMode === 'custom'}">本文专属参数卡</button>
+            <button type="button" class="stage-mini-btn" data-rail-mode="topology" aria-pressed="${railMode === 'topology'}">拓扑图解</button>
+          </div>
+        </div>
+
+        <div id="st-rail-custom-editor" ${railMode === 'follow' ? 'hidden' : ''} style="margin-top:0.85rem;">
+          <div class="st-sub-kicker">速查参数表（显示在文章右侧悬浮栏）</div>
+          <div class="st-kv-editor-list" id="st-rail-specs-list">
+            ${railSpecs
+              .map(
+                (row, i) => `
+              <div class="st-kv-row">
+                <input class="st-input" data-spec-k="${i}" value="${esc(row.label)}" placeholder="参数名" />
+                <input class="st-input" data-spec-v="${i}" value="${esc(row.value)}" placeholder="参数值" />
+                <button type="button" class="stage-mini-btn st-btn--danger" data-spec-del="${i}">删除</button>
+              </div>`
+              )
+              .join('')}
+          </div>
+          <div style="margin-top:0.55rem;display:flex;gap:0.5rem;">
+            <button type="button" class="stage-mini-btn" id="st-add-spec-row">＋ 新增参数行</button>
+            <button type="button" class="stage-mini-btn" id="st-preset-mc-spec">载入服务器模板</button>
+          </div>
+
+          <div id="st-rail-topo-editor" ${railMode === 'topology' ? '' : 'hidden'} style="margin-top:0.95rem;padding-top:0.85rem;border-top:1px dashed var(--rule);">
+            <div class="st-sub-kicker">拓扑链路图节点文本</div>
+            <div class="st-grid-3">
+              <div>
+                <label class="st-mini-label">左节点</label>
+                <input class="st-input" data-topo="node1Title" value="${esc(railTopo.node1Title ?? 'LOCAL HOST')}" placeholder="主标题" style="margin-bottom:6px" />
+                <input class="st-input" data-topo="node1Sub" value="${esc(railTopo.node1Sub ?? 'Paper :25565')}" placeholder="副标题" />
+              </div>
+              <div>
+                <label class="st-mini-label">中继节点</label>
+                <input class="st-input" data-topo="node2Title" value="${esc(railTopo.node2Title ?? 'FRP RELAY')}" placeholder="主标题" style="margin-bottom:6px" />
+                <input class="st-input" data-topo="node2Sub" value="${esc(railTopo.node2Sub ?? 'Public :7000')}" placeholder="副标题" />
+              </div>
+              <div>
+                <label class="st-mini-label">终端节点</label>
+                <input class="st-input" data-topo="node3Title" value="${esc(railTopo.node3Title ?? 'PLAYERS')}" placeholder="主标题" style="margin-bottom:6px" />
+                <input class="st-input" data-topo="node3Sub" value="${esc(railTopo.node3Sub ?? 'Clients 1..N')}" placeholder="副标题" />
+              </div>
+            </div>
+            <div class="st-grid-2" style="margin-top:0.5rem;">
+              <input class="st-input" data-topo="line1" value="${esc(railTopo.line1 ?? 'TUNNEL: 127.0.0.1:25565 -> frps:25565')}" placeholder="状态行 1" />
+              <input class="st-input" data-topo="line2" value="${esc(railTopo.line2 ?? 'STATUS: NAT BYPASSED · ZERO PUBLIC IP')}" placeholder="状态行 2" />
+            </div>
+          </div>
+        </div>
+
+          </div>
+        </div>
+      </div>
+
+      <!-- 正文编辑器 -->
+      <div class="st-section-box">
+        <div class="st-section-head">
+          <span>正文内容</span>
+          <span class="st-sec-tag">WYSIWYG ↔ Markdown</span>
+        </div>
+        <div id="ed-host"></div>
+      </div>
     </div>`;
 
-  // 字段绑定：只改草稿，不重画整个编辑区（否则输入框会失焦）
+
+  // 绑定字段输入
   const bindInput = (sel: string, key: string) =>
-    $<HTMLInputElement>(sel)?.addEventListener('input', (e) => {
+    $<HTMLInputElement | HTMLTextAreaElement>(sel)?.addEventListener('input', (e) => {
       d.fields[key] = (e.target as HTMLInputElement).value;
       markDirty();
       if (key === 'title') {
         const t = $('#st-live-title');
-        if (t) t.textContent = String(d.fields.title ?? '');
+        if (t) t.textContent = String(d.fields.title || '（未填标题）');
       }
+      if (key === 'cover') {
+        const img = $<HTMLImageElement>('#st-cover-preview-img');
+        if (img) {
+          img.style.opacity = '1';
+          img.src = String(d.fields.cover || '/artifact/home/images/spot-default-mc.jpg');
+        }
+      }
+      if (d.rightTab === 'rail') renderRightRailPreview(d);
     });
+
   bindInput('#st-f-title', 'title');
   bindInput('#st-f-date', 'pubDate');
-  bindInput('#st-f-desc', 'description');
+  bindInput('#st-f-badge', 'entryBadge');
   bindInput('#st-f-updated', 'updatedDate');
-  // 用户亲手动过「修订于」就留个痕：自动记录要给它让位，否则手填的日期会被今天的日期顶掉
+  bindInput('#st-f-lead', 'lead');
+  bindInput('#st-f-desc', 'description');
+  bindInput('#st-f-kinetic', 'kineticCaption');
+  bindInput('#st-f-cover', 'cover');
+  bindInput('#st-f-covercap', 'coverCaption');
+
+  // 路由标识修改
+  $<HTMLInputElement>('#st-f-slug')?.addEventListener('change', (e) => {
+    const nextSlug = (e.target as HTMLInputElement).value
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9-_]/g, '-')
+      .replace(/-+/g, '-')
+      .replace(/^-|-$/g, '');
+    if (!nextSlug || nextSlug === d.entry.id) return;
+    if (state.posts.some((p) => p.id === nextSlug && p !== d.entry)) {
+      toast(`路由标识「${nextSlug}」已被其它文章占用`, true);
+      (e.target as HTMLInputElement).value = d.entry.id;
+      return;
+    }
+    d.entry.id = nextSlug;
+    d.entry.path = `${DIRS.posts}/${nextSlug}.md`;
+    state.selected = nextSlug;
+    markDirty();
+    rerender();
+    toast(`文章路由已更新为 /posts/${nextSlug}/`);
+  });
+
   $('#st-f-updated')?.addEventListener('input', () => {
     d.dateTouched = true;
   });
+
   $<HTMLSelectElement>('#st-f-auto')?.addEventListener('change', (e) => {
     const v = (e.target as HTMLSelectElement).value;
-    // 选「跟随」就把字段清掉（= 回到缺省，不会在文件里留一行）
     d.fields.autoUpdated = v === 'follow' ? undefined : v === 'on';
     markDirty();
   });
@@ -173,8 +474,61 @@ export function renderPostView(): void {
     d.fields.draft = (e.target as HTMLInputElement).checked;
     markDirty();
   });
+
+  $<HTMLInputElement>('#st-f-featured')?.addEventListener('change', (e) => {
+    d.fields.featured = (e.target as HTMLInputElement).checked;
+    markDirty();
+  });
+
+  // 可折叠 section 绑定
+  edit.querySelectorAll<HTMLElement>('.st-section-box.is-collapsible .st-section-head').forEach((head) => {
+    const box = head.closest('.st-section-box');
+    if (!box) return;
+    head.addEventListener('click', (e) => {
+      // 点击 section 内的按钮不触发折叠
+      if ((e.target as HTMLElement).closest('button, input, select, textarea')) return;
+      box.classList.toggle('is-open');
+    });
+  });
+
+  // 自动提取导语
+  $('#st-auto-lead-btn')?.addEventListener('click', () => {
+    const mdBody = d.editor?.getMarkdown() ?? d.body;
+    const extracted = extractAutoLeadFromMarkdown(mdBody);
+    if (!extracted) {
+      toast('正文中尚未找到足够长的段落来提取导语', true);
+      return;
+    }
+    d.fields.lead = extracted;
+    const leadEl = $<HTMLTextAreaElement>('#st-f-lead');
+    if (leadEl) leadEl.value = extracted;
+    markDirty();
+    toast('已从正文首段自动提取导语');
+  });
+
+
+  // 上传封面
+  $<HTMLInputElement>('#st-upload-cover')?.addEventListener('change', async (e) => {
+    const file = (e.target as HTMLInputElement).files?.[0];
+    if (!file) return;
+    try {
+      const localUrl = URL.createObjectURL(file);
+      d.fields.cover = localUrl;
+      const input = $<HTMLInputElement>('#st-f-cover');
+      if (input) input.value = `../../assets/posts/${file.name}`;
+      const img = $<HTMLImageElement>('#st-cover-preview-img');
+      if (img) img.src = localUrl;
+      markDirty();
+      toast(`已加载封面预览：${file.name}（16:9 画框已适配）`);
+    } catch (err) {
+      reportError(err);
+    }
+  });
+
+  // 标签增删
   $<HTMLInputElement>('#st-f-newtag')?.addEventListener('keydown', (e) => {
     if ((e as KeyboardEvent).key !== 'Enter') return;
+    e.preventDefault();
     const input = e.target as HTMLInputElement;
     const v = input.value.trim();
     if (v && !(d.fields.tags as string[]).includes(v)) {
@@ -184,6 +538,18 @@ export function renderPostView(): void {
     }
     input.value = '';
   });
+
+  edit.querySelectorAll<HTMLButtonElement>('[data-add-tag]').forEach((b) =>
+    b.addEventListener('click', () => {
+      const t = b.dataset.addTag ?? '';
+      if (t && !(d.fields.tags as string[]).includes(t)) {
+        (d.fields.tags as string[]).push(t);
+        markDirty();
+        renderPostView();
+      }
+    })
+  );
+
   edit.querySelectorAll<HTMLButtonElement>('[data-rm]').forEach((b) =>
     b.addEventListener('click', () => {
       d.fields.tags = (d.fields.tags as string[]).filter((t) => t !== b.dataset.rm);
@@ -191,34 +557,276 @@ export function renderPostView(): void {
       renderPostView();
     })
   );
+
+  // 右侧悬浮栏模式切换与编辑
+  edit.querySelectorAll<HTMLButtonElement>('[data-rail-mode]').forEach((btn) =>
+    btn.addEventListener('click', () => {
+      d.fields.railMode = btn.dataset.railMode ?? 'follow';
+      d.rightTab = 'rail';
+      markDirty();
+      renderPostView();
+    })
+  );
+
+  edit.querySelectorAll<HTMLInputElement>('[data-spec-k]').forEach((inp) =>
+    inp.addEventListener('input', () => {
+      const idx = Number(inp.dataset.specK);
+      if (railSpecs[idx]) railSpecs[idx]!.label = inp.value;
+      markDirty();
+      if (d.rightTab === 'rail') renderRightRailPreview(d);
+    })
+  );
+
+  edit.querySelectorAll<HTMLInputElement>('[data-spec-v]').forEach((inp) =>
+    inp.addEventListener('input', () => {
+      const idx = Number(inp.dataset.specV);
+      if (railSpecs[idx]) railSpecs[idx]!.value = inp.value;
+      markDirty();
+      if (d.rightTab === 'rail') renderRightRailPreview(d);
+    })
+  );
+
+  edit.querySelectorAll<HTMLButtonElement>('[data-spec-del]').forEach((btn) =>
+    btn.addEventListener('click', () => {
+      railSpecs.splice(Number(btn.dataset.specDel), 1);
+      markDirty();
+      renderPostView();
+    })
+  );
+
+  $('#st-add-spec-row')?.addEventListener('click', () => {
+    railSpecs.push({ label: 'NEW PARAM', value: 'Value' });
+    markDirty();
+    renderPostView();
+  });
+
+  $('#st-preset-mc-spec')?.addEventListener('click', () => {
+    d.fields.railSpecs = [
+      { label: 'JDK RUNTIME', value: 'Temurin 21 LTS' },
+      { label: 'SERVER CORE', value: 'Paper 1.21.x' },
+      { label: 'HEAP MEMORY', value: '-Xms4G -Xmx4G' },
+      { label: 'GC POLICY', value: 'G1GC (Aikars)' },
+      { label: 'DEFAULT PORT', value: 'TCP 25565' },
+    ];
+    markDirty();
+    renderPostView();
+  });
+
+  edit.querySelectorAll<HTMLInputElement>('[data-topo]').forEach((inp) =>
+    inp.addEventListener('input', () => {
+      const k = inp.dataset.topo as keyof RailTopologyCfg;
+      railTopo[k] = inp.value as never;
+      d.fields.railTopology = railTopo;
+      markDirty();
+      if (d.rightTab === 'rail') renderRightRailPreview(d);
+    })
+  );
+
+  $('#st-switch-rail-preview')?.addEventListener('click', () => {
+    d.rightTab = 'rail';
+    renderRightDock(d);
+  });
+
+  $('#st-btn-preview-post')?.addEventListener('click', () => previewCurrentPost());
   $('#st-del-post')?.addEventListener('click', () => removePost(d.entry));
 
-  // 右侧那一栏 = 「格式」面板：工具栏搬进来了；预览改由右下角的悬浮球打开
-  const panel = $('#st-preview');
-  if (panel) {
-    // 面板里只放工具栏 —— 标题和底部提示都去掉了（分组标签自己就是引导）
-    panel.innerHTML = `<div class="st-col-inner"><div id="ed-bar-host"></div></div>`;
-  }
+  renderRightDock(d);
+}
 
-  // 挂上所见即所得编辑器（正文不再裸露 Markdown）。
-  // 已经有编辑器就**搬到新宿主里**，不要用 d.body 重建 —— 那会丢掉还没保存的正文改动
-  // （增删标签会重画整个表单，踩过）。
+function renderRightDock(d: NonNullable<Draft['post']>): void {
+  const panel = $('#st-preview');
+  if (!panel) return;
+  const activeTab = d.rightTab ?? 'format';
+
+  panel.innerHTML = `
+    <div class="st-col-inner">
+      <div class="st-dock-tabs">
+        <button type="button" class="st-dock-tab" data-dock-tab="format" aria-selected="${activeTab === 'format'}">格式工具</button>
+        <button type="button" class="st-dock-tab" data-dock-tab="rail" aria-selected="${activeTab === 'rail'}">右侧悬浮栏</button>
+      </div>
+      <div id="ed-bar-host" ${activeTab === 'format' ? '' : 'hidden'}></div>
+      <div id="st-rail-preview-host" ${activeTab === 'rail' ? '' : 'hidden'}></div>
+    </div>`;
+
+  panel.querySelectorAll<HTMLButtonElement>('[data-dock-tab]').forEach((b) =>
+    b.addEventListener('click', () => {
+      d.rightTab = (b.dataset.dockTab ?? 'format') as 'format' | 'rail';
+      renderRightDock(d);
+    })
+  );
+
   const areaHost = $('#ed-host');
   const barHost = $('#ed-bar-host');
   if (areaHost && barHost) {
-    if (d.editor) d.editor.remount(areaHost, barHost);
-    else
-      d.editor = createEditor(
-        areaHost,
-        barHost,
-        d.body,
-        () => markDirty(),
-        () => `相对路径，例如 ../../assets/posts/${d.entry.id}-01.png\n（图片文件放在 src/assets/posts/ 下）`
-      );
+    if (d.editor) {
+      d.editor.remount(areaHost, barHost);
+    } else {
+      d.editor = createEditor(areaHost, barHost, d.body, {
+        onInput: () => {
+          markDirty();
+          if (d.rightTab === 'rail') renderRightRailPreview(d);
+        },
+        getPostAssets: () => state.postAssetFiles,
+        onUploadPostAsset: async (file: File) => {
+          if (state.demoMode || !state.gh) {
+            const name = file.name.replace(/\s+/g, '-');
+            if (!state.postAssetFiles.includes(name)) state.postAssetFiles.push(name);
+            toast(`已载入配图「${name}」（演示模式）`);
+            return name;
+          }
+          setBusy(true, '压缩并上传文章配图…');
+          try {
+            const prepared = await prepareImage(file);
+            const name = await uploadPostAsset(state.gh, prepared, d.entry.id, state.postAssetFiles);
+            state.postAssetFiles.push(name);
+            toast(`配图 ${name} 已上传至 src/assets/posts/`);
+            return name;
+          } catch (err) {
+            reportError(err);
+            return null;
+          } finally {
+            setBusy(false);
+          }
+        },
+      });
+    }
+  }
+
+  if (activeTab === 'rail') {
+    renderRightRailPreview(d);
   }
 }
 
-/** 打开「按博客的样子预览」当前草稿 —— 由右下角的悬浮球调用（原来那个按钮收进去了） */
+function renderRightRailPreview(d: NonNullable<Draft['post']>): void {
+  const host = $('#st-rail-preview-host');
+  if (!host) return;
+
+  const siteData = (state.draft.site ?? state.site?.data ?? {}) as Record<string, unknown>;
+  const railCfg = (siteData.articleRail ?? {}) as Record<string, unknown>;
+  const docSpecCfg = (railCfg.docSpec ?? {}) as Record<string, unknown>;
+  const globalTopo = (railCfg.topology ?? {}) as Record<string, unknown>;
+  const customCards = Array.isArray(railCfg.customCards) ? (railCfg.customCards as Array<Record<string, unknown>>) : [];
+
+  const mdText = d.editor?.getMarkdown() ?? d.body;
+  const { chars, minutes } = readingTime(mdText);
+  const pubDate = String(d.fields.pubDate ?? '');
+  const when = /^\d{4}-\d{2}-\d{2}$/.test(pubDate) ? new Date(`${pubDate}T00:00:00`) : null;
+  const dateText = when ? chineseFullDate(when) : pubDate || '未填日期';
+  const tags = (d.fields.tags as string[]) ?? [];
+  const tagText = tags.length ? tags.join(' · ') : '未分类';
+
+  const railMode = String(d.fields.railMode ?? 'follow');
+  const postSpecs = (d.fields.railSpecs as RailSpecRow[]) ?? [];
+  const postTopo = (d.fields.railTopology as RailTopologyCfg) ?? {};
+
+  const showTopo =
+    railMode === 'topology' ||
+    (railMode === 'follow' && (d.entry.id === 'mc-server' || globalTopo.globalEnabled === true));
+
+  const n1T = postTopo.node1Title || String(globalTopo.node1Title ?? 'LOCAL HOST');
+  const n1S = postTopo.node1Sub || String(globalTopo.node1Sub ?? 'Paper :25565');
+  const n2T = postTopo.node2Title || String(globalTopo.node2Title ?? 'FRP RELAY');
+  const n2S = postTopo.node2Sub || String(globalTopo.node2Sub ?? 'Public :7000');
+  const n3T = postTopo.node3Title || String(globalTopo.node3Title ?? 'PLAYERS');
+  const n3S = postTopo.node3Sub || String(globalTopo.node3Sub ?? 'Clients 1..N');
+  const l1 = postTopo.line1 || String(globalTopo.line1 ?? 'TUNNEL: 127.0.0.1:25565 -> frps:25565');
+  const l2 = postTopo.line2 || String(globalTopo.line2 ?? 'STATUS: NAT BYPASSED · ZERO PUBLIC IP');
+
+  let rows: RailSpecRow[] = [];
+  let specKicker = String(docSpecCfg.kicker ?? 'DOC SPEC // 文档速查卡');
+  if ((railMode === 'custom' || railMode === 'topology') && postSpecs.length > 0) {
+    rows = postSpecs;
+    specKicker = 'SPEC SHEET // 环境速查卡';
+  } else {
+    if (docSpecCfg.showPublished !== false) rows.push({ label: 'PUBLISHED', value: dateText });
+    if (docSpecCfg.showChars !== false) rows.push({ label: 'CHARS', value: `${chars.toLocaleString('zh-CN')} 字` });
+    if (docSpecCfg.showReading !== false) rows.push({ label: 'READING', value: `约 ${minutes} 分钟` });
+    if (docSpecCfg.showTags !== false) rows.push({ label: 'TAGS', value: tagText });
+    const extraRows = Array.isArray(docSpecCfg.customRows) ? (docSpecCfg.customRows as RailSpecRow[]) : [];
+    rows.push(...extraRows);
+  }
+
+  host.innerHTML = `
+    <div class="st-rail-preview-wrap">
+      <div class="st-hint" style="margin-bottom:0.65rem;">
+        实时模拟文章详细页右侧悬浮伴读栏（<code>.article-RightRail-q</code>）。全局卡片可在顶部「站点」→「文章右侧悬浮栏」中统一配置。
+      </div>
+
+      ${
+        showTopo
+          ? `<div class="rail-blueprint-card" style="margin-bottom:0.65rem;">
+              <div class="rail-card-kicker">
+                <span>TOPOLOGY // 穿透链路图解</span>
+                <span>TCP : 25565</span>
+              </div>
+              <svg viewBox="0 0 240 130" style="width:100%; height:auto; display:block;">
+                <rect x="8" y="14" width="66" height="40" rx="2" fill="none" stroke="currentColor" stroke-opacity="0.35"/>
+                <text x="16" y="31" font-family="monospace" font-size="8.5" fill="#d97757">${esc(n1T)}</text>
+                <text x="16" y="44" font-family="monospace" font-size="8" fill="currentColor" opacity="0.7">${esc(n1S)}</text>
+                <rect x="87" y="14" width="66" height="40" rx="2" fill="none" stroke="#d97757" stroke-width="1.3"/>
+                <text x="96" y="31" font-family="monospace" font-size="8.5" fill="#d97757">${esc(n2T)}</text>
+                <text x="96" y="44" font-family="monospace" font-size="8" fill="currentColor" opacity="0.7">${esc(n2S)}</text>
+                <rect x="166" y="14" width="66" height="40" rx="2" fill="none" stroke="currentColor" stroke-opacity="0.35"/>
+                <text x="175" y="31" font-family="monospace" font-size="8.5" fill="#788c5d">${esc(n3T)}</text>
+                <text x="175" y="44" font-family="monospace" font-size="8" fill="currentColor" opacity="0.7">${esc(n3S)}</text>
+                <line x1="74" y1="34" x2="87" y2="34" stroke="#d97757" stroke-width="1.4"/>
+                <line x1="153" y1="34" x2="166" y2="34" stroke="#d97757" stroke-width="1.4"/>
+                <rect x="8" y="72" width="224" height="46" rx="2" fill="none" stroke="currentColor" stroke-opacity="0.2" stroke-dasharray="3 3"/>
+                <text x="18" y="90" font-family="monospace" font-size="8.5" fill="currentColor" opacity="0.75">${esc(l1)}</text>
+                <text x="18" y="106" font-family="monospace" font-size="8.5" fill="#d97757">${esc(l2)}</text>
+              </svg>
+            </div>`
+          : ''
+      }
+
+      <div class="rail-blueprint-card" style="margin-bottom:0.65rem;">
+        <div class="rail-card-kicker">
+          <span>${esc(specKicker)}</span>
+          <span>BASELINE</span>
+        </div>
+        <ul class="rail-kv-list">
+          ${rows.map((r) => `<li><span>${esc(r.label)}</span><strong>${esc(r.value)}</strong></li>`).join('')}
+        </ul>
+      </div>
+
+      ${customCards
+        .filter((c) => c.enabled !== false)
+        .map(
+          (c) => `
+          <div class="rail-blueprint-card" style="margin-bottom:0.65rem;">
+            <div class="rail-card-kicker">
+              <span>${esc(c.kicker ?? 'CUSTOM CARD')}</span>
+              <span>${esc(c.badge ?? 'INFO')}</span>
+            </div>
+            <p style="margin:0;font-size:1.125rem;line-height:1.65;color:var(--muted);">${esc(c.content ?? '')}</p>
+          </div>`
+        )
+        .join('')}
+
+      <div class="rail-blueprint-card">
+        <div class="rail-card-kicker">
+          <span>ARCHIVE // 同系列文章切换</span>
+          <span>${state.posts.length} ENTRIES</span>
+        </div>
+        <ul class="rail-related-list">
+          ${state.posts
+            .filter((p) => p.id !== d.entry.id)
+            .slice(0, 3)
+            .map(
+              (p, i) => `
+              <li>
+                <div class="rail-rel-mock">
+                  <span class="r-idx">ENTRY #0${i + 1}</span>
+                  <span class="r-tit">${esc(p.parsed.data.title ?? p.id)}</span>
+                </div>
+              </li>`
+            )
+            .join('')}
+        </ul>
+      </div>
+    </div>`;
+}
+
 export function previewCurrentPost(): void {
   const d = postDraft();
   if (!d) return;
@@ -233,23 +841,7 @@ export function previewCurrentPost(): void {
   });
 }
 
-/**
- * 新建文章：**不问标题和文件名，也不碰仓库** —— 点一下就出来一条空壳
- * （标题「草稿」、日期今天），落在列表最上面，然后自己滑开。
- *
- * 【为什么是"暂存"】点一下就要等 API 往返、还要重新拉一遍全库，既慢又白费 ——
- * 用户这一刻只是"想开个头"。所以先记进 `state.staged`，等点右上角「保存」时
- * 才真正写进仓库（见 app.ts 的 flushStaged）。**点「重新读取」就能把这一笔作废。**
- *
- * 【落盘时会带上 draft: true】后台是往仓库写的，仓库 main 一有提交就触发部署 ——
- * 不标草稿的话，这个空壳会立刻变成线上一篇文章（标题「草稿」、没有正文）。
- * 勾着草稿它就不生成页面；等真写完，在右边把「草稿」那一栏取消勾选就发布了。
- *
- * 【代价，得知道】文件名在这一下就定了（draft-20261016 这种），而且后台还没有"改网址"
- * 这个功能 —— 想让某篇的链接好看，得自己改文件名。要加这个功能说一声。
- */
 export function createNewPost(): void {
-  // 换掉当前打开的这篇之前先收尾（暂存的那条并进去、仓库里已有的问一句）
   if (!settleBeforeLeaving()) return;
 
   const date = isoDate(new Date());
@@ -259,66 +851,46 @@ export function createNewPost(): void {
     toast('新建失败：模板没能解析', true);
     return;
   }
-  state.posts.unshift(entry); // 日期是今天，本来就排在最前面
+  state.posts.unshift(entry);
   stageAdd(entry);
   state.selected = id;
   state.draft = {};
   markDirty();
 
-  state.justAdded = id; // 让这一条在列表里滑出来（rerender 是同步的，画完就清）
+  state.justAdded = id;
   rerender();
   state.justAdded = null;
 
-  toast('已加了一条草稿 —— 还没进仓库，点右上角「保存」才写进去');
+  toast('已新建文章草稿 —— 可在右侧直接修改路由标识、封面与伴读栏配置');
 }
 
-/**
- * 删除文章：**不碰仓库、也不弹确认框**（用户嫌啰嗦），只记一笔、列表里立刻不画它。
- *
- * 敢省掉确认框，是因为这一下**是可逆的**：在点「保存」之前，点「重新读取」就把它还回来了
- * —— 提示语里写明了这点，比弹个框点一下"确定"更省事也不更危险。
- * 刚加进来还没写下去的那条，等于撤销新增（仓库里本来就没有它）。
- */
 function removePost(entry: PostEntry): void {
   if (isStagedNew(entry)) {
     state.posts = state.posts.filter((p) => p.path !== entry.path);
-    stageRemove(entry); // 会把它从"新增"那一笔里划掉
-    state.selected = null;
+    stageRemove(entry);
+    state.selected = state.posts[0]?.id ?? null;
     state.draft = {};
     rerender();
-    toast('已拿掉（它还没写进仓库）');
+    toast('已移除新建草稿');
     return;
   }
 
   stageRemove(entry);
-  state.selected = null;
+  state.selected = state.posts.find((p) => p.path !== entry.path)?.id ?? null;
   state.draft = {};
-  markDirty(); // 让「保存」亮起来 —— 这一笔还等着落盘
+  markDirty();
   rerender();
-  toast('已从列表移除 —— 点「保存」才真删，点「重新读取」可以撤销');
+  toast('已暂存删除 —— 点右上角「保存」正式提交，点「重新读取」可撤销');
 }
 
-/**
- * 这次到底有没有改动 —— **拿"真正会写进文件的那几个字段"比**，而不是原始 diff。
- *
- * 原始 diff 会把两样东西误判成"改过"：
- *   · `draft: false`（文件里根本没有这一行，而界面的复选框默认就是没勾）
- *   · `updatedDate: ''`（界面的空串 vs 文件里没有这个字段）
- * 它们一个字节都不会写下去（见 frontmatter.ts 的 `effectiveChanges`），所以按原始 diff
- * 算的话**每一篇文章一打开就是"有改动"** —— 后果有两个，都踩过：
- * 切文章时每次都弹"确定丢弃吗"（无头浏览器里 `confirm` 还会把渲染进程卡死），
- * 以及"什么都没改就点保存"真的提交一个内容没变的 commit。
- */
 function realChanges(d: NonNullable<Draft['post']>): Record<string, unknown> {
   return effectiveChanges(d.entry.parsed, diffFields(d.entry.parsed.data, d.fields, [...POST_FIELDS]));
 }
 
-/** 当前打开的这条有没有"还没保存的字段或正文改动"（判据必须和 savePostCurrent 一致） */
 export function postDraftEdited(): boolean {
   const d = state.draft.post;
   if (!d) return false;
   const changed = realChanges(d);
-  // 手填/清空「修订于」本身算一次改动，但它不该被当成"又改了一版"（同 savePostCurrent）
   const manualDate = d.dateTouched === true && 'updatedDate' in changed;
   delete changed.updatedDate;
   if (manualDate || Object.keys(changed).length) return true;
@@ -326,88 +898,56 @@ export function postDraftEdited(): boolean {
   return normalizeHtml(renderMarkdown(body)) !== normalizeHtml(renderMarkdown(d.body));
 }
 
-/**
- * 把当前正在改的东西**并进那条还没写进仓库的草稿**里。
- *
- * 为什么要这一步：`state.draft.post` 只装"当前打开的这一条"，一换选中就重建 ——
- * 于是"改了草稿标题 → 又点了一下「＋」"本来会把它丢掉。而暂存的草稿本来就还没落盘，
- * 把改动并进去什么都不损失，也就不用弹窗问（用户刚说过不要弹窗）。
- *
- * 走的是保存时同一套 buildPostText：文件会怎么写，这里就怎么更新那条 entry，
- * 所以列表上显示的和最后写下去的一定一致。
- */
 export function foldStagedPostDraft(): void {
   const d = state.draft.post;
-  if (!d || !isStagedNew(d.entry)) return; // 仓库里已有的条目并不了（那要写文件，不能偷偷写）
-  const parsed = parsePost(buildPostText(d.entry, diffFields(d.entry.parsed.data, d.fields, [...POST_FIELDS]), d.editor?.getMarkdown() ?? d.body));
-  if (!parsed) return;
-  d.entry.parsed = parsed; // 就地改：state.posts 与 staged.added 里是同一个对象
-  d.body = parsed.body;
+  if (!d) return;
+  if (state.demoMode || isStagedNew(d.entry)) {
+    const parsed = parsePost(
+      buildPostText(d.entry, diffFields(d.entry.parsed.data, d.fields, [...POST_FIELDS]), d.editor?.getMarkdown() ?? d.body)
+    );
+    if (!parsed) return;
+    d.entry.parsed = parsed;
+    d.body = parsed.body;
+  }
 }
 
 export async function savePostCurrent(gh: Github): Promise<boolean> {
   const d = state.draft.post;
   if (!d) return true;
-  /** 暂存着的新文章：仓库里还没有这个文件，这次是"新建"而不是"更新" */
   const isNew = isStagedNew(d.entry);
 
-  // 先挡一道：这几样写坏了不是"后台难看"，而是**整站构建失败**（内容集合校验不过），
-  // 所以宁可在这儿拦住、让人当场改。空字段在 buildPost 里会整行删掉 → 必填项就没了。
   const dateOk = (v: unknown) => /^\d{4}-\d{2}-\d{2}$/.test(String(v ?? ''));
   if (!String(d.fields.title ?? '').trim()) {
-    toast('标题不能为空 —— 空标题写下去，站点会构建失败', true);
+    toast('标题不能为空 —— 空标题会导致站点构建校验失败', true);
     return false;
   }
   if (!dateOk(d.fields.pubDate)) {
-    toast('「日期」要写成 2026-03-09 这样（它决定文章在时间轴上的位置）', true);
+    toast('「发布日期」需为 YYYY-MM-DD 格式（例如 2026-03-13）', true);
     return false;
   }
   if (d.fields.updatedDate && !dateOk(d.fields.updatedDate)) {
-    toast('「修订于」要么留空，要么写成 2026-03-09 这样', true);
+    toast('「修订日期」要么留空，要么写成 YYYY-MM-DD 格式', true);
     return false;
   }
 
   const body = d.editor?.getMarkdown() ?? d.body;
-
-  // 正文"其实没改"的判据：两边各自渲染成 HTML，语义比较。
-  // 不能逐字节比 Markdown —— 富文本编辑器转回来的写法会被规整化（空行、缩进），
-  // 那不叫改动。所以：渲染结果相同 → 保留**原文**，一个字节都不写。
   const bodySame = normalizeHtml(renderMarkdown(body)) === normalizeHtml(renderMarkdown(d.body));
 
-  // 自检：把 Markdown 再渲染回来，和编辑器里看到的是不是一回事。
-  // 万一有哪种格式"所见"转不成"所得"，在这里提醒一声 —— 不然会静默地改掉外观。
-  if (d.editor && !bodySame) {
-    const intended = normalizeHtml(d.editor.getHtml());
-    const roundTripped = normalizeHtml(renderMarkdown(body, { forEditor: true }));
-    if (intended !== roundTripped) {
-      toast('注意：正文里有格式无法准确地转成 Markdown，保存后外观可能略有差异 —— 建议点「按博客的样子预览」确认', true);
-    }
-  }
-
-  // 「除了修订时间以外，这次有没有实质改动」。
-  // 单独手填/清空「修订于」本身算一次改动（要能存下去），但它**不该**反过来被当成
-  // "又改了一版" —— 否则你手填的日期存一次就被今天顶掉。
   const changedExceptDate = realChanges(d);
   const manualDate = d.dateTouched === true && 'updatedDate' in changedExceptDate;
   delete changedExceptDate.updatedDate;
-  // 新加的这条**即使一个字都没改也要写**（仓库里还没有它）；已有的才看"有没有真改动"
   const hasRealEdit = isNew || Object.keys(changedExceptDate).length > 0 || !bodySame || manualDate;
 
   if (!hasRealEdit) {
-    toast('没有任何改动');
+    toast('当前文章没有任何改动');
     return true;
   }
 
-  // 开了自动记录、这次确实改了东西、而且你没亲手填过「修订于」→ 盖成今天。
-  // 用 isoDate（本地日期）而不是 toISOString —— 后者是 UTC，UTC+8 的凌晨会写成前一天。
-  // **新文章不记**：它还没有"上一版"，第一次写下去就是初版，标个"修订于今天"没有意义。
   if (!isNew && !d.dateTouched && postAutoUpdated(d.fields)) {
     d.fields.updatedDate = isoDate(new Date());
   }
 
   const changed = diffFields(d.entry.parsed.data, d.fields, [...POST_FIELDS]);
   await savePost(gh, d.entry, changed, bodySame ? d.body : body);
-  // 不在这里刷 sha / 重画：保存是**一批**（可能还有别的暂存要落盘），
-  // 由 app.ts 收尾时统一 reload 一次 —— 那里会把新的 sha 和顺序都取回来。
   return true;
 }

@@ -1,23 +1,10 @@
 ---
 /**
- * 后台（/studio/）
- *
- * 【为什么是 Astro 页面而不是 public/ 下的一个静态文件】
- *   · 直接复用站点的 tokens.css —— 后台和站点是同一套视觉，不是一个"外挂软件"
- *   · <script> 走 Vite 打包，于是可以用 npm 包（YAML 解析），不用手动复制 dist
- *   · 进类型检查（astro check）
- *
- * 【为什么不是 Sveltia 那套】Sveltia 仍然留在 /admin/ 作为备份，功能完整。这个自建的
- * 后台是为了"按自己的习惯来"：界面与站点统一，而且保存时**只写改动的那个文件、
- * frontmatter 里没动过的字段原样保留** —— 见 src/studio/frontmatter.ts。
- *
- * 【它不经过任何服务器】浏览器拿着你自己的访问令牌直接调 api.github.com。
- * 所以这个页面只在你的浏览器里跑，站点服务器上没有多出任何可写入口。
- * 页面带 noindex，并且从站点地图里排除（见 astro.config.mjs）。
+ * 后台（/studio/）—— HUD 象限蓝图画布体系重构版
  */
 import '../styles/tokens.css';
 import '../styles/studio.css';
-import '../styles/fab.css';   // 右下角悬浮球（和访客侧共用同一份样式）
+import '../styles/fab.css';
 import { THEME_BOOT } from '../utils/theme';
 ---
 
@@ -27,29 +14,44 @@ import { THEME_BOOT } from '../utils/theme';
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="robots" content="noindex, nofollow" />
-    <title>后台 · 夜笙的小世界</title>
-
-    <!-- 手机浏览器地址栏的颜色；下面的定调脚本会按最终主题改写它 -->
+    <title>后台工作台 · 夜笙的小世界</title>
     <meta name="theme-color" content="#faf9f5" />
-
-    <!--
-      夜间模式的"定调"脚本 —— 必须内联、必须在首次绘制前同步跑完（否则会闪白）。
-      内容与访客页共用同一份（src/utils/theme.ts 的 THEME_BOOT），别在这儿另写一份。
-    -->
     <script is:inline set:html={THEME_BOOT}></script>
   </head>
   <body class="st-body">
-    <header class="st-bar" id="st-bar"></header>
+    <!-- 昼夜切换全屏平滑遮盖与奇点/无限流形转换层 -->
+    <div class="theme-transition-stage" id="theme-transition-stage" aria-hidden="true">
+      <div class="theme-transition-veil" id="theme-transition-veil"></div>
+      <canvas class="theme-transition-canvas" id="theme-transition-canvas"></canvas>
+      <div class="theme-transition-badge" id="theme-transition-badge">SINGULARITY TRANSITION // ∞ ↔ BLACK HOLE</div>
+    </div>
 
-    <!--
-      这段是"脚本没跑起来"时的兜底显示。整个后台由 JS 渲染，脚本一挂页面就是纯白，
-      看不出是坏了还是在加载 —— 踩过一次。登录界面或三栏骨架渲染时会把这里替换掉。
-    -->
+    <!-- 背景平面几何水印（白天：平面双纽线无限；黑夜：卡冈图雅黑洞） -->
+    <div class="st-planar-watermark" aria-hidden="true">
+      <svg class="planar-wm planar-wm--infinity" viewBox="0 0 240 120">
+        <circle cx="70" cy="60" r="44" fill="none" stroke="currentColor" stroke-width="0.75" stroke-dasharray="3 4"/>
+        <circle cx="170" cy="60" r="44" fill="none" stroke="currentColor" stroke-width="0.75" stroke-dasharray="3 4"/>
+        <line x1="12" y1="60" x2="228" y2="60" stroke="currentColor" stroke-width="0.6" stroke-dasharray="2 5"/>
+        <line x1="120" y1="10" x2="120" y2="110" stroke="currentColor" stroke-width="0.6" stroke-dasharray="2 5"/>
+        <path d="M70 16C45.7 16 26 35.7 26 60C26 84.3 45.7 104 70 104C100 104 140 16 170 16C194.3 16 214 35.7 214 60C214 84.3 194.3 104 170 104C140 104 100 16 70 16Z" fill="none" stroke="currentColor" stroke-width="1.65"/>
+        <circle cx="70" cy="60" r="3" fill="currentColor"/>
+        <circle cx="170" cy="60" r="3" fill="currentColor"/>
+      </svg>
+      <svg class="planar-wm planar-wm--blackhole" viewBox="0 0 240 120">
+        <circle cx="120" cy="60" r="48" fill="none" stroke="currentColor" stroke-width="0.7" stroke-dasharray="3 5"/>
+        <path d="M56 54C74 14 166 14 184 54" fill="none" stroke="currentColor" stroke-width="1.35"/>
+        <path d="M68 67C86 98 154 98 172 67" fill="none" stroke="currentColor" stroke-width="1.05" stroke-opacity="0.75"/>
+        <circle cx="120" cy="60" r="14" fill="currentColor"/>
+        <ellipse cx="120" cy="61" rx="96" ry="18" transform="rotate(-10 120 61)" fill="none" stroke="currentColor" stroke-width="1.6"/>
+      </svg>
+    </div>
+
+    <header class="st-bar site-nav-bar" id="st-bar"></header>
+
     <main id="st-main">
       <p class="st-boot">
-        正在载入后台…
-        <span>如果一直停在这里，说明脚本没跑起来：按 F12 看控制台的报错，
-        或见 <code>README.md</code> 的「7.6 故障排查」一节。</span>
+        正在初始化 STUDIO 象限蓝图工作台…
+        <span>如果一直停在这里，说明脚本没跑起来：按 F12 查看控制台报错，或见 <code>README.md</code> 的故障排查说明。</span>
       </p>
     </main>
     <div class="st-toast" id="st-toast" role="status" aria-live="polite"></div>

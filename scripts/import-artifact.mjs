@@ -39,6 +39,7 @@ const HOME_OUT = path.join(OUT, 'home');
 const IMAGE_DIR = path.join(ROOT, 'public', 'artifact', 'home', 'images');
 const ROLLBACK_DIR = path.join(ROOT, 'scripts', 'artifact-patches', 'animation-rollback');
 const TWEAKS_CSS = path.join(ROOT, 'scripts', 'artifact-patches', 'ui-tweaks.css');
+const EXIF_JS = path.join(ROOT, 'scripts', 'artifact-patches', 'exif-cipher.js.txt');
 
 /**
  * 动画回滚补丁（用户 2026-10-18 明确要求保留上一版的手感）：
@@ -900,6 +901,20 @@ js = rep(
 
 // 7.5 文章阅读进度允许从 0% 开始
 js = rep(js, 'Math.max(8, Math.round', 'Math.max(0, Math.round', '进度下限');
+
+// 7.6 照片 EXIF 缺失参数：用户侧模糊乱码（与 studio 的 EXIF 工作台对应）
+const oldExif = `    if (elDate) elDate.textContent = target.date;
+    if (elLoc) elLoc.textContent = target.location;
+    if (elAspect) elAspect.textContent = target.aspect;
+    if (elCam) elCam.textContent = target.camera;
+    if (elLens) elLens.textContent = target.lens;
+    if (elExp) elExp.textContent = target.exposure;
+    if (elCol) elCol.textContent = target.color;
+    if (elGps) elGps.textContent = target.gps;
+    if (elEv) elEv.textContent = target.ev;`;
+assert(js.includes(oldExif), '照片页 EXIF 字段渲染块未命中');
+js = js.replace(oldExif, fs.readFileSync(EXIF_JS, 'utf8').trimEnd());
+assert(js.includes('function setExifOrCipher'), 'EXIF 乱码渲染未注入');
 
 /* --------------------------------------------------------------------------
    8. 最终断言

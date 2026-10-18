@@ -37,7 +37,7 @@ export function mountFab(host: HTMLElement, opts: FabOptions): FabHandle {
         <span aria-hidden="true">${PREVIEW_ICON}</span>
       </button>
       <button type="button" class="fab-btn" data-action="theme" aria-label="切换到夜间模式">
-        <span data-theme-icon aria-hidden="true">☾</span>
+        <span data-theme-icon aria-hidden="true">夜</span>
       </button>
       <button type="button" class="fab-btn" data-action="top" title="回到顶部" aria-label="回到顶部">
         <span aria-hidden="true">↑</span>
@@ -57,7 +57,7 @@ export function mountFab(host: HTMLElement, opts: FabOptions): FabHandle {
   const isOpen = () => wrap.dataset.open === 'true';
 
   const syncThemeBtn = () => {
-    if (icon) icon.textContent = isDark() ? '☀' : '☾';
+    if (icon) icon.textContent = isDark() ? '昼' : '夜';
     themeBtn?.setAttribute('aria-label', isDark() ? '切换到白天模式' : '切换到夜间模式');
   };
 

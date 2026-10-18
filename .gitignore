@@ -53,4 +53,5 @@ scripts/artifact-patches/*
 !scripts/artifact-patches/animation-rollback/
 !scripts/artifact-patches/animation-rollback/**
 !scripts/artifact-patches/ui-tweaks.css
+!scripts/artifact-patches/exif-cipher.js.txt
 divergence-meter (4).html

@@ -5,7 +5,7 @@ import '../styles/fab.css';
 <div class="fab" id="fab">
   <div class="fab-actions" id="fab-actions">
     <button type="button" class="fab-btn" data-action="theme" aria-label="切换到夜间模式">
-      <span data-theme-icon aria-hidden="true">☾</span>
+      <span data-theme-icon aria-hidden="true">夜</span>
     </button>
     <button type="button" class="fab-btn" data-action="top" aria-label="回到顶部">
       <span aria-hidden="true">↑</span>
@@ -37,7 +37,7 @@ import '../styles/fab.css';
 
     const syncThemeBtn = () => {
       const dark = document.documentElement.dataset.theme === 'dark';
-      if (icon) icon.textContent = dark ? '☀' : '☾';
+      if (icon) icon.textContent = dark ? '昼' : '夜';
       themeBtn?.setAttribute('aria-label', dark ? '切换到白天模式' : '切换到夜间模式');
     };
 

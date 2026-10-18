@@ -4133,3 +4133,39 @@
     margin-top: 2rem;
   }
 }
+
+/* 8. 照片页缺失摄影参数的艺术化模糊乱码（REDACTED // TELEMETRY CIPHER） */
+.exif-val-cipher {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.42rem;
+  font-family: var(--mono);
+  font-size: 0.8rem;
+  color: var(--muted);
+  cursor: help;
+  user-select: none;
+}
+.exif-cipher-blur {
+  display: inline-block;
+  filter: blur(1.65px);
+  opacity: 0.72;
+  letter-spacing: 0.06em;
+  text-shadow: -1.5px 0 rgba(217, 119, 87, 0.55), 1.5px 0 rgba(120, 140, 93, 0.45);
+  transition: filter 260ms var(--ease), opacity 260ms ease;
+}
+.exif-val-cipher:hover .exif-cipher-blur {
+  filter: blur(0.65px);
+  opacity: 0.92;
+}
+.exif-cipher-mask {
+  font-family: var(--mono);
+  font-size: 0.62rem;
+  letter-spacing: 0.08em;
+  padding: 0.05rem 0.34rem;
+  border: 1px dashed color-mix(in srgb, var(--accent) 55%, var(--rule));
+  background: color-mix(in srgb, var(--accent) 10%, var(--paper));
+  color: var(--accent);
+  border-radius: 2px;
+  white-space: nowrap;
+}

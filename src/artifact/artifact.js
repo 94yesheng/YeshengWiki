@@ -1003,15 +1003,45 @@
     }
     if (elRatio) elRatio.textContent = target.ratioPill;
     if (elFile) elFile.textContent = target.fileCode;
-    if (elDate) elDate.textContent = target.date;
-    if (elLoc) elLoc.textContent = target.location;
-    if (elAspect) elAspect.textContent = target.aspect;
-    if (elCam) elCam.textContent = target.camera;
-    if (elLens) elLens.textContent = target.lens;
-    if (elExp) elExp.textContent = target.exposure;
-    if (elCol) elCol.textContent = target.color;
-    if (elGps) elGps.textContent = target.gps;
-    if (elEv) elEv.textContent = target.ev;
+    function setExifOrCipher(el, fieldKey, val, seedIdx) {
+      if (!el) return;
+      var s = String(val == null ? '' : val).trim();
+      if (s && s !== 'undefined' && s !== 'null') {
+        el.className = 'exif-val-normal';
+        el.textContent = s;
+        return;
+      }
+      var glyphs = '█▓▒░▀▄▌▐┼╬╫╪※∷∆∇0123456789ABCDEF';
+      var h = (seedIdx + 1) * 2654435761;
+      for (var c = 0; c < fieldKey.length; c++) h = ((h ^ fieldKey.charCodeAt(c)) * 16777619) >>> 0;
+      var hex = (h & 0xFFFF).toString(16).toUpperCase().padStart(4, '0');
+      var g2 = glyphs[h % glyphs.length] + glyphs[(h >> 3) % glyphs.length];
+      var g3 = g2 + glyphs[(h >> 6) % glyphs.length];
+      var map = {
+        date: ['二〇' + g2 + '年' + glyphs[(h >> 2) % glyphs.length] + '月' + g2 + '日', 'TIME::0x' + hex],
+        location: ['SECTOR // ' + g3 + ' · 坐标未收录', 'LOC::NULL_' + hex.slice(0, 2)],
+        aspect: [g2 + ':' + glyphs[(h >> 4) % glyphs.length] + ' // 画幅未知', 'FRAME::0x' + hex],
+        camera: ['▒▒ OPTIC-' + g3 + ' // 0x' + hex, 'BODY::UNREAD'],
+        lens: [g2 + 'mm F/█.█ · 焦段未知', 'LENS::ΔΦ_' + hex.slice(0, 2)],
+        exposure: ['f/█.█ · 1/' + g3 + 's · ISO ░░░', 'EXP::SIGNAL_LOST'],
+        color: ['SPECTRUM // 0x' + hex + ' · 未知色域', 'LUT::REDACTED'],
+        gps: ['██°' + g2 + '\'██"N · ███°' + g2 + '\'██"E', 'GPS::ENCRYPTED'],
+        ev: ['EV ±█.█ · FLUX_' + hex, 'LUM::BLURRED']
+      };
+      var pair = map[fieldKey] || ['▒▒░ ' + hex + ' // UNREAD', 'CIPHER::0x' + hex];
+      el.className = 'exif-val-cipher';
+      el.title = '摄影参数未读取且未手动填写 · 已启用模糊化乱码艺术处理';
+      el.innerHTML = '<span class="exif-cipher-blur" aria-hidden="true">' + pair[0] + '</span><span class="exif-cipher-mask">' + pair[1] + '</span>';
+    }
+    setExifOrCipher(elDate, 'date', target.date, target.idx);
+    setExifOrCipher(elLoc, 'location', target.location, target.idx);
+    setExifOrCipher(elAspect, 'aspect', target.aspect, target.idx);
+    setExifOrCipher(elCam, 'camera', target.camera, target.idx);
+    setExifOrCipher(elLens, 'lens', target.lens, target.idx);
+    setExifOrCipher(elExp, 'exposure', target.exposure, target.idx);
+    setExifOrCipher(elCol, 'color', target.color, target.idx);
+    setExifOrCipher(elGps, 'gps', target.gps, target.idx);
+    setExifOrCipher(elEv, 'ev', target.ev, target.idx);
 
     if (elHist && target.hist) {
       var spans = elHist.querySelectorAll('span');

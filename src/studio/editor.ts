@@ -1,66 +1,53 @@
 /**
- * 所见即所得正文编辑器
+ * 蓝图双模态正文编辑器（所见即所得 Visual ↔ Markdown 源码 ↔ 双栏对照 Split）
  *
- * 目标：不要让人看见 Markdown 源码。正文渲染成"文章的样子"，工具栏按钮对**选中的文字**
- * 加粗 / 变成小标题 / 加上着重色……保存时再由 md.ts 转回 Markdown。
- *
- * 【用 execCommand 这件事】它被标为过时，但在 Chromium 里是唯一不用引入大依赖就能拿到
- * 富文本行为的办法（斜体、列表、引用、撤销重做都靠它）。自己用 Range 实现一遍，
- * 代码量会大得多、坑也多。所以：用它，但把输出限制在**少数几个语义标签**里
- * （strong/em/s/h2-h3/blockquote/ul/li/hr/img/mark），这样转回 Markdown 才可靠。
- *
- * 【三条防线】
- *   1. 粘进来的一律当纯文本 —— 从网页/Word 复制过来的东西带一堆 style 和 class，
- *      转成 Markdown 会很难看，甚至带进垃圾
- *   2. 原始 HTML 块（比如你那个音乐播放器）在编辑器里是个**不可编辑的标签**，
- *      碰不到它，保存时原样还回去
- *   3. 工具栏只暴露"能干净地表达成 Markdown"的操作
- *
- * 【工具栏为什么分成两个宿主】它现在渲染到右侧的「格式」面板里（`barHost`），
- * 正文待在自己那一栏（`areaHost`）。**bar 上那句 mousedown→preventDefault 不能丢** ——
- * 点按钮时浏览器默认会把焦点从编辑区挪走、选区当场塌掉，命令就全部静默失效了。
+ * 相比旧版调整与新增：
+ *   1. 支持「富文本蓝图视图」「Markdown 源码」「双栏同步对照」三种编辑模式无缝切换；
+ *   2. 新增 HUD 文章页专属排版块接口：蓝图提示卡（Callout）、代码终端块（Codeblock）、
+ *      行内代码（Inline Code）、规格数据表格（Spec Table）；
+ *   3. 新增「一键识别粗体小节为 H2 章节坐标」功能（解决旧文章只有 **加粗** 导致左侧 TOC 目录为空的问题）；
+ *   4. 移除阻塞式 window.prompt / window.alert，改用页内 HUD 抽屉插入链接、上传/挑选文章配图；
+ *   5. 实时提取 H2/H3 章节坐标列表供右栏「INDEX // 章节坐标导览」预览。
  */
 import { extractRawHtml, htmlToMarkdown, renderMarkdown } from './md';
-import { toast } from './ui';
+import { esc, toast } from './ui';
+
+export interface HeadingItem {
+  depth: number;
+  text: string;
+  num: string;
+}
 
 export interface EditorHandle {
-  /** 取出当前内容，转成 Markdown */
   getMarkdown(): string;
-  /** 取出当前内容的 HTML —— 用于"转成 Markdown 再渲染回来是否一致"的自检 */
   getHtml(): string;
-  /** 重新载入内容（例如换了另一篇文章） */
   setMarkdown(md: string): void;
-  /** 是否为空（没写过东西） */
   isEmpty(): boolean;
-  /**
-   * 把现有的编辑区与工具栏**搬到新的宿主元素里**。
-   * 给"只重画了表单外壳"的场景用（比如增删标签）—— 直接用 setMarkdown(d.body) 重建
-   * 会把未保存的正文改动丢掉。
-   */
+  getHeadings(): HeadingItem[];
+  setMode(mode: 'visual' | 'markdown' | 'split'): void;
+  getMode(): 'visual' | 'markdown' | 'split';
   remount(areaHost: HTMLElement, barHost: HTMLElement): void;
 }
 
-/** 段落预设：点一下就把光标所在块换成它 */
+export interface EditorOptions {
+  onInput: () => void;
+  onHeadingsChange?: (headings: HeadingItem[]) => void;
+  getPostAssets?: () => string[];
+  onUploadPostAsset?: (file: File) => Promise<string | null>;
+}
+
 const BLOCK_PRESETS = [
-  { value: 'h2', label: '大标题' },
-  { value: 'h3', label: '小标题' },
-  { value: 'p', label: '正文' },
-  { value: 'blockquote', label: '引用' },
+  { value: 'h2', label: 'H2 · 章节标题' },
+  { value: 'h3', label: 'H3 · 小节标题' },
+  { value: 'p', label: 'P · 正文段落' },
+  { value: 'blockquote', label: 'QUOTE · 引用' },
 ];
 
-/**
- * 分隔线的样式。**无类的那档是"默认"**，与现有文章的 `* * *` 完全兼容 ——
- * 老文章一个字节都不会变。
- *
- * 按钮里不写字，而是画**它真实的样子**（`preview` 那个类用的就是正文那套 CSS），
- * 所以挑的时候看到什么、插进去就是什么。
- */
 const HR_STYLES = [
-  { cls: '', preview: 'ed-hr-preview--star', title: '星号（默认）' },
-  { cls: 'sakura', preview: 'ed-hr-preview--sakura', title: '樱花' },
+  { cls: '', preview: 'ed-hr-preview--star', title: '星号分隔线（＊ ＊ ＊）' },
+  { cls: 'sakura', preview: 'ed-hr-preview--sakura', title: '樱花分隔线' },
 ];
 
-/** 对齐按钮的图标：四条线按左/中/右排（比"左/中/右"三个字一眼看得懂） */
 const ALIGN_ICONS: Record<string, string> = {
   left: '<path d="M1 3h12M1 6.5h8M1 10h10"/>',
   center: '<path d="M1 3h12M3 6.5h8M2 10h10"/>',
@@ -73,55 +60,66 @@ const ALIGN_BUTTONS = [
   { kind: 'right', title: '右对齐' },
 ] as const;
 
-/**
- * 「添加」那一组只有图标 —— 文字去掉之后，图标得自己说清楚是"插链接"还是"插图片"。
- * 和 ALIGN_ICONS 同一套路：14×14 的框、只描边、颜色跟着字走（夜间模式不用另写一套）。
- */
-const ADD_ICONS: Record<string, string> = {
-  // 两个相扣的环 = 链接
-  createLink: '<path d="M6.2 8.6a2.4 2.4 0 0 1 0-3.4l1.7-1.7a2.4 2.4 0 0 1 3.4 3.4l-.8.8"/><path d="M7.8 5.4a2.4 2.4 0 0 1 0 3.4l-1.7 1.7a2.4 2.4 0 0 1-3.4-3.4l.8-.8"/>',
-  // 相框里一座山 = 图片
-  insertImage: '<rect x="1.6" y="2.6" width="10.8" height="8.8" rx="1.3"/><circle cx="4.9" cy="5.7" r="1"/><path d="M2.2 10.3l2.8-2.8 2.3 2.3L9.4 7.7l2.4 2.4"/>',
-};
-
 export function createEditor(
   areaHost: HTMLElement,
   barHost: HTMLElement,
   initial: string,
-  onInput: () => void,
-  /** 插入图片时给个提示（列出当前文章已有的图片文件名） */
-  imageHint: () => string
+  onInputOrOpts: (() => void) | EditorOptions,
+  legacyImageHint?: () => string
 ): EditorHandle {
-  let raws: string[] = [];
+  const opts: EditorOptions =
+    typeof onInputOrOpts === 'function'
+      ? { onInput: onInputOrOpts }
+      : onInputOrOpts;
 
-  areaHost.innerHTML = `<div class="ed-area" id="ed-area" contenteditable="true" spellcheck="false"></div>`;
+  let raws: string[] = [];
+  let mode: 'visual' | 'markdown' | 'split' = 'visual';
+  let syncing = false;
+
+  areaHost.innerHTML = `
+    <div class="ed-shell" data-mode="visual">
+      <div class="ed-mode-bar">
+        <div class="ed-mode-tabs" role="tablist" aria-label="编辑器视图模式">
+          <button type="button" class="ed-mode-tab" data-ed-mode="visual" aria-selected="true">VISUAL // 所见即所得</button>
+          <button type="button" class="ed-mode-tab" data-ed-mode="markdown" aria-selected="false">SOURCE // Markdown 源码</button>
+          <button type="button" class="ed-mode-tab" data-ed-mode="split" aria-selected="false">SPLIT // 双栏实时对照</button>
+        </div>
+        <div class="ed-mode-actions">
+          <button type="button" class="stage-mini-btn" id="ed-auto-toc-btn" title="将正文里独占一行的 **一、标题** 自动转换为 H2 章节标题，生成左侧目录">一键识别粗体小节为 H2 目录</button>
+          <span class="ed-telemetry-stat" id="ed-inline-stat">0 字 · 约 1 分钟</span>
+        </div>
+      </div>
+
+      <!-- 页内插入面板（替代浏览器原生 prompt，支持链接/配图/表格/提示框） -->
+      <div class="ed-drawer" id="ed-drawer" hidden></div>
+
+      <div class="ed-panes">
+        <div class="ed-area article-prose-q" id="ed-area" contenteditable="true" spellcheck="false" aria-label="富文本正文编辑区"></div>
+        <textarea class="ed-source" id="ed-source" spellcheck="false" aria-label="Markdown 源码编辑区" placeholder="在此输入 Markdown 源码..."></textarea>
+      </div>
+    </div>`;
 
   barHost.innerHTML = `
-    <div class="ed-bar" role="toolbar" aria-label="正文格式">
+    <div class="ed-bar" role="toolbar" aria-label="正文排版与组件工具栏">
       <div class="ed-group">
-        <span class="ed-glabel">预设</span>
+        <span class="ed-glabel">01 · 段落层级与着重</span>
         <div class="ed-row">
           ${BLOCK_PRESETS.map(
-            (o) => `<button class="ed-btn" data-block="${o.value}" aria-pressed="false">${o.label}</button>`
+            (o) => `<button type="button" class="ed-btn" data-block="${o.value}" aria-pressed="false">${o.label}</button>`
           ).join('')}
-          <button class="ed-btn ed-btn--mark" data-cmd="mark" title="着重色（朱红）">着重</button>
+          <button type="button" class="ed-btn ed-btn--mark" data-cmd="mark" title="着重色（Claude 橙）">着重色</button>
+          <button type="button" class="ed-btn" data-cmd="inlineCode" title="行内代码">&lt;/&gt; 行内代码</button>
         </div>
       </div>
 
       <div class="ed-group">
-        <span class="ed-glabel">字形</span>
+        <span class="ed-glabel">02 · 字形修饰与对齐</span>
         <div class="ed-row">
-          <button class="ed-btn" data-cmd="bold" title="加粗（Ctrl+B）"><b>粗</b></button>
-          <button class="ed-btn" data-cmd="italic" title="斜体（Ctrl+I）"><i>斜</i></button>
-          <button class="ed-btn" data-cmd="strikeThrough" title="删除线"><s>删</s></button>
-        </div>
-      </div>
-
-      <div class="ed-group">
-        <span class="ed-glabel">对齐</span>
-        <div class="ed-row">
+          <button type="button" class="ed-btn" data-cmd="bold" title="加粗（Ctrl+B）"><b>B 粗体</b></button>
+          <button type="button" class="ed-btn" data-cmd="italic" title="斜体（Ctrl+I）"><i>I 斜体</i></button>
+          <button type="button" class="ed-btn" data-cmd="strikeThrough" title="删除线"><s>S 删除线</s></button>
           ${ALIGN_BUTTONS.map(
-            (a) => `<button class="ed-btn ed-btn--icon" data-align="${a.kind}" title="${a.title}" aria-label="${a.title}">
+            (a) => `<button type="button" class="ed-btn ed-btn--icon" data-align="${a.kind}" title="${a.title}" aria-label="${a.title}">
               <svg viewBox="0 0 14 14" width="14" height="14" aria-hidden="true" fill="none"
                    stroke="currentColor" stroke-width="1.6" stroke-linecap="round">${ALIGN_ICONS[a.kind]}</svg>
             </button>`
@@ -130,70 +128,182 @@ export function createEditor(
       </div>
 
       <div class="ed-group">
-        <span class="ed-glabel">列表</span>
-        <div class="ed-row ed-row--list">
-          <button class="ed-btn" data-cmd="insertUnorderedList" title="无序列表">• 列表</button>
-          <button class="ed-btn" data-cmd="insertOrderedList" title="有序列表">1. 列表</button>
-        </div>
-      </div>
-
-      <div class="ed-group">
-        <span class="ed-glabel">添加</span>
+        <span class="ed-glabel">03 · 列表与 HUD 专属组件</span>
         <div class="ed-row">
-          ${(['createLink', 'insertImage'] as const).map(
-            (cmd) => `<button class="ed-btn ed-btn--icon" data-cmd="${cmd}"
-              title="${cmd === 'createLink' ? '插入链接' : '插入图片'}"
-              aria-label="${cmd === 'createLink' ? '插入链接' : '插入图片'}">
-              <svg viewBox="0 0 14 14" width="14" height="14" aria-hidden="true" fill="none"
-                   stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">${ADD_ICONS[cmd]}</svg>
-            </button>`
-          ).join('')}
+          <button type="button" class="ed-btn" data-cmd="insertUnorderedList" title="无序列表">• 无序列表</button>
+          <button type="button" class="ed-btn" data-cmd="insertOrderedList" title="有序列表">1. 有序列表</button>
+          <button type="button" class="ed-btn" data-cmd="insertCallout" title="插入文章页蓝图摘录提示框">蓝图摘录框</button>
+          <button type="button" class="ed-btn" data-cmd="insertCodeblock" title="插入代码块">▤ 代码块</button>
+          <button type="button" class="ed-btn" data-cmd="insertTable" title="插入规格对比表">⊞ 规格表格</button>
         </div>
       </div>
 
       <div class="ed-group">
-        <span class="ed-glabel">分隔线</span>
+        <span class="ed-glabel">04 · 媒体配图与超链接</span>
+        <div class="ed-row">
+          <button type="button" class="ed-btn" data-cmd="insertImage" title="上传或从图库插入文章配图">插入/上传配图</button>
+          <button type="button" class="ed-btn" data-cmd="createLink" title="插入超链接">插入链接</button>
+        </div>
+      </div>
+
+      <div class="ed-group">
+        <span class="ed-glabel">05 · 章节分隔线</span>
         <div class="ed-row ed-row--hr">
           ${HR_STYLES.map(
-            (h) => `<button class="ed-btn ed-hr-btn" data-hr="${h.cls}" title="${h.title}" aria-label="${h.title}">
+            (h) => `<button type="button" class="ed-btn ed-hr-btn" data-hr="${h.cls}" title="${h.title}" aria-label="${h.title}">
               <span class="ed-hr-preview ${h.preview}"></span>
             </button>`
           ).join('')}
         </div>
       </div>
 
+      <div class="ed-group">
+        <div class="ed-glabel">06 · 实时章节坐标预览</div>
+        <div class="ed-toc-preview" id="ed-toc-preview"></div>
+      </div>
+
       <span class="ed-count" id="ed-count"></span>
     </div>`;
 
-  /** 找不到就抛 —— 这样拿到的引用一定非空，下面的闭包也不会被 TS 挑"可能是 null" */
   function must<T extends HTMLElement>(host: HTMLElement, sel: string): T {
     const el = host.querySelector<T>(sel);
     if (!el) throw new Error(`编辑器挂载失败：找不到 ${sel}`);
     return el;
   }
+
+  const shell = must<HTMLElement>(areaHost, '.ed-shell');
   const area = must<HTMLElement>(areaHost, '#ed-area');
+  const sourceArea = must<HTMLTextAreaElement>(areaHost, '#ed-source');
+  const drawer = must<HTMLElement>(areaHost, '#ed-drawer');
   const bar = must<HTMLElement>(barHost, '.ed-bar');
 
-  // 让 execCommand 产出语义标签（<b>/<i>），而不是 <span style="…"> ——
-  // 后者转成 Markdown 会很难看
   try {
     document.execCommand('styleWithCSS', false, 'false');
   } catch {
-    /* 个别浏览器不支持，忽略 */
+    /* ignore */
   }
 
-  function setMarkdown(md: string): void {
-    const extracted = extractRawHtml(md);
+  function getHeadings(): HeadingItem[] {
+    const list: HeadingItem[] = [];
+    const nodes = area.querySelectorAll('h2, h3');
+    nodes.forEach((node, idx) => {
+      const text = (node.textContent ?? '').trim();
+      if (!text) return;
+      list.push({
+        depth: node.tagName === 'H2' ? 2 : 3,
+        text,
+        num: String(idx + 1).padStart(2, '0'),
+      });
+    });
+    return list;
+  }
+
+  function renderTocPreview(): void {
+    const tocBox = barHost.querySelector<HTMLElement>('#ed-toc-preview');
+    const headings = getHeadings();
+    opts.onHeadingsChange?.(headings);
+    if (!tocBox) return;
+    if (!headings.length) {
+      tocBox.innerHTML = `<div class="ed-toc-empty">尚未检测到 H2/H3 章节标题（可点击上方「一键识别粗体小节」自动生成）</div>`;
+      return;
+    }
+    tocBox.innerHTML = `<ul class="ed-toc-list">${headings
+      .map(
+        (h) =>
+          `<li class="ed-toc-item ed-toc-item--d${h.depth}"><span class="ed-toc-num">${h.num}</span><span>${esc(
+            h.text
+          )}</span></li>`
+      )
+      .join('')}</ul>`;
+  }
+
+  function setMarkdown(mdText: string): void {
+    syncing = true;
+    const extracted = extractRawHtml(mdText);
     raws = extracted.raws;
-    area.innerHTML = renderMarkdown(md, { forEditor: true });
+    area.innerHTML = renderMarkdown(mdText, { forEditor: true });
+    sourceArea.value = mdText;
+    syncing = false;
     updateCount();
+    renderTocPreview();
+  }
+
+  function syncVisualToSource(): void {
+    if (syncing) return;
+    syncing = true;
+    const mdText = htmlToMarkdown(area.innerHTML, raws);
+    sourceArea.value = mdText;
+    syncing = false;
+  }
+
+  function syncSourceToVisual(): void {
+    if (syncing) return;
+    syncing = true;
+    const mdText = sourceArea.value;
+    const extracted = extractRawHtml(mdText);
+    raws = extracted.raws;
+    area.innerHTML = renderMarkdown(mdText, { forEditor: true });
+    syncing = false;
+  }
+
+  function setMode(nextMode: 'visual' | 'markdown' | 'split'): void {
+    if (mode === 'markdown' && nextMode !== 'markdown') {
+      syncSourceToVisual();
+    } else if (mode === 'visual' && nextMode !== 'visual') {
+      syncVisualToSource();
+    }
+    mode = nextMode;
+    shell.dataset.mode = nextMode;
+    shell.querySelectorAll<HTMLButtonElement>('[data-ed-mode]').forEach((btn) => {
+      btn.setAttribute('aria-selected', String(btn.dataset.edMode === nextMode));
+    });
+    updateCount();
+    renderTocPreview();
   }
 
   setMarkdown(initial);
 
-  /* ---------------- 光标所在块 ---------------- */
+  shell.querySelectorAll<HTMLButtonElement>('[data-ed-mode]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const m = (btn.dataset.edMode ?? 'visual') as 'visual' | 'markdown' | 'split';
+      setMode(m);
+    });
+  });
 
-  /** 光标落在正文的哪个**顶层块**上（p / h2 / blockquote / li / hr …） */
+  // 一键将独占一行的 **粗体小节** 转换为 H2 标题
+  shell.querySelector('#ed-auto-toc-btn')?.addEventListener('click', () => {
+    const curMd = mode === 'markdown' ? sourceArea.value : htmlToMarkdown(area.innerHTML, raws);
+    let count = 0;
+    const converted = curMd
+      .split('\n')
+      .map((line) => {
+        const trimmed = line.trim();
+        // 匹配独占一行的 **一、xxx** 或 **1. xxx** 或 **xxx：**
+        const m = /^\*\*([^*]{2,36})\*\*$/.exec(trimmed);
+        if (m) {
+          const inner = m[1]!.replace(/[：:]$/, '').trim();
+          if (inner && !inner.startsWith('前言') && !inner.includes('The End')) {
+            count++;
+            return `## ${inner}`;
+          }
+        }
+        return line;
+      })
+      .join('\n');
+
+    if (count === 0) {
+      // 如果没有粗体行，则在光标处插入一个示例 H2 章节
+      area.focus();
+      document.execCommand('insertHTML', false, '<h2>新章节标题</h2><p>在此输入章节正文…</p>');
+      changed();
+      toast('已插入 H2 章节标题节点');
+      return;
+    }
+    setMarkdown(converted);
+    opts.onInput();
+    toast(`已自动将 ${count} 处粗体小节升级为 H2 章节坐标，左侧 TOC 目录已同步生成`);
+  });
+
   function currentBlock(): HTMLElement | null {
     const sel = window.getSelection();
     const node = sel?.anchorNode;
@@ -207,18 +317,17 @@ export function createEditor(
     return null;
   }
 
-  /* ---------------- 工具栏 ---------------- */
-
-  /** 把选区包进一个语义标签（execCommand 没有 mark，只能自己来） */
   function wrapSelection(tag: string): void {
     const sel = window.getSelection();
-    if (!sel || sel.rangeCount === 0 || sel.isCollapsed) return;
+    if (!sel || sel.rangeCount === 0 || sel.isCollapsed) {
+      toast('请先在正文中拖选一段文字', true);
+      return;
+    }
     const range = sel.getRangeAt(0);
     const el = document.createElement(tag);
     try {
       range.surroundContents(el);
     } catch {
-      // 选区跨了多个块（surroundContents 会抛）—— 退而求其次：抽出内容再包
       el.appendChild(range.extractContents());
       range.insertNode(el);
     }
@@ -229,14 +338,14 @@ export function createEditor(
     changed();
   }
 
-  /** 能加对齐类的顶层块（列表项、分隔线不算） */
   const ALIGNABLE = new Set(['P', 'H2', 'H3', 'BLOCKQUOTE']);
 
-  /**
-   * 段落预设：把当前块换成 h2 / h3 / p / blockquote。
-   * **点已经亮着的那一档 = 取消，回到正文** —— 不然设成引用之后就没法还原了（踩过）。
-   */
   function applyBlock(tag: string): void {
+    if (mode === 'markdown') {
+      const prefix = tag === 'h2' ? '## ' : tag === 'h3' ? '### ' : tag === 'blockquote' ? '> ' : '';
+      insertInTextarea(prefix, '');
+      return;
+    }
     area.focus();
     const cur = currentBlock()?.tagName.toLowerCase();
     const next = cur === tag && tag !== 'p' ? 'p' : tag;
@@ -244,17 +353,13 @@ export function createEditor(
     changed();
   }
 
-  /**
-   * 选区是不是已经在 `<mark>` 里；是就把那层壳脱掉。
-   * 「着重」要能再点一次取消 —— execCommand 没有 mark，包裹和解开都得自己来。
-   */
-  function unwrapMark(): boolean {
+  function unwrapTag(tagName: string): boolean {
     const sel = window.getSelection();
     const node = sel?.anchorNode;
     let el: HTMLElement | null =
       node?.nodeType === Node.ELEMENT_NODE ? (node as HTMLElement) : (node?.parentElement ?? null);
     while (el && el !== area) {
-      if (el.tagName === 'MARK') {
+      if (el.tagName === tagName) {
         const parent = el.parentNode;
         if (!parent) return false;
         while (el.firstChild) parent.insertBefore(el.firstChild, el);
@@ -266,27 +371,14 @@ export function createEditor(
     return false;
   }
 
-  /**
-   * 对齐整段。
-   *
-   * 【为什么是 <p class="center"> 这种原始 HTML，而不是 execCommand('justifyCenter')】
-   * 后者写的是行内样式 `style="text-align:center"`，转成 Markdown 只能是垃圾；
-   * 而且站点那边本来就有 `.prose > p.center` 这个钩子。所以用类，turndown 里
-   * 有对应规则（见 md.ts 的 alignParagraph）。
-   *
-   * 【为什么含图片的段落不给对齐】原始 HTML 里的 <img> 不会被 Astro 构建时重写路径，
-   * 线上会 404 —— 而预览看不出来（预览会把所有 img 的路径都改一遍）。
-   * 正文图片本来就是栏宽，居中也没视觉效果，所以直接挡住。
-   */
   function alignBlock(kind: 'left' | 'center' | 'right'): void {
     const block = currentBlock();
-    // 正文、大/小标题、引用都能对齐（设成标题之后照样要能居中）
     if (!block || !ALIGNABLE.has(block.tagName)) {
-      toast('对齐用在整段上：正文、标题、引用都行 —— 把光标放进那一段再点', true);
+      toast('对齐作用于整段：请先把光标放进正文段落、标题或引用块内', true);
       return;
     }
     if (block.querySelector('img')) {
-      toast('这一段里有图片 —— 对齐会让图片丢掉构建时重写的路径（线上打不开）。把图片单独放一段就行', true);
+      toast('含图片的段落无需设置对齐（图片默认按版心自适应）', true);
       return;
     }
     block.classList.remove('center', 'right', 'left');
@@ -294,46 +386,226 @@ export function createEditor(
     changed();
   }
 
-  /** 插入一条分隔线；`cls` 空串 = 默认那档 */
   function insertHr(cls: string): void {
+    if (mode === 'markdown') {
+      insertInTextarea(cls ? `\n\n<hr class="${cls}">\n\n` : '\n\n* * *\n\n', '');
+      return;
+    }
     area.focus();
     document.execCommand('insertHTML', false, cls ? `<hr class="${cls}">` : '<hr>');
     changed();
   }
 
+  function insertInTextarea(before: string, after: string): void {
+    const start = sourceArea.selectionStart ?? 0;
+    const end = sourceArea.selectionEnd ?? 0;
+    const val = sourceArea.value;
+    const selected = val.slice(start, end) || '文本内容';
+    sourceArea.value = val.slice(0, start) + before + selected + after + val.slice(end);
+    sourceArea.focus();
+    syncSourceToVisual();
+    changed();
+  }
+
+  /* ---------------- 页内抽屉：插入链接 / 配图 / 表格 / 蓝图摘录框 ---------------- */
+  function closeDrawer(): void {
+    drawer.hidden = true;
+    drawer.innerHTML = '';
+  }
+
+  function openLinkDrawer(): void {
+    const sel = window.getSelection();
+    const selectedText = sel && !sel.isCollapsed ? sel.toString().trim() : '';
+    drawer.hidden = false;
+    drawer.innerHTML = `
+      <div class="ed-drawer-card">
+        <div class="ed-drawer-head">
+          <span>INSERT HYPERLINK // 插入超链接</span>
+          <button type="button" class="stage-mini-btn" id="ed-drawer-close">关闭 ×</button>
+        </div>
+        <div class="ed-drawer-grid">
+          <input class="st-input" id="ed-link-text" value="${esc(selectedText)}" placeholder="链接显示文字（如：Adoptium 官网）" />
+          <input class="st-input" id="ed-link-url" value="https://" placeholder="https://..." />
+          <button type="button" class="st-btn st-btn--primary" id="ed-link-confirm">插入链接</button>
+        </div>
+      </div>`;
+    drawer.querySelector('#ed-drawer-close')?.addEventListener('click', closeDrawer);
+    drawer.querySelector('#ed-link-confirm')?.addEventListener('click', () => {
+      const text = (drawer.querySelector<HTMLInputElement>('#ed-link-text')?.value ?? '').trim() || '链接文字';
+      const url = (drawer.querySelector<HTMLInputElement>('#ed-link-url')?.value ?? '').trim();
+      if (!url || url === 'https://') {
+        toast('请输入有效的链接地址', true);
+        return;
+      }
+      if (mode === 'markdown') {
+        insertInTextarea(`[${text}](${url})`, '');
+      } else {
+        area.focus();
+        document.execCommand(
+          'insertHTML',
+          false,
+          `<a href="${esc(url)}" target="_blank" rel="noopener noreferrer">${esc(text)}</a>`
+        );
+        changed();
+      }
+      closeDrawer();
+    });
+  }
+
+  function openImageDrawer(): void {
+    const assets = opts.getPostAssets?.() ?? [];
+    const hintText = legacyImageHint ? legacyImageHint() : '存放于 src/assets/posts/ 目录';
+    drawer.hidden = false;
+    drawer.innerHTML = `
+      <div class="ed-drawer-card">
+        <div class="ed-drawer-head">
+          <span>INSERT POST IMAGE // 插入或上传文章配图</span>
+          <button type="button" class="stage-mini-btn" id="ed-drawer-close">关闭 ×</button>
+        </div>
+        <div class="ed-drawer-grid">
+          <input class="st-input" id="ed-img-src" value="../../assets/posts/" placeholder="图片路径（如 ../../assets/posts/xxx.png 或完整 URL）" />
+          <input class="st-input" id="ed-img-alt" value="" placeholder="图片说明文字（Alt / 图注，可选）" />
+          <button type="button" class="st-btn st-btn--primary" id="ed-img-confirm">插入图片</button>
+          ${
+            opts.onUploadPostAsset
+              ? `<label class="st-btn" style="cursor:pointer;display:inline-flex;align-items:center;">
+                  <span>↑ 上传本地配图</span>
+                  <input type="file" id="ed-img-upload" accept="image/*" hidden />
+                </label>`
+              : ''
+          }
+        </div>
+        <div class="st-hint" style="margin-top:0.35rem;">${esc(hintText)}</div>
+        ${
+          assets.length
+            ? `<div class="ed-asset-chips" style="margin-top:0.5rem;">
+                <span class="ed-asset-label">点击快速选用已有配图：</span>
+                ${assets
+                  .map(
+                    (f) =>
+                      `<button type="button" class="stage-mini-btn" data-pick-asset="../../assets/posts/${esc(f)}">${esc(
+                        f
+                      )}</button>`
+                  )
+                  .join('')}
+              </div>`
+            : ''
+        }
+      </div>`;
+
+    drawer.querySelector('#ed-drawer-close')?.addEventListener('click', closeDrawer);
+    drawer.querySelectorAll<HTMLButtonElement>('[data-pick-asset]').forEach((b) => {
+      b.addEventListener('click', () => {
+        const input = drawer.querySelector<HTMLInputElement>('#ed-img-src');
+        if (input) input.value = b.dataset.pickAsset ?? '';
+      });
+    });
+
+    drawer.querySelector<HTMLInputElement>('#ed-img-upload')?.addEventListener('change', async (e) => {
+      const file = (e.target as HTMLInputElement).files?.[0];
+      if (!file || !opts.onUploadPostAsset) return;
+      const uploadedName = await opts.onUploadPostAsset(file);
+      if (uploadedName) {
+        const input = drawer.querySelector<HTMLInputElement>('#ed-img-src');
+        if (input) input.value = `../../assets/posts/${uploadedName}`;
+      }
+    });
+
+    drawer.querySelector('#ed-img-confirm')?.addEventListener('click', () => {
+      const src = (drawer.querySelector<HTMLInputElement>('#ed-img-src')?.value ?? '').trim();
+      const alt = (drawer.querySelector<HTMLInputElement>('#ed-img-alt')?.value ?? '').trim();
+      if (!src || src === '../../assets/posts/') {
+        toast('请填写或选择一张配图路径', true);
+        return;
+      }
+      if (mode === 'markdown') {
+        insertInTextarea(`\n\n![${alt}](${src})\n\n`, '');
+      } else {
+        area.focus();
+        document.execCommand('insertHTML', false, `<p><img src="${esc(src)}" alt="${esc(alt)}"></p>`);
+        changed();
+      }
+      closeDrawer();
+    });
+  }
+
   const ACTIONS: Record<string, () => void> = {
-    bold: () => document.execCommand('bold'),
-    italic: () => document.execCommand('italic'),
-    strikeThrough: () => document.execCommand('strikeThrough'),
-    insertUnorderedList: () => document.execCommand('insertUnorderedList'),
-    insertOrderedList: () => document.execCommand('insertOrderedList'),
-    // 再点一次取消：包裹和解开都得自己来（execCommand 没有 mark）
+    bold: () => {
+      if (mode === 'markdown') insertInTextarea('**', '**');
+      else document.execCommand('bold');
+    },
+    italic: () => {
+      if (mode === 'markdown') insertInTextarea('*', '*');
+      else document.execCommand('italic');
+    },
+    strikeThrough: () => {
+      if (mode === 'markdown') insertInTextarea('~~', '~~');
+      else document.execCommand('strikeThrough');
+    },
+    insertUnorderedList: () => {
+      if (mode === 'markdown') insertInTextarea('\n- ', '');
+      else document.execCommand('insertUnorderedList');
+    },
+    insertOrderedList: () => {
+      if (mode === 'markdown') insertInTextarea('\n1. ', '');
+      else document.execCommand('insertOrderedList');
+    },
     mark: () => {
-      if (!unwrapMark()) wrapSelection('mark');
-    },
-    createLink: () => {
-      const sel = window.getSelection();
-      if (!sel || sel.isCollapsed) {
-        window.alert('先选中要加链接的文字');
+      if (mode === 'markdown') {
+        insertInTextarea('<mark>', '</mark>');
         return;
       }
-      const url = window.prompt('链接地址：', 'https://');
-      if (url) document.execCommand('createLink', false, url);
+      if (!unwrapTag('MARK')) wrapSelection('mark');
     },
-    insertImage: () => {
-      // 反向的那一道拦截：先对齐、再往里塞图片，一样会造出坏块
-      const block = currentBlock();
-      if (block?.classList.contains('center') || block?.classList.contains('right')) {
-        toast('这一段已经对齐了 —— 图片放进去会丢路径。先点「左」取消对齐，再把图片单独放一段', true);
+    inlineCode: () => {
+      if (mode === 'markdown') {
+        insertInTextarea('`', '`');
         return;
       }
-      const path = window.prompt(`图片地址（可以用相对路径）：\n\n${imageHint()}`, '../../assets/posts/');
-      if (path) document.execCommand('insertHTML', false, `<img src="${path.replace(/"/g, '')}" alt="">`);
+      if (!unwrapTag('CODE')) wrapSelection('code');
     },
+    insertCallout: () => {
+      const snippet = `\n\n> **NOTE // 蓝图伴读摘录：** 在这里输入关键提示或随笔感悟。\n\n`;
+      if (mode === 'markdown') {
+        insertInTextarea(snippet, '');
+      } else {
+        area.focus();
+        document.execCommand(
+          'insertHTML',
+          false,
+          `<blockquote><p><strong>NOTE // 蓝图伴读摘录：</strong>在这里输入关键提示或随笔感悟。</p></blockquote><p><br></p>`
+        );
+        changed();
+      }
+    },
+    insertCodeblock: () => {
+      if (mode === 'markdown') {
+        insertInTextarea('\n```bash\n# 在此输入命令或代码\n', '\n```\n');
+      } else {
+        area.focus();
+        document.execCommand('insertHTML', false, `<pre><code># 在此输入命令或代码\njava -Xms4G -Xmx4G -jar server.jar nogui</code></pre><p><br></p>`);
+        changed();
+      }
+    },
+    insertTable: () => {
+      const mdTable = `\n\n| 参数项 (KEY) | 推荐配置 (VALUE) | 说明 (NOTE) |\n| --- | --- | --- |\n| JDK 版本 | Temurin 21 LTS | Minecraft 1.20.5+ 必需 |\n| 堆内存分配 | -Xms4G -Xmx4G | 避免动态扩容卡顿 |\n\n`;
+      if (mode === 'markdown') {
+        insertInTextarea(mdTable, '');
+      } else {
+        area.focus();
+        document.execCommand(
+          'insertHTML',
+          false,
+          `<table><thead><tr><th>参数项 (KEY)</th><th>推荐配置 (VALUE)</th><th>说明 (NOTE)</th></tr></thead><tbody><tr><td>JDK 版本</td><td>Temurin 21 LTS</td><td>Minecraft 1.20.5+ 必需</td></tr><tr><td>堆内存分配</td><td>-Xms4G -Xmx4G</td><td>避免动态扩容卡顿</td></tr></tbody></table><p><br></p>`
+        );
+        changed();
+      }
+    },
+    createLink: () => openLinkDrawer(),
+    insertImage: () => openImageDrawer(),
   };
 
   bar.addEventListener('mousedown', (e) => {
-    // 点工具栏不要把选区弄丢 —— 这是所有命令能生效的前提，别删
     if ((e.target as HTMLElement).closest('.ed-bar')) e.preventDefault();
   });
 
@@ -360,38 +632,48 @@ export function createEditor(
 
     const btn = target.closest<HTMLButtonElement>('button[data-cmd]');
     if (!btn) return;
-    area.focus();
-    ACTIONS[btn.dataset.cmd ?? '']?.();
-    changed();
+    const cmd = btn.dataset.cmd ?? '';
+    if (cmd !== 'createLink' && cmd !== 'insertImage' && mode !== 'markdown') {
+      area.focus();
+    }
+    ACTIONS[cmd]?.();
+    if (cmd !== 'createLink' && cmd !== 'insertImage') {
+      changed();
+    }
   });
-
-  /* ---------------- 输入 ---------------- */
 
   area.addEventListener('input', () => {
+    if (mode === 'split') syncVisualToSource();
     updateCount();
-    onInput();
+    renderTocPreview();
+    opts.onInput();
   });
 
-  // 粘贴：一律当纯文本，避免把外部的样式和垃圾结构带进来
+  sourceArea.addEventListener('input', () => {
+    syncSourceToVisual();
+    updateCount();
+    renderTocPreview();
+    opts.onInput();
+  });
+
   area.addEventListener('paste', (e) => {
     e.preventDefault();
     const text = e.clipboardData?.getData('text/plain') ?? '';
     document.execCommand('insertText', false, text);
   });
 
-  // 拖进来的东西也拦掉（图片会变成 base64 塞进正文，那是灾难）
   area.addEventListener('drop', (e) => e.preventDefault());
-
-  // 快捷键 Ctrl+B/I 由浏览器自带（execCommand 体系支持），这里只需在改动后通知外面
   area.addEventListener('keyup', () => changed());
+  area.addEventListener('mouseup', () => syncToolbar());
 
   function changed(): void {
+    if (mode !== 'markdown') syncVisualToSource();
     updateCount();
-    onInput();
+    renderTocPreview();
+    opts.onInput();
     syncToolbar();
   }
 
-  /** 光标所在块的样式 → 工具栏上哪几个按钮是"按下"状态 */
   function syncToolbar(): void {
     const block = currentBlock();
     const tag = block?.tagName.toLowerCase() ?? '';
@@ -410,19 +692,26 @@ export function createEditor(
   }
 
   function updateCount(): void {
-    const el = barHost.querySelector('#ed-count');
-    if (!el) return;
     const text = (area.textContent ?? '').replace(/\s/g, '');
-    el.textContent = `${text.length} 字`;
+    const chars = text.length;
+    const mins = Math.max(1, Math.round(chars / 400));
+    const el = barHost.querySelector('#ed-count');
+    if (el) el.textContent = `WORD COUNT // ${chars.toLocaleString('zh-CN')} 字 · 预计阅读 ${mins} 分钟`;
+    const inlineStat = shell.querySelector('#ed-inline-stat');
+    if (inlineStat) inlineStat.textContent = `${chars.toLocaleString('zh-CN')} 字 · 约 ${mins} 分钟`;
   }
 
   return {
-    getMarkdown: () => htmlToMarkdown(area.innerHTML, raws),
+    getMarkdown: () => (mode === 'markdown' ? sourceArea.value : htmlToMarkdown(area.innerHTML, raws)),
     getHtml: () => area.innerHTML,
+    getHeadings,
+    setMode,
+    getMode: () => mode,
     remount: (areaHostNext, barHostNext) => {
-      areaHostNext.appendChild(area);
+      areaHostNext.appendChild(shell);
       barHostNext.appendChild(bar);
       updateCount();
+      renderTocPreview();
       syncToolbar();
     },
     setMarkdown,

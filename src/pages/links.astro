@@ -47,6 +47,9 @@ const links = rawLinks
                 name={link.data.name}
                 url={link.data.url}
                 description={link.data.description}
+                avatar={link.data.avatar}
+                tag={link.data.tag}
+                owner={link.data.owner}
               />
             ))}
           </div>
@@ -126,7 +129,7 @@ const links = rawLinks
     const info = '站名：夜笙的小世界 | 网址：https://www.yesheng.wiki | 简介：一个普通人的自述 | RSS：https://www.yesheng.wiki/rss.xml';
     navigator.clipboard?.writeText(info).catch(() => {});
     const orig = copyBtn.textContent;
-    copyBtn.textContent = '已复制本站名片 ✓';
+    copyBtn.textContent = '已复制本站名片';
     setTimeout(() => {
       copyBtn.textContent = orig;
     }, 2200);

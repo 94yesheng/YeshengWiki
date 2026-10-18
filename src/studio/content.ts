@@ -1,22 +1,19 @@
 /**
  * 内容层：把"仓库里的文件"变成后台能编辑的数据，以及反过来。
- *
- * 这里的每个写函数**只管一个文件** —— 这是刻意的：diff 干净，出错影响面小，
- * 也不会像现成 CMS 那样一次提交顺手改一堆无关文件。
- * （"一次保存可能连着写好几个文件"是上一层 app.ts 编排的：它把暂存的那几笔
- * 逐个交给这里的函数，每个仍然是一个文件一次提交。）
  */
 import { Github, type DirEntry } from './github';
 import { buildJson, buildPost, effectiveChanges, parsePost, parseJson, type ParsedFile } from './frontmatter';
 import { isoDate } from '../utils/date';
+import type { PhotoMetadata } from './exif';
 
 /* --------------------------------------------------------------------------
-   路径常量 —— 与站点结构一一对应，改这里就能换目录
+   路径常量 —— 与站点结构一一对应
    -------------------------------------------------------------------------- */
 export const DIRS = {
   posts: 'src/content/posts',
   walls: 'src/content/photos',
   photos: 'src/assets/photos',
+  postAssets: 'src/assets/posts',
 } as const;
 
 export const FILES = {
@@ -47,7 +44,6 @@ export async function loadPosts(gh: Github): Promise<PostEntry[]> {
     })
   );
   const posts = loaded.filter((p): p is PostEntry => p !== null);
-  // 按日期倒序，与站点的时间轴一致
   return posts.sort((a, b) => String(b.parsed.data.pubDate ?? '').localeCompare(String(a.parsed.data.pubDate ?? '')));
 }
 
@@ -57,9 +53,6 @@ export function postTitle(p: PostEntry): string {
 
 /**
  * 比较"打开时的值"与"现在的值"，只返回真正变了的字段。
- *
- * 这里是"外科式保存"的入口：没变过的字段根本不会进入 changed，
- * 于是 frontmatter 里那几行会原样保留。
  */
 export function diffFields(
   original: Record<string, unknown>,
@@ -70,15 +63,31 @@ export function diffFields(
   for (const key of fields) {
     const a = original[key];
     const b = next[key];
-    const same = Array.isArray(a) && Array.isArray(b) ? a.length === b.length && a.every((x, i) => x === b[i]) : a === b;
+    const same = JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
     if (!same) changed[key] = b;
   }
   return changed;
 }
 
-export const POST_FIELDS = ['title', 'pubDate', 'description', 'tags', 'updatedDate', 'draft', 'autoUpdated'] as const;
+export const POST_FIELDS = [
+  'title',
+  'pubDate',
+  'description',
+  'lead',
+  'tags',
+  'entryBadge',
+  'cover',
+  'coverCaption',
+  'featured',
+  'kineticCaption',
+  'railMode',
+  'railSpecs',
+  'railTopology',
+  'updatedDate',
+  'draft',
+  'autoUpdated',
+] as const;
 
-/** 生成新全文（界面在保存前会先拿它和原文比对，判断"其实没改"） */
 export function buildPostText(post: PostEntry, changed: Record<string, unknown>, body: string): string {
   return buildPost(post.parsed, effectiveChanges(post.parsed, changed), body);
 }
@@ -91,7 +100,6 @@ export async function savePost(
 ): Promise<void> {
   const text = buildPostText(post, changed, body);
   const title = String(changed.title ?? post.parsed.data.title ?? post.id);
-  // sha 为空 = 这个文件在仓库里还不存在（暂存着的新文章第一次落盘）→ 不带 sha 就是"新建"
   const verb = post.sha ? '更新' : '新建';
   await gh.putText(post.path, text, `content: ${verb}文章「${title}」\n\n（经后台编辑，只改动实际修改的字段）`, post.sha);
 }
@@ -100,24 +108,15 @@ export function newPostTemplate(title: string, date: string, tags: string[], dra
   const lines = [`title: ${JSON.stringify(title)}`, `pubDate: ${date}`];
   if (tags.length) lines.push(`tags: [${tags.map((t) => JSON.stringify(t)).join(', ')}]`);
   if (draft) lines.push('draft: true');
-  // 正文留白：新条目是"空壳"，想写什么写什么 —— 不再预置一句占位文字（那行会被存进
-  // 文件，等于每次新建都得先删一句废话）
   return `---\n${lines.join('\n')}\n---\n`;
 }
 
-/**
- * 造一条**还没写进仓库**的文章（`sha: ''`）。
- *
- * 先把模板文字解析成 `parsed`，是为了让后面走的是同一条路：保存时 `buildPost(parsed, …)`
- * 照常把用户改过的字段写进去，跟"改一篇已有文章"没有任何区别 —— 不用另写一条"新建"分支。
- */
 export function newPostEntry(id: string, date: string): PostEntry | null {
   const parsed = parsePost(newPostTemplate('草稿', date, [], true));
   if (!parsed) return null;
   return { path: `${DIRS.posts}/${id}.md`, sha: '', id, parsed };
 }
 
-/** 文章还是照片墙 —— 暂存那一套要按这个分岔（墙没有 parsed，用 extra 记着不认识的键） */
 export function isPost(e: PostEntry | WallEntry): e is PostEntry {
   return 'parsed' in e;
 }
@@ -129,13 +128,12 @@ export function draftId(taken: (id: string) => boolean): string {
   return id;
 }
 
-/** 造一面**还没写进仓库**的照片墙（`sha: ''`）。日期一定要给：墙按日期倒序排，没有日期的沉到底。 */
 export function newWallEntry(id: string, date: string): WallEntry {
   return {
     path: `${DIRS.walls}/${id}.json`,
     sha: '',
     id,
-    title: '草稿',
+    title: '新建影集草稿',
     date,
     place: '',
     note: '',
@@ -153,12 +151,9 @@ export async function deletePost(gh: Github, post: PostEntry): Promise<void> {
 }
 
 /* --------------------------------------------------------------------------
-   照片墙
+   照片墙（含单张照片的 EXIF 光学遥测参数）
    -------------------------------------------------------------------------- */
-export interface WallPhoto {
-  file: string;
-  caption: string;
-}
+export type WallPhoto = PhotoMetadata;
 
 export interface WallEntry {
   path: string;
@@ -169,8 +164,36 @@ export interface WallEntry {
   place: string;
   note: string;
   photos: WallPhoto[];
-  /** 保留原始对象里的其他键，避免保存时把它们丢掉 */
   extra: Record<string, unknown>;
+}
+
+function toWallPhoto(raw: unknown): WallPhoto {
+  const o = (raw ?? {}) as Record<string, unknown>;
+  const histRaw = Array.isArray(o.hist) ? o.hist.map((n) => Number(n) || 0) : undefined;
+  const arVal = typeof o.ar === 'number' && !Number.isNaN(o.ar) ? o.ar : undefined;
+  return {
+    file: String(o.file ?? ''),
+    caption: String(o.caption ?? ''),
+    title: o.title !== undefined ? String(o.title) : undefined,
+    story: o.story !== undefined ? String(o.story) : undefined,
+    group: o.group !== undefined ? String(o.group) : undefined,
+    coord: o.coord !== undefined ? String(o.coord) : undefined,
+    date: o.date !== undefined ? String(o.date) : undefined,
+    location: o.location !== undefined ? String(o.location) : undefined,
+    aspect: o.aspect !== undefined ? String(o.aspect) : undefined,
+    ar: arVal,
+    ratioPill: o.ratioPill !== undefined ? String(o.ratioPill) : undefined,
+    camera: o.camera !== undefined ? String(o.camera) : undefined,
+    lens: o.lens !== undefined ? String(o.lens) : undefined,
+    exposure: o.exposure !== undefined ? String(o.exposure) : undefined,
+    color: o.color !== undefined ? String(o.color) : undefined,
+    gps: o.gps !== undefined ? String(o.gps) : undefined,
+    ev: o.ev !== undefined ? String(o.ev) : undefined,
+    hist: histRaw,
+    autoFields: Array.isArray(o.autoFields)
+      ? (o.autoFields.filter((x) => typeof x === 'string') as WallPhoto['autoFields'])
+      : undefined,
+  };
 }
 
 function toWall(path: string, sha: string, raw: Record<string, unknown>): WallEntry {
@@ -185,10 +208,7 @@ function toWall(path: string, sha: string, raw: Record<string, unknown>): WallEn
     date: String(date ?? ''),
     place: String(place ?? ''),
     note: String(note ?? ''),
-    photos: list.map((p) => {
-      const o = (p ?? {}) as Record<string, unknown>;
-      return { file: String(o.file ?? ''), caption: String(o.caption ?? '') };
-    }),
+    photos: list.map(toWallPhoto),
     extra,
   };
 }
@@ -214,22 +234,50 @@ export async function loadWalls(gh: Github): Promise<WallEntry[]> {
   });
 }
 
+function serializeWallPhoto(p: WallPhoto): Record<string, unknown> {
+  const item: Record<string, unknown> = {
+    file: p.file,
+    caption: p.caption,
+  };
+  const optKeys: Array<keyof WallPhoto> = [
+    'title',
+    'story',
+    'group',
+    'coord',
+    'date',
+    'location',
+    'aspect',
+    'ar',
+    'ratioPill',
+    'camera',
+    'lens',
+    'exposure',
+    'color',
+    'gps',
+    'ev',
+    'hist',
+    'autoFields',
+  ];
+  for (const k of optKeys) {
+    const val = p[k];
+    if (val !== undefined) item[k] = val;
+  }
+  return item;
+}
+
 export function wallToJson(w: WallEntry): Record<string, unknown> {
-  // 字段顺序固定成和现有文件一致，避免每次保存都产生顺序 diff
   const out: Record<string, unknown> = {
     title: w.title,
     date: w.date,
     place: w.place,
     note: w.note,
-    photos: w.photos.map((p) => ({ file: p.file, caption: p.caption })),
+    photos: w.photos.map(serializeWallPhoto),
   };
-  // 原始文件里若有我们不认识的键，原样保留在最后
   for (const [k, v] of Object.entries(w.extra)) if (!(k in out)) out[k] = v;
   return out;
 }
 
 export async function saveWall(gh: Github, wall: WallEntry): Promise<void> {
-  // sha 为空 = 仓库里还没有这个文件（暂存着的新墙第一次落盘）
   const verb = wall.sha ? '更新' : '新建';
   await gh.putText(wall.path, buildJson(wallToJson(wall)), `content: ${verb}照片墙「${wall.title || wall.id}」`, wall.sha);
 }
@@ -242,18 +290,36 @@ export async function deleteWall(gh: Github, wall: WallEntry): Promise<void> {
   await gh.deleteFile(wall.path, wall.sha, `content: 删除照片墙「${wall.title || wall.id}」`);
 }
 
-/** 列出现有的照片文件名（上传时用来查重、给后台挑选已有图片用） */
 export async function listPhotoFiles(gh: Github): Promise<DirEntry[]> {
   const entries = await gh.listDir(DIRS.photos);
   return entries.filter((e) => e.type === 'file' && /\.(jpe?g|png|webp|avif)$/i.test(e.name));
 }
 
+export async function listPostAssetFiles(gh: Github): Promise<DirEntry[]> {
+  try {
+    const entries = await gh.listDir(DIRS.postAssets);
+    return entries.filter((e) => e.type === 'file' && /\.(jpe?g|png|webp|avif|gif|svg)$/i.test(e.name));
+  } catch {
+    return [];
+  }
+}
+
 /* --------------------------------------------------------------------------
    友链 / 站点 —— 单文件，整体读写
    -------------------------------------------------------------------------- */
+export interface LinkItem {
+  id: string;
+  name: string;
+  url: string;
+  description: string;
+  avatar?: string;
+  tag?: string;
+  owner?: string;
+}
+
 export interface LinksFile {
   sha: string;
-  links: Array<{ id: string; name: string; url: string; description: string }>;
+  links: LinkItem[];
 }
 
 export async function loadLinks(gh: Github): Promise<LinksFile> {
@@ -270,6 +336,9 @@ export async function loadLinks(gh: Github): Promise<LinksFile> {
         name: String(o.name ?? ''),
         url: String(o.url ?? ''),
         description: String(o.description ?? ''),
+        avatar: o.avatar !== undefined ? String(o.avatar) : undefined,
+        tag: o.tag !== undefined ? String(o.tag) : undefined,
+        owner: o.owner !== undefined ? String(o.owner) : undefined,
       };
     }),
   };
@@ -291,7 +360,7 @@ export async function loadSite(gh: Github): Promise<SiteFile> {
 }
 
 export async function saveSite(gh: Github, file: SiteFile): Promise<void> {
-  await gh.putText(FILES.site, buildJson(file.data), 'content: 更新站点信息与主页文案', file.sha);
+  await gh.putText(FILES.site, buildJson(file.data), 'content: 更新站点信息、主页与右侧伴读栏配置', file.sha);
 }
 
 /* --------------------------------------------------------------------------
@@ -302,11 +371,9 @@ export interface PreparedImage {
   filename: string;
   width: number;
   height: number;
-  /** 压缩前后的字节数，用来在界面上说明"压了多少" */
   originalBytes: number;
 }
 
-/** 文件名清洗：去掉路径分隔符与危险字符，空格换成连字符 */
 export function safeFilename(name: string): string {
   return name
     .replace(/\.[^.]+$/, '')
@@ -316,11 +383,6 @@ export function safeFilename(name: string): string {
     .slice(0, 60);
 }
 
-/**
- * 把用户选的原图压到长边 2560px、转成 JPEG。
- * 为什么在浏览器里压：手机原图一张 2–6MB，几十张就能让仓库胀到几百 MB；
- * 而网页上最宽也就 1100px 左右，2560 已经留了 2 倍余量。
- */
 export async function prepareImage(file: File, maxEdge = 2560, quality = 0.88): Promise<PreparedImage> {
   let bitmap: ImageBitmap;
   try {
@@ -352,7 +414,6 @@ export async function prepareImage(file: File, maxEdge = 2560, quality = 0.88): 
   };
 }
 
-/** 上传一张照片到图片目录；文件名冲突时自动加 -2、-3 */
 export async function uploadPhoto(
   gh: Github,
   prepared: PreparedImage,
@@ -367,5 +428,22 @@ export async function uploadPhoto(
     name = base.replace(/\.jpg$/, `-${n}.jpg`);
   }
   await gh.putBinary(`${DIRS.photos}/${name}`, prepared.bytes, `content: 上传照片 ${name}`);
+  return name;
+}
+
+export async function uploadPostAsset(
+  gh: Github,
+  prepared: PreparedImage,
+  postSlug: string,
+  existing: string[]
+): Promise<string> {
+  const prefix = safeFilename(postSlug || 'post');
+  let n = 1;
+  let name = `${prefix}-${String(n).padStart(2, '0')}.jpg`;
+  while (existing.includes(name)) {
+    n += 1;
+    name = `${prefix}-${String(n).padStart(2, '0')}.jpg`;
+  }
+  await gh.putBinary(`${DIRS.postAssets}/${name}`, prepared.bytes, `content: 上传文章配图 ${name}`);
   return name;
 }

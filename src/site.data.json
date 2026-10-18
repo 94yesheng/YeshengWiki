@@ -1,6 +1,7 @@
 {
   "studio": {
-    "autoUpdated": true
+    "autoUpdated": true,
+    "exifCipherEffect": true
   },
   "site": {
     "url": "https://www.yesheng.wiki",
@@ -8,6 +9,12 @@
     "tagline": "一个普通人的自述",
     "description": "夜笙的个人博客：技术笔记与随笔。",
     "author": "夜笙",
+    "brandCoord": "96REM // ULTRAWIDE",
+    "footerCopyright": "© 二〇二六 夜笙 · YESHENG.WIKI",
+    "divergenceMeter": {
+      "enabled": true,
+      "worldline": "1.048596"
+    },
     "nav": [
       {
         "href": "/",
@@ -32,6 +39,17 @@
     ]
   },
   "home": {
+    "originBadge": "ORIGIN (0, 0, L3)",
+    "topbarTag": "DAYLIGHT INFINITY // 纯净暖色流形与无尾迹纯粒子场",
+    "coordText": "SPATIAL LEMNISCATE · 自然聚落星团交织的纯粒子立体无限环（零线段干扰）",
+    "equation": "L3 : x = a·cos(t)/(1+sin²t), y = b·sin(t)cos(t)/(1+sin²t), z = c·sin(t)",
+    "manifold": {
+      "defaultTheme": "light",
+      "particleCount": 560,
+      "speed": 1.0,
+      "snapScroll": true,
+      "loaderText": "INFINITY MANIFOLD // 正在展开立体无限流形"
+    },
     "intro": [
       "这里是夜笙的小世界。写点技术笔记，也写点没什么用但想记下来的事。",
       "如果抵达不了人生的高度，那就尽可能的探索世界的广度吧。"
@@ -40,22 +58,159 @@
       {
         "href": "/posts/",
         "title": "文章",
+        "meta": "5 篇",
         "desc": "按时间排列的长短文字，可以用标签筛。"
       },
       {
         "href": "/photos/",
         "title": "照片",
+        "meta": "最新组",
         "desc": "保持原始宽高比交错排布的日常照片。"
       },
       {
         "href": "/programs/",
         "title": "程序",
+        "meta": "工坊",
         "desc": "做过的小工具与实验项目。"
       },
       {
         "href": "/links/",
         "title": "友链",
+        "meta": "邻人·我",
         "desc": "常看的独立博客友链与本站架构说明。"
+      }
+    ]
+  },
+  "authorDossier": {
+    "monogram": "夜",
+    "title": "关于「我」 · 夜笙",
+    "subCoord": "AUTHOR // YESHENG · 独立记录者",
+    "bio": "一个喜欢折腾代码与记录日常的普通人。平时热衷搭建联机服务器、探索三维建模与 Python 工具脚本，也喜欢背着相机在山城街巷随手拍下暮色与江风。「如果抵达不了人生的高度，那就尽可能的探索世界的广度吧。」",
+    "chips": [
+      "坐标 · 重庆 / 远方",
+      "技术 · Astro / Python / Blender",
+      "爱好 · 街拍 / 沙盒联机 / 随笔"
+    ],
+    "siteCardTitle": "关于「站点」 · 友链互换名片",
+    "siteCardDesc": "本站基于 Astro 纯静态构建，零后端、零追踪、零外部 Webfont，采用中文纸墨规制与昼夜双模态流形引擎。欢迎认真写字的独立博客互换友链：",
+    "colophon": [
+      {
+        "kicker": "01 // PHILOSOPHY",
+        "title": "关于本站 · 探索世界的广度",
+        "desc": "这里是夜笙的小世界。写点技术笔记（Minecraft 服务器内网穿透、Blender 三维建模入门、MapToPoster 城市经纬海报、DeepSeek 接入微信工作流），也写点日常随笔。「如果抵达不了人生的高度，那就尽可能的探索世界的广度吧。」"
+      },
+      {
+        "kicker": "02 // ARCHITECTURE",
+        "title": "纯静态生成 · 零后端与零追踪",
+        "desc": "本站基于 Astro 构建：文章与照片墙均以本地 Markdown 和 JSON 文件维护，在构建期编译为静态 HTML 与多尺寸 WebP 图片。服务器上不运行任何数据库或后端程序，不挂载任何第三方统计或追踪脚本。"
+      },
+      {
+        "kicker": "03 // TYPOGRAPHY",
+        "title": "纸墨排版 · 零 Webfont 隐私保护",
+        "desc": "全站坚持零 Webfont 下载，直接调用系统自带的楷体、宋体与黑体，不向第三方字体 CDN 暴露访客 IP。通过 unicode-range 复合字体让阿拉伯数字走黑体、中文走楷宋，并严格遵守楷体字号 ≥20px 的清晰度护栏。"
+      },
+      {
+        "kicker": "04 // VISUAL ENGINE",
+        "title": "昼夜双模态 · 无限环、黑洞与三体",
+        "desc": "白天模式以「立体无限环（∞）」与暖奶油纸底呈现；夜间模式坍缩为「卡冈图雅黑洞」与深空底色，并在页脚点亮致敬《命运石之门》的世界线变动率辉光管；文章详细页右侧运行《三体》恒星与行星混沌引力场模型。"
+      }
+    ]
+  },
+  "programs": {
+    "console": {
+      "kicker": "CORE ENGINE // ACTIVE MODULE",
+      "title": "Dual-Field & 3D Three-Body Engine · 昼夜流形与立体三体引力场",
+      "desc": "专为本站打造的数学物理渲染引擎。主页白天模式运行多股三维伯努利双纽线丝带流形与粒子云，夜间模式模拟零断层卡冈图雅黑洞视界与引力透镜光环；文章详细页搭载高立体感《三体》三球体引力相互作用轨迹模拟。",
+      "buildVersion": "BUILD: v6.0-3D-MANIFOLD",
+      "terminalLines": [
+        { "cmd": "home.day_night", "out": "3D Lemniscate Ribbons + Kerr Black Hole" },
+        { "cmd": "article.three_body", "out": "Pure 3-Sphere 3D Mutual Gravity Trajectories" },
+        { "cmd": "motion.transitions", "out": "Borderless 3D Loader + Full-Page Veil Eclipse" }
+      ]
+    },
+    "modules": [
+      {
+        "code": "MOD // 01",
+        "stack": "PYTHON · GIS",
+        "title": "MapToPoster · 城市经纬路网海报生成器",
+        "desc": "输入任意城市名称或经纬度边界框，自动拉取 OpenStreetMap 道路与水系矢量拓扑，渲染高分辨率极简几何装饰壁纸。",
+        "status": "RELEASED · v1.4",
+        "progress": 92,
+        "metric": "OSM VECTOR PIPELINE",
+        "href": "/posts/maptoposter/"
+      },
+      {
+        "code": "MOD // 02",
+        "stack": "SVG · NIXIE",
+        "title": "Divergence Meter · 世界线变动率辉光管探测仪",
+        "desc": "致敬《命运石之门》的纯矢量多层阴极辉光管数字组件。当博客切换至夜间黑洞模式时，页脚自动触发世界线收束跳变。",
+        "status": "点亮夜间辉光管 ->",
+        "progress": 100,
+        "metric": "WL: 1.048596",
+        "href": "#footer-dm"
+      },
+      {
+        "code": "MOD // 03",
+        "stack": "DOCKER · LLM",
+        "title": "WeChat-DeepSeek Bridge · 轻量级即时通讯推理网关",
+        "desc": "基于容器化部署的上下文滑动窗口与异常重试中间件，将 DeepSeek 推理能力无缝接入日常对话流。",
+        "status": "DOCUMENTED",
+        "progress": 88,
+        "metric": "API WORKFLOW",
+        "href": "/posts/deepseek-wechat/"
+      }
+    ]
+  },
+  "articleRail": {
+    "sticky": true,
+    "threeBody": {
+      "eraBadge": "3D MUTUAL GRAVITY // 三体立体轨道",
+      "fluxReadout": "3 VOLUMETRIC SPHERES · CLICK TO PERTURB",
+      "defaultCaption": "3-BODY GRAVITY // CHAOTIC ORBIT"
+    },
+    "docSpec": {
+      "enabled": true,
+      "kicker": "DOC SPEC // 文档速查卡",
+      "badge": "BASELINE",
+      "showPublished": true,
+      "showChars": true,
+      "showReading": true,
+      "showTags": true,
+      "customRows": [
+        { "label": "AUTHOR", "value": "夜笙 (YESHENG)" },
+        { "label": "LICENSE", "value": "CC BY-NC-SA 4.0" }
+      ]
+    },
+    "topology": {
+      "enabledForMc": true,
+      "globalEnabled": false,
+      "kicker": "TOPOLOGY // 穿透链路图解",
+      "badge": "TCP : 25565",
+      "node1Title": "LOCAL HOST",
+      "node1Sub": "Paper :25565",
+      "node2Title": "FRP RELAY",
+      "node2Sub": "Public :7000",
+      "node3Title": "PLAYERS",
+      "node3Sub": "Clients 1..N",
+      "line1": "TUNNEL: 127.0.0.1:25565 -> frps:25565",
+      "line2": "STATUS: NAT BYPASSED · ZERO PUBLIC IP"
+    },
+    "related": {
+      "enabled": true,
+      "kicker": "ARCHIVE // 同系列文章切换",
+      "badge": "5 ENTRIES",
+      "maxCount": 4,
+      "strategy": "latest"
+    },
+    "customCards": [
+      {
+        "id": "rail-note-01",
+        "enabled": true,
+        "kicker": "READER NOTE // 伴读提示",
+        "badge": "TELEMETRY",
+        "type": "text",
+        "content": "点击右侧三体画布可对三个天体施加引力微扰；按左侧目录可快速跳转章节坐标。",
+        "items": []
       }
     ]
   }
