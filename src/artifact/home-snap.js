@@ -20,6 +20,10 @@
   const screens = Array.from(document.querySelectorAll('.screen'));
   if (screens.length < 2) return;
 
+  // 最后一屏（友链）与页脚直接相接：滚过它的顶端后不再吸回，
+  // 否则停留位置只要落在阈值内，就会被自动吸回友链屏，页脚很难到达。
+  const lastScreen = screens[screens.length - 1];
+
   // 尊重系统的「减少动态效果」
   if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
 
@@ -66,6 +70,8 @@
     let dist = Infinity;
     for (const s of screens) {
       const t = targetOf(s);
+      // 已经滚过友链屏顶端，就允许继续往页脚走，不再吸回
+      if (s === lastScreen && y > t + 2) continue;
       const d = Math.abs(y - t);
       if (d < dist) {
         dist = d;

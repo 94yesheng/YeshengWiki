@@ -1,4 +1,11 @@
 ---
+/**
+ * 纸墨页（程序 / 友链）的顶栏。
+ *
+ * 2026-10-18：按用户要求，顶栏结构与 HUD 页面完全统一 ——
+ * 同一套 .site-nav-bar / .nav-brand / .site-nav-link 标记，
+ * 样式在 base.css 里补齐；不再使用纸墨版的分隔符导航和主题按钮。
+ */
 import { site } from '../site.config';
 
 interface Props {
@@ -14,46 +21,40 @@ const isCurrent = (href: string) =>
 
 <header class="site-nav-bar">
   <div class="wrap">
-    <div class="site-nav-left">
-      <a href="/" class="site-nav-emblem" aria-label="夜笙的小世界 主页">
-        <svg class="planar-icon planar-icon--infinity" viewBox="0 0 36 18" aria-hidden="true">
-          <path d="M10.5 2.2C6.7 2.2 3.7 5.2 3.7 9C3.7 12.8 6.7 15.8 10.5 15.8C15.2 15.8 20.8 2.2 25.5 2.2C29.3 2.2 32.3 5.2 32.3 9C32.3 12.8 29.3 15.8 25.5 15.8C20.8 15.8 15.2 2.2 10.5 2.2Z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
-          <circle cx="9.2" cy="9" r="1.3" fill="currentColor"/>
-          <circle cx="26.8" cy="9" r="1.3" fill="currentColor"/>
-        </svg>
-        <svg class="planar-icon planar-icon--blackhole" viewBox="0 0 36 18" aria-hidden="true">
-          <path d="M8.5 8.2C11.2 2.4 24.8 2.4 27.5 8.2" fill="none" stroke="currentColor" stroke-width="1.35" stroke-linecap="round"/>
-          <circle cx="18" cy="9" r="4.2" fill="currentColor"/>
-          <ellipse cx="18" cy="9.2" rx="14.5" ry="3.1" transform="rotate(-11 18 9.2)" fill="none" stroke="currentColor" stroke-width="1.5"/>
-        </svg>
+    <div class="nav-left-cluster">
+      <a href="/" class="nav-brand" aria-label="夜笙的小世界 主页">
+        <span class="nav-brand-mark" aria-hidden="true">
+          <svg class="planar-icon planar-icon--infinity" viewBox="0 0 36 18" aria-hidden="true">
+            <path d="M10.5 2.2C6.7 2.2 3.7 5.2 3.7 9C3.7 12.8 6.7 15.8 10.5 15.8C15.2 15.8 20.8 2.2 25.5 2.2C29.3 2.2 32.3 5.2 32.3 9C32.3 12.8 29.3 15.8 25.5 15.8C20.8 15.8 15.2 2.2 10.5 2.2Z" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"/>
+            <circle cx="10.5" cy="9" r="1.35" fill="currentColor"/>
+            <circle cx="25.5" cy="9" r="1.35" fill="currentColor"/>
+          </svg>
+          <svg class="planar-icon planar-icon--blackhole" viewBox="0 0 36 18" aria-hidden="true">
+            <path d="M8.5 8.2C11.2 2.4 24.8 2.4 27.5 8.2" fill="none" stroke="currentColor" stroke-width="1.35" stroke-linecap="round"/>
+            <path d="M10.5 10.2C13.2 14.8 22.8 14.8 25.5 10.2" fill="none" stroke="currentColor" stroke-width="1.1" stroke-opacity="0.75" stroke-linecap="round"/>
+            <circle cx="18" cy="9" r="4.2" fill="currentColor"/>
+            <ellipse cx="18" cy="9.2" rx="14.5" ry="3.1" transform="rotate(-11 18 9.2)" fill="none" stroke="currentColor" stroke-width="1.5"/>
+          </svg>
+        </span>
+        <span class="nav-brand-text">{site.author}</span>
+        <span class="nav-brand-coord">96REM // ULTRAWIDE</span>
       </a>
 
       <nav class="site-nav" aria-label="主导航">
         {
           site.nav.map((item, i) => (
-            <>
-              {i > 0 && <span class="sep" aria-hidden="true">·</span>}
-              <a href={item.href} aria-current={isCurrent(item.href) ? 'page' : undefined}>
-                {item.label}
-              </a>
-            </>
+            <a
+              href={item.href}
+              class="site-nav-link"
+              aria-current={isCurrent(item.href) ? 'page' : undefined}
+            >
+              <span class="nav-idx">{String(i).padStart(2, '0')}</span>
+              <span>{item.label}</span>
+            </a>
           ))
         }
       </nav>
     </div>
-
-    <button type="button" class="nav-theme-btn" id="subpage-theme-btn" title="切换白天（无限环）/ 夜间（黑洞）模式">
-      <span class="btn-planar-icon" aria-hidden="true">
-        <svg class="planar-icon planar-icon--infinity" viewBox="0 0 28 14">
-          <path d="M8.2 1.7C5.3 1.7 2.9 4.1 2.9 7C2.9 9.9 5.3 12.3 8.2 12.3C11.8 12.3 16.2 1.7 19.8 1.7C22.7 1.7 25.1 4.1 25.1 7C25.1 9.9 22.7 12.3 19.8 12.3C16.2 12.3 11.8 1.7 8.2 1.7Z" fill="none" stroke="currentColor" stroke-width="1.6"/>
-        </svg>
-        <svg class="planar-icon planar-icon--blackhole" viewBox="0 0 28 14">
-          <circle cx="14" cy="7" r="3.2" fill="currentColor"/>
-          <ellipse cx="14" cy="7.2" rx="11.2" ry="2.4" transform="rotate(-11 14 7.2)" fill="none" stroke="currentColor" stroke-width="1.4"/>
-        </svg>
-      </span>
-      <span id="subpage-theme-label">白天 · 无限</span>
-    </button>
   </div>
 </header>
 
@@ -82,19 +83,3 @@ const isCurrent = (href: string) =>
     </div>
   )
 }
-
-<script>
-  import { toggleTheme, isDark } from '../utils/theme';
-
-  const btn = document.getElementById('subpage-theme-btn');
-  const label = document.getElementById('subpage-theme-label');
-  const syncLabel = () => {
-    if (label) label.textContent = isDark() ? '夜间 · 黑洞' : '白天 · 无限';
-  };
-  syncLabel();
-  btn?.addEventListener('click', () => {
-    toggleTheme();
-    syncLabel();
-  });
-  window.addEventListener('themechange', syncLabel);
-</script>

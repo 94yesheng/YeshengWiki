@@ -91,6 +91,7 @@
   --kai:  'KaiDigits',  KaiTi, 楷体, STKaiti, "Kaiti SC", "Noto Serif SC", serif;
   --song: 'SongDigits', "Songti SC", SimSun, 宋体, "Noto Serif SC", serif;
   --sans: "Noto Sans SC", "Microsoft YaHei", 微软雅黑, "PingFang SC", system-ui, sans-serif;
+  --mono: ui-monospace, "Cascadia Code", Consolas, "SFMono-Regular", monospace;
 
   /* ---------- 字号 ----------
      【2026-10 调过两轮】
@@ -158,9 +159,9 @@
 
   --pad-x: 1.5rem;
 
-  /* 顶部导航条的高度。粘顶条要占掉第一屏的一部分，
-     所以主页那些"整屏"的区块用 calc(100vh - var(--nav-h)) 算高度 */
-  --nav-h: 3.25rem;
+  /* 顶部导航条的高度。2026-10-18 与 HUD 页面的 3.6rem 对齐，
+     纸墨页的顶栏高度不再比其它页面矮一截。 */
+  --nav-h: 3.6rem;
 
   /* ---------- 动效 ---------- */
   --ease: cubic-bezier(0.22, 0.61, 0.36, 1);

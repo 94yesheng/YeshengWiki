@@ -1,0 +1,71 @@
+/* ==========================================================================
+   2026-10-18 用户侧细节微调
+   只做覆盖，不改生成器切出来的原始规则；追加在 artifact.css 末尾。
+   ========================================================================== */
+
+/* 1. 首屏左栏：介绍整体上移、左对齐；下方留白处放 ∞ / 黑洞平面图标 */
+.hero-q-prose {
+  justify-content: flex-start;
+  align-items: flex-start;
+  padding-top: clamp(1.6rem, 5.5vh, 3.4rem);
+}
+.hero-planar-motif {
+  display: flex;
+  align-items: center;
+  gap: 0.9rem;
+  margin-top: clamp(2rem, 9vh, 5rem);
+  color: color-mix(in srgb, var(--accent) 78%, var(--ink));
+  opacity: 0.52;
+  pointer-events: none;
+}
+.hero-planar-motif svg {
+  display: block;
+}
+.hero-motif-infinity {
+  width: 5.6rem;
+  height: 2.8rem;
+}
+.hero-motif-blackhole {
+  width: 2.8rem;
+  height: 2.8rem;
+}
+.hero-motif-rule {
+  width: 1px;
+  height: 2.2rem;
+  background: var(--rule);
+}
+
+/* 2. 删掉 hero / 导航的主题切换按钮后，方程行不再两端撑开 */
+.stage-subbar {
+  justify-content: flex-start;
+}
+
+/* 5. 页脚：快捷链接行删除后，信息左对齐；分隔线 logo 放到所有信息最底部 */
+.site-foot-inner {
+  justify-content: flex-start;
+}
+.site-foot .planar-divider-bar {
+  margin: 1.15rem auto 0;
+}
+
+/* 6. 文章归档页：删掉返回按钮后，左栏内容改为上对齐 */
+.posts-subpage-hero-left {
+  justify-content: flex-start;
+  padding-top: 1.55rem;
+  padding-bottom: 1.55rem;
+}
+
+/* 7. 文章详细页：删掉两个返回按钮后，kicker 行左对齐 */
+.article-hero-top-row {
+  justify-content: flex-start;
+}
+
+/* 小屏：首屏变成单列，留白变小，图标不要占太高 */
+@media (max-width: 72rem), (max-height: 42rem) {
+  .hero-q-prose {
+    padding-top: 1.25rem;
+  }
+  .hero-planar-motif {
+    margin-top: 2rem;
+  }
+}

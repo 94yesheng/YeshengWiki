@@ -65,13 +65,26 @@
                 <h1 class="hero-title">夜笙的小世界</h1>
                 <p class="hero-tagline">
                   <span>一个普通人的自述</span>
-                  <span class="infinity-chip" id="hero-theme-chip">DAY // 立体无限流形</span>
                 </p>
 
                 <div class="hero-intro">
                   <p>这里是夜笙的小世界。写点技术笔记，也写点没什么用但想记下来的事。</p>
                   <p>如果抵达不了人生的高度，那就尽可能的探索世界的广度吧。</p>
                 </div>
+
+              <div class="hero-planar-motif" aria-hidden="true">
+                <svg class="hero-motif-infinity" viewBox="0 0 96 48">
+                  <path d="M28 5.9C17.9 5.9 9.9 13.9 9.9 24C9.9 34.1 17.9 42.1 28 42.1C40.5 42.1 55.5 5.9 68 5.9C78.1 5.9 86.1 13.9 86.1 24C86.1 34.1 78.1 42.1 68 42.1C55.5 42.1 40.5 5.9 28 5.9Z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+                  <circle cx="28" cy="24" r="3.4" fill="currentColor"/>
+                  <circle cx="68" cy="24" r="3.4" fill="currentColor"/>
+                </svg>
+                <span class="hero-motif-rule"></span>
+                <svg class="hero-motif-blackhole" viewBox="0 0 48 48">
+                  <circle cx="24" cy="24" r="18" fill="none" stroke="currentColor" stroke-width="1.4" stroke-dasharray="3 4"/>
+                  <circle cx="24" cy="24" r="8.5" fill="currentColor"/>
+                  <ellipse cx="24" cy="25" rx="22" ry="4.6" transform="rotate(-12 24 25)" fill="none" stroke="currentColor" stroke-width="1.3"/>
+                </svg>
+              </div>
               </div>
 
               <nav class="hero-q-index" aria-label="主页五屏象限导览">
@@ -97,10 +110,6 @@
             <div class="hero-q-right">
               <div class="stage-subbar">
                 <span id="telemetry-equation">L3 : x = a·cos(t)/(1+sin²t), y = b·sin(t)cos(t)/(1+sin²t), z = c·sin(t)</span>
-                <div class="stage-mode-switch-inline" role="group" aria-label="切换白天无限模式与夜间黑洞模式">
-                  <button type="button" class="stage-mini-btn" data-theme-mode="light" aria-pressed="true">白天 · 立体无限流形</button>
-                  <button type="button" class="stage-mini-btn" data-theme-mode="dark" aria-pressed="false">夜间 · 卡冈图雅黑洞</button>
-                </div>
               </div>
 
               <div class="hero-canvas-holder">

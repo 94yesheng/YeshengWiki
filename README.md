@@ -257,7 +257,7 @@ home-snap.js       主页滚动吸附（站点自己的行为，不进生成器�
 - 三套模型都在 `renderFrame` 里按 `dt===0` 约定支持 `prefers-reduced-motion`（冻结/静态帧）；主页吸附也单独做了降级。
 - **加载 / 切换 / 平面元素**：
   - HUD 页面：回滚后的本地 loader（80 颗粒子从奇点绽放并收束到无限流形，约 1.05 s）；昼夜切换是本地 veil 遮盖 + ∞ ↔ 黑洞形变（约 0.86 s）。
-  - 纸墨页面：`BaseLayout` 内联的 ∞ 描边 loader 与切换遮罩。
+  - 纸墨页面：`BaseLayout` 也复用同一套粒子 loader（2026-10-18 统一），因此点击「程序」「友链」的跳转观感与文章子页一致；纸墨页自己的切换遮罩保留。
   - 页脚和角落的平面 ∞ / 黑洞 motif 靠 `:root[data-theme]` 切换。
 - 构建后首页约 305 KB、其余 HUD 页约 268–272 KB（图片已外置）。建议服务器开 brotli/gzip。
 
@@ -268,6 +268,7 @@ home-snap.js       主页滚动吸附（站点自己的行为，不进生成器�
 - 主页 / 文章归档 / 文章详细 / 照片四页用 `ArtifactLayout`：自己写 `<html><head><body>`，CSS/JS 用 `?raw` + `is:inline` 原样内联，**不 import `tokens.css` / `base.css`**。
 - 其它页面用 `BaseLayout`：`tokens.css` + `base.css` + `SiteHeader` / `SiteFooter` / `FloatingMenu`。
 - 两边不共享组件、不共享样式、不共享 FAB。已验证 artifact 的 CSS 不会出现在其它页面的 HTML 里。
+- 顶栏结构已统一（2026-10-18）：`SiteHeader.astro` 使用与 HUD 页面相同的 `.site-nav-bar / .nav-brand / .site-nav-link` 标记，样式在 `base.css` 里复刻；仍是两套独立实现，不引入 artifact 的 CSS/JS。程序、友链页也不再显示纸墨版的大标题 masthead。
 - **新增页面时先选体系**：内容型子页用 `BaseLayout`；如果要做成 HUD 风格，就复用 `ArtifactLayout` 并在 `src/artifact/` 里加模板。
 
 ---

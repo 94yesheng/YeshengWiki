@@ -131,92 +131,102 @@ a { color: inherit; text-decoration: none; }
   justify-content: center;
 }
 
-/* --------------------------------------------------------------------------
-   需求 7：子页简洁无限模型加载动画
-   -------------------------------------------------------------------------- */
-.infinity-loader {
-  position: fixed;
-  inset: 0;
-  z-index: 120;
-  background: var(--paper);
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 1rem;
-  transition: opacity 420ms var(--ease), transform 420ms var(--ease), visibility 0s linear 420ms;
-}
-.infinity-loader[data-loaded="true"] {
-  opacity: 0;
-  visibility: hidden;
-  pointer-events: none;
-  transform: scale(1.02);
-}
-.loader-stage-box {
-  position: relative;
-  width: 15.5rem;
-  height: 7.6rem;
-  border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--rule));
-  background: color-mix(in srgb, var(--paper) 92%, var(--canvas));
-  border-radius: 3px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  overflow: hidden;
-}
-.loader-infinity-canvas {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  display: block;
-}
-.loader-planar-svg {
-  position: relative;
-  z-index: 2;
-  width: 11rem;
-  height: 5.4rem;
-  color: var(--accent);
-  pointer-events: none;
-}
-.loader-planar-svg .loader-loop-trace {
-  stroke-dasharray: 260;
-  stroke-dashoffset: 260;
-  animation: subpage-infinity-dash 1.5s var(--ease) infinite;
-}
-@keyframes subpage-infinity-dash {
-  0% { stroke-dashoffset: 260; }
-  50% { stroke-dashoffset: 0; }
-  100% { stroke-dashoffset: -260; }
-}
-.loader-meta {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 0.35rem;
-  font-size: 0.78rem;
-  letter-spacing: 0.12em;
-  color: var(--muted);
-}
-.loader-title-kai {
-  font-family: var(--kai);
-  font-size: var(--text-md);
-  letter-spacing: 0.16em;
-  color: var(--ink);
-}
-.loader-bar-track {
-  width: 11rem;
-  height: 2px;
-  background: var(--rule);
-  overflow: hidden;
-  border-radius: 2px;
-}
-.loader-bar-fill {
-  height: 100%;
-  width: 0%;
-  background: var(--accent);
-  transition: width 100ms linear;
-}
+    /* ========================================================================
+       需求 7：简洁页面加载动画（结合无限主题与主页无限粒子模型）
+       ======================================================================== */
+    /* ========================================================================
+       需求 6：全新重构全屏沉浸式粒子立体无限流形加载器
+       ======================================================================== */
+    .infinity-loader {
+      position: fixed;
+      inset: 0;
+      z-index: 120;
+      background: var(--paper);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+      transition: opacity 640ms cubic-bezier(0.16, 1, 0.3, 1), transform 640ms cubic-bezier(0.16, 1, 0.3, 1), filter 640ms cubic-bezier(0.16, 1, 0.3, 1), visibility 0s linear 640ms;
+    }
+    .infinity-loader[data-loaded="true"] {
+      opacity: 0;
+      visibility: hidden;
+      pointer-events: none;
+      transform: scale(1.035);
+      filter: blur(8px);
+    }
+    .loader-infinity-canvas {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      display: block;
+      pointer-events: none;
+      z-index: 1;
+    }
+    .loader-meta {
+      position: relative;
+      z-index: 3;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0.75rem;
+      font-family: var(--mono);
+      font-size: 0.76rem;
+      letter-spacing: 0.14em;
+      color: var(--muted);
+      pointer-events: none;
+      text-align: center;
+    }
+    .loader-brand-emblem {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0.35rem;
+    }
+    .loader-title-kai {
+      font-family: var(--kai);
+      font-size: clamp(1.8rem, 4vw, 2.4rem);
+      letter-spacing: 0.22em;
+      color: var(--ink);
+      font-weight: normal;
+      text-shadow: 0 0 28px rgba(217, 119, 87, 0.18);
+    }
+    #loader-status-text {
+      color: var(--accent);
+      font-size: 0.72rem;
+      letter-spacing: 0.16em;
+      font-weight: 500;
+    }
+    .loader-progress-row {
+      display: flex;
+      align-items: center;
+      gap: 0.85rem;
+      margin-top: 0.25rem;
+    }
+    .loader-bar-track {
+      width: 16rem;
+      height: 2px;
+      background: color-mix(in srgb, var(--accent) 18%, var(--rule));
+      overflow: hidden;
+      border-radius: 2px;
+      box-shadow: inset 0 0 3px rgba(0, 0, 0, 0.05);
+    }
+    .loader-bar-fill {
+      height: 100%;
+      width: 0%;
+      background: linear-gradient(90deg, rgba(232, 146, 110, 0.6), var(--accent));
+      box-shadow: 0 0 8px var(--accent);
+      transition: width 120ms cubic-bezier(0.1, 0.9, 0.2, 1);
+    }
+    .loader-pct-readout {
+      font-family: var(--mono);
+      font-size: 0.72rem;
+      color: var(--accent);
+      min-width: 2.4rem;
+      text-align: right;
+    }
 
 /* --------------------------------------------------------------------------
    需求 8：昼夜切换过渡动画层
@@ -260,79 +270,153 @@ a { color: inherit; text-decoration: none; }
 }
 
 /* --------------------------------------------------------------------------
-   顶部导航条
+   顶部导航条（与 HUD 页面统一，2026-10-18）
    -------------------------------------------------------------------------- */
+
+/* 顶层导航栏 */
 .site-nav-bar {
   position: sticky;
   top: 0;
-  z-index: 40;
-  background: color-mix(in srgb, var(--paper) 88%, transparent);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  border-bottom: 1px solid var(--rule);
+  z-index: 45;
+  height: var(--nav-h);
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--paper) 78%, transparent) 0%,
+    color-mix(in srgb, var(--paper) 66%, transparent) 100%
+  );
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  border-bottom: 1px solid color-mix(in srgb, var(--rule) 82%, var(--accent) 18%);
+  box-shadow:
+    0 10px 32px -18px rgba(20, 20, 19, 0.16),
+    inset 0 1px 0 0 color-mix(in srgb, #ffffff 36%, transparent);
+  transition: background var(--dur-base) ease, border-color var(--dur-base) ease;
+}
+
+:root[data-theme='dark'] .site-nav-bar {
+  background: linear-gradient(
+    180deg,
+    rgba(20, 20, 19, 0.76) 0%,
+    rgba(20, 20, 19, 0.62) 100%
+  );
+  box-shadow:
+    0 12px 36px -16px rgba(0, 0, 0, 0.65),
+    inset 0 1px 0 0 rgba(255, 255, 255, 0.06);
 }
 
 .site-nav-bar .wrap {
-  min-height: var(--nav-h);
+  height: 100%;
+  max-width: min(96rem, calc(100vw - 2rem));
+  padding: 0 1.75rem;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: var(--space-4);
 }
 
-.site-nav-left {
+.nav-left-cluster {
   display: flex;
   align-items: center;
-  gap: var(--space-4);
+  gap: 1.4rem;
+  min-width: 0;
 }
 
-.site-nav-emblem {
+.nav-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.65rem;
+  padding: 0.28rem 0.75rem 0.28rem 0.55rem;
+  border: 1px solid color-mix(in srgb, var(--accent) 38%, var(--rule));
+  background: color-mix(in srgb, var(--paper) 55%, transparent);
+  border-radius: 3px;
+  position: relative;
+  transition: border-color var(--dur-fast) ease, background-color var(--dur-fast) ease;
+}
+.nav-brand:hover {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+}
+
+.nav-brand-mark {
+  width: 26px;
+  height: 14px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  height: 14px;
   color: var(--accent);
+}
+
+.nav-brand-text {
+  font-family: var(--kai);
+  font-size: var(--text-base);
+  letter-spacing: 0.1em;
+  color: var(--ink);
+  line-height: 1;
+}
+
+.nav-brand-coord {
+  font-family: var(--mono);
+  font-size: 0.68rem;
+  letter-spacing: 0.08em;
+  color: var(--faint);
+  padding-left: 0.45rem;
+  border-left: 1px solid var(--rule);
 }
 
 .site-nav {
-  font-size: var(--text-sm);
-  letter-spacing: 0.14em;
-}
-
-.site-nav a { color: var(--muted); transition: color var(--dur-fast) ease; }
-.site-nav a:hover { color: var(--accent); }
-.site-nav a[aria-current="page"] { color: var(--accent); }
-
-.site-nav .sep {
-  color: var(--faint);
-  margin: 0 0.55em;
-}
-
-.nav-theme-btn {
-  display: inline-flex;
+  display: flex;
   align-items: center;
-  gap: 0.45rem;
-  padding: 0.24rem 0.7rem;
-  border: 1px solid color-mix(in srgb, var(--accent) 42%, var(--rule));
-  border-radius: 3px;
-  background: color-mix(in srgb, var(--accent) 8%, var(--paper));
-  color: var(--ink);
-  font-family: var(--sans);
-  font-size: 0.8rem;
-  letter-spacing: 0.06em;
-  cursor: pointer;
-  transition: all var(--dur-fast) ease;
+  gap: 0.25rem;
+  flex-wrap: wrap;
 }
-.nav-theme-btn:hover {
-  border-color: var(--accent);
-  color: var(--accent);
-}
-.nav-theme-btn .btn-planar-icon {
-  width: 20px;
-  height: 10px;
+
+.site-nav-link {
+  position: relative;
   display: inline-flex;
+  align-items: baseline;
+  gap: 0.32rem;
+  padding: 0.34rem 0.78rem;
+  border-radius: 3px;
+  color: var(--muted);
+  font-family: var(--kai);
+  font-size: var(--text-base);
+  letter-spacing: 0.1em;
+  transition: color var(--dur-fast) ease, background-color var(--dur-fast) ease;
+}
+
+.site-nav-link .nav-idx {
+  font-family: var(--mono);
+  font-size: 0.7rem;
+  letter-spacing: 0.06em;
+  color: var(--faint);
+  transition: color var(--dur-fast) ease;
+}
+
+.site-nav-link:hover,
+.site-nav-link[aria-current="page"] {
+  color: var(--ink);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+}
+
+.site-nav-link:hover .nav-idx,
+.site-nav-link[aria-current="page"] .nav-idx {
   color: var(--accent);
+}
+
+.site-nav-link[aria-current="page"]::after {
+  content: '';
+  position: absolute;
+  left: 0.78rem;
+  right: 0.78rem;
+  bottom: 0.14rem;
+  height: 1.5px;
+  background: var(--accent);
+}
+
+.nav-right-cluster {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
 }
 
 /* --------------------------------------------------------------------------
@@ -421,7 +505,6 @@ a { color: inherit; text-decoration: none; }
 @media (max-width: 34rem) {
   body { font-size: var(--text-base); }
   .site-head { padding-top: var(--space-7); }
-  .site-nav .sep { margin: 0 0.35em; }
   .section-head {
     padding: var(--space-7) 0 var(--space-5);
     flex-direction: column;

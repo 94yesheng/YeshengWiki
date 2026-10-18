@@ -38,6 +38,7 @@ const OUT = path.join(ROOT, 'src', 'artifact');
 const HOME_OUT = path.join(OUT, 'home');
 const IMAGE_DIR = path.join(ROOT, 'public', 'artifact', 'home', 'images');
 const ROLLBACK_DIR = path.join(ROOT, 'scripts', 'artifact-patches', 'animation-rollback');
+const TWEAKS_CSS = path.join(ROOT, 'scripts', 'artifact-patches', 'ui-tweaks.css');
 
 /**
  * 动画回滚补丁（用户 2026-10-18 明确要求保留上一版的手感）：
@@ -175,6 +176,7 @@ css = replaceSegment(
   '',
   '移除新版 loader 覆盖'
 );
+css = css.trimEnd() + '\n\n' + fs.readFileSync(TWEAKS_CSS, 'utf8').trim() + '\n';
 
 const bodyInner = sliceBetween(
   raw,
@@ -377,6 +379,48 @@ let header = removeBlock(
   '视图切换器'
 );
 header = applyRoutePatches(header);
+assert(header.includes('id="nav-theme-pill"'), '页头缺少主题切换按钮');
+header = header.replace(
+  /\s*<!-- 白天无限环 \/ 夜间黑洞 联动切换按钮 -->\s*<button type="button" class="nav-math-pill"[\s\S]*?<\/button>/,
+  ''
+);
+assert(!header.includes('nav-theme-pill'), '主题切换按钮未删除');
+// 右侧只剩空容器时一并去掉，避免留下无意义的空 div
+header = header.replace(/\s*<div class="nav-right-cluster">\s*<\/div>/, '');
+
+/**
+ * 页脚微调：
+ *   - 删掉快捷链接整行（主题切换 + 文章/照片/RSS 快捷入口）；
+ *   - 把分隔线 logo 从页首挪到所有信息的最底部。
+ */
+function tidyFooter(html) {
+  const quickRe = /\s*<span>\s*<a href="[^"]*" id="footer-dark-hint">[\s\S]*?<\/span>/;
+  assert(quickRe.test(html), '页脚缺少快捷链接行');
+  let out = html.replace(quickRe, '');
+
+  // 程序栏「点亮夜间辉光管」的锚点改为指向 DM 本体
+  out = out.replace(
+    '<div class="dm dm--dark-only"',
+    '<div class="dm dm--dark-only" id="footer-dm"'
+  );
+
+  const divStart = out.indexOf('<div class="planar-divider-bar"');
+  assert(divStart !== -1, '页脚缺少分隔线 logo');
+  const divEnd = out.indexOf('</div>', divStart);
+  assert(divEnd !== -1, '分隔线 logo 未闭合');
+  const divider =
+    '      ' + out.slice(divStart, divEnd + '</div>'.length).replace(/^\s+/, '');
+  out = out.slice(0, divStart) + out.slice(divEnd + '</div>'.length);
+
+  const footerClose = '    </div>\n  </footer>';
+  assert(out.includes(footerClose), '页脚收尾结构异常');
+  out = out.replace(footerClose, divider + '\n' + footerClose);
+  assert(
+    out.lastIndexOf('planar-divider-bar') > out.lastIndexOf('dm-tubes'),
+    '分隔线 logo 不在最底部'
+  );
+  return out;
+}
 
 let tail = removeBlock(
   tailRaw,
@@ -384,7 +428,7 @@ let tail = removeBlock(
   '<!-- [FAB_VIEW_END] -->',
   'FAB 视图切换按钮'
 );
-tail = applyRoutePatches(tail);
+tail = tidyFooter(applyRoutePatches(tail));
 
 const homeSections = {};
 for (const [key, id] of Object.entries(HOME_SECTIONS)) {
@@ -399,6 +443,46 @@ assert(
 homeSections.posts = homeSections.posts.replace(
   '<a class="posts-spot-cover"',
   '<a class="posts-spot-cover" id="spot-cover-link"'
+);
+
+// 删除梗概下方的「阅读全文」与「重置最新」两个按钮
+assert(homeSections.posts.includes('id="spot-read-btn"'), '文章栏缺少阅读全文按钮');
+homeSections.posts = homeSections.posts.replace(
+  /\s*<a class="q-read-btn" id="spot-read-btn"[\s\S]*?<\/a>/,
+  ''
+);
+assert(homeSections.posts.includes('id="spot-reset-btn"'), '文章栏缺少重置按钮');
+homeSections.posts = homeSections.posts.replace(
+  /\s*<span class="q-sec-badge" id="spot-reset-btn"[\s\S]*?<\/span>/,
+  ''
+);
+homeSections.posts = rep(
+  homeSections.posts,
+  '点击「阅读全文」直接进入「文章详细页」。',
+  '点击文章标题可直接进入「文章详细页」。',
+  '文章栏说明文案'
+);
+
+// 删除照片栏「查看全部照片与拍摄参数」跳转按钮
+assert(
+  homeSections.photos.includes('查看全部照片与拍摄参数'),
+  '照片栏缺少查看全部按钮'
+);
+homeSections.photos = homeSections.photos.replace(
+  /\s*<a class="q-read-btn"[^>]*href="\/photos\/#frame-0"[^>]*>\s*<span>查看全部照片与拍摄参数<\/span>[\s\S]*?<\/a>/,
+  ''
+);
+assert(
+  !homeSections.photos.includes('查看全部照片与拍摄参数'),
+  '照片栏查看全部按钮未删除'
+);
+
+// 页脚快捷链接删除后，程序栏的辉光管触发锚点改指向 DM 本体
+homeSections.programs = rep(
+  homeSections.programs,
+  'href="#footer-dark-hint"',
+  'href="#footer-dm"',
+  '程序栏辉光管锚点'
 );
 
 // 无限环模型回滚后，首屏的静态遥测文案也要跟着回退
@@ -427,14 +511,54 @@ homeSections.hero = rep(
   'hero ELEMENTS 遥测'
 );
 
+// 删除「一个普通人的自述」后面的主题提示框
+assert(homeSections.hero.includes('id="hero-theme-chip"'), '首屏缺少主题提示框');
+homeSections.hero = homeSections.hero.replace(
+  /\s*<span class="infinity-chip" id="hero-theme-chip">[\s\S]*?<\/span>/,
+  ''
+);
+
+// 删除模型框上方的昼夜切换按钮
+assert(
+  homeSections.hero.includes('class="stage-mode-switch-inline"'),
+  '首屏缺少昼夜切换按钮'
+);
+homeSections.hero = homeSections.hero.replace(
+  /\s*<div class="stage-mode-switch-inline"[\s\S]*?<\/div>/,
+  ''
+);
+
+// 左侧介绍栏留白处：∞ / 黑洞两个简洁平面图标
+const heroMotif = `
+              <div class="hero-planar-motif" aria-hidden="true">
+                <svg class="hero-motif-infinity" viewBox="0 0 96 48">
+                  <path d="M28 5.9C17.9 5.9 9.9 13.9 9.9 24C9.9 34.1 17.9 42.1 28 42.1C40.5 42.1 55.5 5.9 68 5.9C78.1 5.9 86.1 13.9 86.1 24C86.1 34.1 78.1 42.1 68 42.1C55.5 42.1 40.5 5.9 28 5.9Z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+                  <circle cx="28" cy="24" r="3.4" fill="currentColor"/>
+                  <circle cx="68" cy="24" r="3.4" fill="currentColor"/>
+                </svg>
+                <span class="hero-motif-rule"></span>
+                <svg class="hero-motif-blackhole" viewBox="0 0 48 48">
+                  <circle cx="24" cy="24" r="18" fill="none" stroke="currentColor" stroke-width="1.4" stroke-dasharray="3 4"/>
+                  <circle cx="24" cy="24" r="8.5" fill="currentColor"/>
+                  <ellipse cx="24" cy="25" rx="22" ry="4.6" transform="rotate(-12 24 25)" fill="none" stroke="currentColor" stroke-width="1.3"/>
+                </svg>
+              </div>`;
+homeSections.hero = homeSections.hero.replace(
+  /(<div class="hero-intro">[\s\S]*?<\/div>\s*)(<\/div>\s*<nav class="hero-q-index")/,
+  (m, intro, tail) => intro + heroMotif + '\n              ' + tail.trimStart()
+);
+assert(homeSections.hero.includes('hero-planar-motif'), '首屏平面图标未插入');
+
 // 子页页脚：回到主页首屏要用绝对路径
-const tailSubpage = applyRoutePatches(
-  tailRaw
-    .replace(
-      'href="#screen-hero" id="footer-dark-hint"',
-      'href="/#screen-hero" id="footer-dark-hint"'
-    )
-    .replace(/<!-- \[FAB_VIEW_START\] -->[\s\S]*?<!-- \[FAB_VIEW_END\] -->/, '')
+const tailSubpage = tidyFooter(
+  applyRoutePatches(
+    tailRaw
+      .replace(
+        'href="#screen-hero" id="footer-dark-hint"',
+        'href="/#screen-hero" id="footer-dark-hint"'
+      )
+      .replace(/<!-- \[FAB_VIEW_START\] -->[\s\S]*?<!-- \[FAB_VIEW_END\] -->/, '')
+  )
 );
 
 /* --------------------------------------------------------------------------
@@ -556,6 +680,14 @@ articleSource = rep(
   '文章画布说明'
 );
 
+// 删除左上角两个跳转按钮（返回文章子页 / 返回主页）
+assert(articleSource.includes('返回文章子页'), '文章页缺少返回文章子页按钮');
+articleSource = articleSource.replace(
+  /\s*<div style="display:flex; align-items:center; gap:0\.5rem; flex-wrap:wrap;">\s*<a class="article-back-btn"[\s\S]*?<\/a>\s*<a class="article-back-btn"[\s\S]*?<\/a>\s*<\/div>/,
+  ''
+);
+assert(!articleSource.includes('返回文章子页'), '文章页返回按钮未删除');
+
 articleSource = articleSource.replace(/\s+aria-current="page"/g, '');
 
 /* --------------------------------------------------------------------------
@@ -568,12 +700,39 @@ let postsSection = postsRaw.replace(
 postsSection = applyRoutePatches(postsSection);
 postsSection = postsSection.replace(/\s+aria-current="page"/g, '');
 
+// 删除左上角「返回主页」，并去掉只为包住返回按钮而存在的空行容器
+assert(postsSection.includes('返回主页象限'), '归档页缺少返回主页按钮');
+postsSection = postsSection.replace(
+  /\s*<div class="article-hero-top-row">\s*<a class="article-back-btn"[^>]*>[\s\S]*?<\/a>\s*(<span class="spot-kicker"[\s\S]*?<\/span>)\s*<\/div>/,
+  '\n            $1'
+);
+assert(!postsSection.includes('返回主页象限'), '归档页返回主页按钮未删除');
+
+// 右侧四张统计卡：删掉下方的小字说明
+const smallCount = (postsSection.match(/<small\b/g) || []).length;
+assert(smallCount === 4, `归档页统计卡小字数量异常：${smallCount}`);
+postsSection = postsSection.replace(/\s*<small\b[^>]*>[\s\S]*?<\/small>/g, '');
+
 let photosSection = photosRaw.replace(
   '<section class="photos-detail-view" id="photos-view" hidden>',
   '<section class="photos-detail-view" id="photos-view">'
 );
 photosSection = applyRoutePatches(photosSection);
 photosSection = photosSection.replace(/\s+aria-current="page"/g, '');
+
+// 删除「切换横/竖框演示」与「全屏灯箱」两个按钮
+assert(photosSection.includes('id="insp-toggle-orient-btn"'), '照片页缺少横竖切换按钮');
+photosSection = photosSection.replace(
+  /\s*<button[^>]*id="insp-toggle-orient-btn"[\s\S]*?<\/button>/,
+  ''
+);
+assert(photosSection.includes('id="insp-zoom-btn"'), '照片页缺少全屏灯箱按钮');
+photosSection = photosSection.replace(
+  /\s*<button[^>]*id="insp-zoom-btn"[\s\S]*?<\/button>/,
+  ''
+);
+assert(!photosSection.includes('insp-toggle-orient-btn'), '照片页横竖切换按钮未删除');
+assert(!photosSection.includes('insp-zoom-btn'), '照片页全屏灯箱按钮未删除');
 
 const highlightNav = (s, view) => {
   const without = s.replace(/\s+aria-current="page"/g, '');
@@ -802,8 +961,10 @@ assert(js.includes('transVeil'), '昼夜切换未回滚到 veil 版本');
 fs.mkdirSync(HOME_OUT, { recursive: true });
 
 const write = (file, text) => {
-  fs.writeFileSync(file, text);
-  const kb = (Buffer.byteLength(text, 'utf8') / 1024).toFixed(1);
+  // 去掉行尾空白与多余 EOF 空行，避免 git diff --check 报错
+  const normalized = text.replace(/[ \t]+$/gm, '').replace(/\n+$/, '\n');
+  fs.writeFileSync(file, normalized);
+  const kb = (Buffer.byteLength(normalized, 'utf8') / 1024).toFixed(1);
   console.log(`  ${path.relative(ROOT, file).padEnd(34)} ${kb.padStart(9)} KB`);
 };
 

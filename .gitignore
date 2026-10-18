@@ -52,4 +52,5 @@ src/styles/theme-extras.css
 scripts/artifact-patches/*
 !scripts/artifact-patches/animation-rollback/
 !scripts/artifact-patches/animation-rollback/**
+!scripts/artifact-patches/ui-tweaks.css
 divergence-meter (4).html
