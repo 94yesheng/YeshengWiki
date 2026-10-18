@@ -1,17 +1,6 @@
 ---
 /**
- * 文章页 —— artifact 版。
- *
- * 骨架来自 code_artifact.html 的 #article-view（原样切出，见 scripts/import-artifact.mjs），
- * 正文换成 Astro 的 <Content />，标题/日期/标签/字数/目录/上下篇/右栏由这里注入。
- *
- * 【几个必须记住的约定】
- * · 模板里用 @@NAME@@ 占位符；替换一律 split/join（避免 $& 被 String.replace 当替换模式）。
- * · @@PROSE@@ 是正文插入点：前面那段以 <div class="article-prose-q"> 结尾、
- *   后面那段以 </div> 开头，所以 <Content /> 必须**直接**夹在两个 Fragment 之间，
- *   不能额外包一层 div，否则会破坏 .article-workspace-grid 的网格上下文。
- * · 现有 5 篇正文没有 Markdown 标题（小标题都是 **加粗**），所以 headings 是空的 ——
- *   TOC 显示空态提示，不伪造目录。
+ * 文章页 —— artifact 版（右侧搭载《三体》三个天体的混沌引力运动模型）。
  */
 import { render } from 'astro:content';
 import ArtifactLayout from '../../layouts/ArtifactLayout.astro';
@@ -39,7 +28,7 @@ const { Content, headings } = await render(post);
 const { chars, minutes } = readingTime(post.body ?? '');
 
 const index = posts.findIndex((p) => p.id === post.id);
-const newer = index > 0 ? posts[index - 1] : null; // 数组是 pubDate 倒序
+const newer = index > 0 ? posts[index - 1] : null;
 const older = index < posts.length - 1 ? posts[index + 1] : null;
 
 const title = cjkSpacing(post.data.title);
@@ -113,8 +102,7 @@ const slots: Record<string, string> = {
   WORDS: `约 ${chars.toLocaleString('zh-CN')} 字`,
   READING: `约 ${minutes} 分钟`,
   KICKER: `ARCHIVE COORDINATE // ENTRY #${entryNo}`,
-  // 注意：这个值会进 HTML，尖括号必须写成实体，否则会被当标签解析
-  KINETIC_CAPTION: isMc ? 'LOCAL : 25565 &lt;-&gt; FRP' : 'LOCAL : STATIC BUILD',
+  KINETIC_CAPTION: isMc ? 'LOCAL : 25565 &lt;-&gt; FRP' : '3-BODY GRAVITY // CHAOTIC ORBIT',
   TOC: tocHtml,
   RAIL_TOPOLOGY: isMc ? railTopology : genericRail,
   RAIL_SPEC: isMc ? railSpec : '',

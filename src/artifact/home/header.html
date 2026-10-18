@@ -1,0 +1,65 @@
+<header class="site-nav-bar">
+    <div class="wrap">
+      <div class="nav-left-cluster">
+        <a href="/" class="nav-brand" aria-label="夜笙的小世界 主页">
+          <span class="nav-brand-mark" aria-hidden="true">
+            <svg class="planar-icon planar-icon--infinity" viewBox="0 0 36 18" aria-hidden="true">
+              <path d="M9.5 3.5C5.2 3.5 2.5 6.1 2.5 9C2.5 11.9 5.2 14.5 9.5 14.5C14.2 14.5 21.8 3.5 26.5 3.5C30.8 3.5 33.5 6.1 33.5 9C33.5 11.9 30.8 14.5 26.5 14.5C21.8 14.5 14.2 3.5 9.5 3.5Z" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"/>
+              <circle cx="9.2" cy="9" r="1.3" fill="currentColor"/>
+              <circle cx="26.8" cy="9" r="1.3" fill="currentColor"/>
+            </svg>
+            <svg class="planar-icon planar-icon--blackhole" viewBox="0 0 36 18" aria-hidden="true">
+              <path d="M8.5 8.2C11.2 2.4 24.8 2.4 27.5 8.2" fill="none" stroke="currentColor" stroke-width="1.35" stroke-linecap="round"/>
+              <path d="M10.5 10.2C13.2 14.8 22.8 14.8 25.5 10.2" fill="none" stroke="currentColor" stroke-width="1.1" stroke-opacity="0.75" stroke-linecap="round"/>
+              <circle cx="18" cy="9" r="4.2" fill="currentColor"/>
+              <ellipse cx="18" cy="9.2" rx="14.5" ry="3.1" transform="rotate(-11 18 9.2)" fill="none" stroke="currentColor" stroke-width="1.5"/>
+            </svg>
+          </span>
+          <span class="nav-brand-text">夜笙</span>
+          <span class="nav-brand-coord">96REM // ULTRAWIDE</span>
+        </a>
+
+        <nav class="site-nav" aria-label="主导航">
+          <a href="/" class="site-nav-link" aria-current="page">
+            <span class="nav-idx">00</span><span>主页</span>
+          </a>
+          <a href="/posts/" class="site-nav-link">
+            <span class="nav-idx">01</span><span>文章</span>
+          </a>
+          <a href="/photos/" class="site-nav-link">
+            <span class="nav-idx">02</span><span>照片</span>
+          </a>
+          <a href="/programs/" class="site-nav-link">
+            <span class="nav-idx">03</span><span>程序</span>
+          </a>
+          <a href="/links/" class="site-nav-link">
+            <span class="nav-idx">04</span><span>友链·站点</span>
+          </a>
+        </nav>
+      </div>
+
+      <div class="nav-right-cluster">
+        <!-- 预览切换器：import-artifact.mjs 会在生成 Astro 模板时自动剥离此块 -->
+        
+
+        <!-- 白天无限环 / 夜间黑洞 联动切换按钮 -->
+        <button type="button" class="nav-math-pill" id="nav-theme-pill" title="点击切换白天（纯粒子无限环）/ 夜间（卡冈图雅黑洞）">
+          <svg id="nav-theme-svg" viewBox="0 0 18 18" aria-hidden="true">
+            <circle cx="9" cy="9" r="3.6"/>
+            <path d="M9 2v2M9 14v2M2 9h2M14 9h2M4.1 4.1l1.4 1.4M12.5 12.5l1.4 1.4M13.9 4.1l-1.4 1.4M5.5 12.5l-1.4 1.4"/>
+          </svg>
+          <span id="nav-mode-text">DAY // 立体无限环</span>
+        </button>
+      </div>
+    </div>
+  </header>
+  <!-- 右侧 5 屏独立分屏坐标刻度尺 -->
+  <aside class="screen-ruler" id="screen-ruler" aria-label="分屏坐标导航">
+    <button type="button" class="ruler-tick" data-scroll-to="screen-hero" aria-current="true">00 / HERO</button>
+    <button type="button" class="ruler-tick" data-scroll-to="screen-posts">01 / POSTS</button>
+    <button type="button" class="ruler-tick" data-scroll-to="screen-photos">02 / PHOTOS</button>
+    <button type="button" class="ruler-tick" data-scroll-to="screen-programs">03 / PROG</button>
+    <button type="button" class="ruler-tick" data-scroll-to="screen-links">04 / LINKS·SITE</button>
+  </aside>
+
+  <!-- 视图一：主页五屏象限视图（超宽 96rem） -->

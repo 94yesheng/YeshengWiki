@@ -41,7 +41,7 @@ npm run build        # → dist/（要上传的就是它）
 npm run preview      # 用构建产物起本地服务器
 npm run check        # 类型检查（CI 里也会跑）
 npm run vault        # 生成/更换后台解锁密文（见 7.3）
-npm run import:artifact   # 从设计源重新生成 src/artifact/*（见 5.3）
+npm run import:artifact   # 从设计源重新生成 CSS/JS/文章页（主页拆分不会覆盖，见 5.3）
 ```
 
 开发服务器建议用后台模式（`CLAUDE.md` / `AGENTS.md` 里也是这条）：
@@ -62,7 +62,7 @@ D:\blog\
 ├── astro.config.mjs          # 站点地址、输出格式、sitemap
 ├── package.json              # 依赖与命令
 ├── tsconfig.json             # TypeScript 严格模式
-├── .gitignore                # 排除 dist/.astro/.work/mockups/node_modules/code_artifact.html
+├── .gitignore                # 排除 dist/.astro/.work/mockups/node_modules/code_artifact.html 及本地备份/预览
 ├── .gitattributes            # 仓库内一律 LF
 ├── CLAUDE.md / AGENTS.md     # AI 助手的项目约定（同一份文件）
 ├── README.md                 # 本文档
@@ -80,7 +80,8 @@ D:\blog\
 │   │   ├── BaseLayout.astro       # 纸墨体系的壳（子页用）
 │   │   └── ArtifactLayout.astro   # HUD 体系的独立壳（主页/文章页用）
 │   ├── components/           # 13 个单文件组件 + divergence-meter/
-│   ├── artifact/             # 由 import-artifact.mjs 生成的 CSS/JS/HTML（入库）
+│   ├── artifact/             # 生成器产出的 CSS/JS + 拆分后的主页 partial（入库）
+│   │   └── home/             # 主页八段：loader/header/hero/posts/photos/programs/links/tail
 │   ├── styles/               # tokens / base / prose / gallery / fab / studio / artifact-prose
 │   ├── studio/               # 自建后台的逻辑（打包进 /studio/）
 │   ├── utils/                # 取文章、日期、中文排版、主题、照片、时间线
@@ -94,6 +95,7 @@ D:\blog\
 │   ├── favicon.ico/.svg
 │   ├── .htaccess
 │   ├── admin/                # Sveltia 备份后台（程序本体由 copy-cms 生成，字体/配置入库）
+│   ├── artifact/home/images/ # 主页静态图（从 base64 抽出，11 个文件）
 │   └── studio/vault.json     # 后台解锁密文（公开也无所谓）
 │
 ├── dist/                     # 构建产物（上传这个目录里的内容）
@@ -177,7 +179,7 @@ D:\blog\
 
 #### 布局与动效
 
-- 粘顶导航（`--nav-h`）、`.screen` 整屏区块、时间线的年 → 月 → 条目、照片墙按宽高比排成居中的行。
+- 粘顶导航（`--nav-h`）、`.screen` 整屏区块、时间线的年 → 月 → 条目、照片墙在每面墙内部用两列瀑布流（比例不变，靠 `grid-row-end` 跨度自然错开）。
 - 动效克制：`--ease: cubic-bezier(.22,.61,.36,1)`，三档 200/320/700ms；悬停多是颜色 + 极小位移。
 - 夜间模式：`<html data-theme="dark">`，首屏前由 `THEME_BOOT` 写好，跟随系统 + 可手动覆盖，键名 `localStorage['theme']`。
 - **不要给 `html` 加 `overflow`**：照片灯箱靠 `body.lightbox-open { overflow: hidden }` 传播到 viewport 锁滚动。
@@ -191,14 +193,24 @@ D:\blog\
 ```
 artifact.css       2317 行，原样
 artifact.js        1539 行，原样 + 9 条最小补丁
-home.html          主页五屏（1.8 MB，图片内联）
+home/              主页按屏拆分（8 个 partial，单个 ≤13 KB）
+  loader.html        加载层 + 昼夜过渡层
+  header.html        粘顶导航
+  hero.html          00 · HERO
+  posts.html         01 · POSTS
+  photos.html        02 · PHOTOS
+  programs.html      03 · PROGRAMS
+  links.html         04 · LINKS
+  tail.html          页脚 + 悬浮球 + 实验台 + toast
 article.html       文章页骨架（@@TOKEN@@ 占位）
 rail-*.html        Mc 文章专属的右栏卡
 home-snap.js       主页滚动吸附（站点自己的行为，不进生成器）
 ```
 
+主页图片已从 base64 抽到 `public/artifact/home/images/`（11 个文件），由 `HomeArtifact.astro` 按顺序拼接。`import-artifact.mjs` 不再输出单体 `home.html`，避免重新生成 1.7 MB 文件。
+
 **改版流程**：把新的 `code_artifact.html` 放回根目录 → `npm run import:artifact` → 检查生成物 → 构建。
-源文件本身被 `.gitignore` 排除，仓库里只存生成物；构建不依赖它。
+源文件本身被 `.gitignore` 排除，仓库里只存生成物；构建不依赖它。主页结构现在以 `src/artifact/home/*.html` 为准，重跑生成器只会更新 CSS/JS 和文章页，不会覆盖主页拆分。
 
 #### 视觉语言
 
@@ -207,8 +219,8 @@ home-snap.js       主页滚动吸附（站点自己的行为，不进生成器�
 - **字体**：楷体用于标题，等宽字（`--mono`）用于编号、坐标、按钮说明；数字仍然走黑体。
 - **颜色**：与纸墨体系同一组变量（`--paper` / `--ink` / `--rule` / `--accent`），但使用密度高得多。
 - **两种主题**：
-  - 白天 `DAY // 立体无限环`：伯努利双纽线丝带 + 粒子场
-  - 夜间 `NIGHT // 卡冈图雅黑洞`：视界、吸积盘、引力透镜弧与开普勒流线
+  - 白天 `DAY // 纯粒子无限环`：伯努利双纽线上的粒子云；没有丝带、拓扑连线、切向尾迹
+  - 夜间 `NIGHT // 卡冈图雅黑洞`：连续薄吸积盘、光子环、平滑透镜拱；按投影深度分前后两遍绘制
 - 主题按钮写在右上角，状态记在同一个 `localStorage['theme']`。
 
 #### 主页交互
@@ -222,7 +234,7 @@ home-snap.js       主页滚动吸附（站点自己的行为，不进生成器�
 #### 文章页结构
 
 - 顶栏：`DOC // 编号`、`/posts/<slug>/ · 标题`、阅读进度。
-- 双象限 hero：左标题 + lead + 四项遥测（发布日 / 分类 / 字数 / 阅读时长），右动态无限环 canvas。
+- 双象限 hero：左标题 + lead + 四项遥测（发布日 / 分类 / 字数 / 阅读时长），右侧**混沌三体** canvas（Pythagorean 构型、velocity Verlet、短尾迹；逃逸/能量漂移会复位）。
 - 三栏工作区：左章节导览 + 阅读进度 + 快捷操作；中正文；右伴读栏（Mc 文章显示 FRP 拓扑与 JDK 速查，其它文章显示通用「DOC SPEC」卡 + 相关文章）。
 - 底部：上一篇 / 下一篇 + `q-footbar`。
 - 正文由 Astro `<Content />` 渲染，样式由 `src/styles/artifact-prose.css` 补齐（列表、引用、代码块、表格、图片等）。
@@ -230,8 +242,9 @@ home-snap.js       主页滚动吸附（站点自己的行为，不进生成器�
 
 #### 动效与性能
 
-- 三张 canvas：主页无限环、主页卡冈图雅、文章页无限环。DPR 封顶 2，只受 window resize 驱动。
-- 动效是按用户要求「原封不动」保留的，因此**原设计没有 `prefers-reduced-motion` 分支**；主页吸附单独做了降级。
+- 三张 canvas：主页纯粒子无限环、主页卡冈图雅、文章页混沌三体。DPR 封顶 2；尺寸只在窗口变化时重算（不逐帧 resize）。
+- 三套模型都在 `renderFrame` 里按 `dt===0` 约定支持 `prefers-reduced-motion`（冻结/静态帧）；主页吸附也单独做了降级。
+- **加载 / 切换 / 平面元素**：全站加载遮罩（∞ 描边，`window.load` 后淡出）；昼夜切换的圆形展开覆盖层（黑洞/无限环）；页脚和角落的平面 ∞ / 黑洞 motif。两套布局共用 `src/styles/theme-extras.css` 与 `src/scripts/theme-runtime.js`。
 - 主页 2 MB（17 张 base64 图片），gzip 后约 1.5 MB；文章页 144–152 KB。建议服务器开 brotli/gzip。
 
 ---
@@ -414,7 +427,9 @@ npm run build
 | 加友链 | 编辑 `src/content/links.json` |
 | 改站名 / 导航 / 自我介绍 | `src/site.data.json`（`site.config.ts` 只负责读取） |
 | 改纸墨配色 / 字号 | `src/styles/tokens.css`；改字号注意楷体 ≥20px |
-| 改 HUD 视觉 | 改设计源 → `npm run import:artifact`；小改可直接改 `src/artifact/*`（但重跑会覆盖） |
+| 改 HUD 视觉 | 主页改 `src/artifact/home/*.html`；其余改设计源 → `npm run import:artifact`（主页拆分不会被覆盖） |
+| 改三套 canvas 模型 | 直接改 `src/artifact/artifact.js`；重跑 `import:artifact` 会覆盖，需同步设计源 |
+| 改加载/切换动画 | `src/scripts/theme-runtime.js` + `src/styles/theme-extras.css` |
 | 改主页吸附手感 | `src/artifact/home-snap.js` 里的 `THRESHOLD` / `DURATION` |
 | 换域名 | `astro.config.mjs` 的 `site` + `site.data.json` 的 `url` |
 | 让一篇文章不公开 | frontmatter `draft: true` |
@@ -431,6 +446,7 @@ npm run build
 | `artifact-check.mjs` | 主页/文章页验收：控制台报错、canvas 尺寸、标题/日期/字数、链接 |
 | `artifact-interact.mjs` | 交互验收：主题、队列预览、RESET、照片灯箱 |
 | `artifact-nav-snap.mjs` | 导航点击 + 滚动吸附 |
+| `ui-round2-check.mjs` | 本轮 UI 验收：无限环无 stroke/lineTo、黑洞中线剖面、三体帧差、照片瀑布流、友链、加载/切换、每帧 resize |
 | `kai-audit.mjs` / `kai-studio.mjs` | 全站 / 后台「楷体 ≥20px」审计 |
 | `digitcheck.mjs` / `font-audit.mjs` | 数字实际用的平台字体（CDP `CSS.getPlatformFontsForNode`） |
 | `dm-*.html` | 页脚彩蛋的独立原型 |

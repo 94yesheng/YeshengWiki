@@ -1,10 +1,7 @@
 /* ==========================================================================
-   照片区 —— 样板 B 的语言
-   同一套站点骨架，但这里换成：画布底色、无衬线小标签、大图主导、悬停动效
+   照片区 —— 保证每张照片原有宽高比（绝不强制压缩或裁切），交错排列适配 16:9 / 4:3 横竖构图
    ========================================================================== */
 
-/* 照片页的区块直接挂在 <main> 下，本身就是整屏宽，
-   所以这里铺底色不需要任何负边距技巧 */
 .gallery-page {
   margin-top: var(--space-6);
   padding: var(--space-7) 0 var(--space-8);
@@ -12,13 +9,6 @@
   border-top: 1px solid var(--line);
   border-bottom: 1px solid var(--line);
 }
-
-
-/* --------------------------------------------------------------------------
-   一面照片墙
-   「照片墙」是照片页的基本单位：可以只有一张照片，也可以有很多张。
-   标题 / 时间 / 地点 / 记录属于这面墙，单张照片只有可选的说明。
-   -------------------------------------------------------------------------- */
 
 .wall + .wall { margin-top: var(--space-8); }
 
@@ -41,11 +31,10 @@
   margin: 0;
   color: var(--muted);
   font-family: var(--sans);
-  font-size: var(--text-md);   /* 墙的"时间 · 地点"行：楷体锯齿，要 23px 才干净 */
+  font-size: var(--text-md);
   letter-spacing: 0.08em;
 }
 
-/* 记录文字：沿用文章正文的书籍排版，宽度收在阅读舒适区 */
 .wall-note {
   margin: var(--space-3) 0 0;
   max-width: var(--measure);
@@ -56,43 +45,31 @@
 }
 
 /* --------------------------------------------------------------------------
-   墙里的照片 —— 不裁切、不拉伸，保持原始宽高比，整组居中
-   每张按自己的宽高比拿一个固定基准宽度（--ar × 14rem），所以同一行的照片高度
-   天然一致、整行排下来很齐；容器 justify-content: center 让不足一行的也居中，
-   而不是靠左留一块空。
-   注：早先是"每张按比例拉伸去填满整行"，那样"满行"和"整组居中"是冲突的 ——
-   要居中就只能放弃拉伸。代价很小：不拉伸时每张约 272px 高，拉伸后约 292px，
-   肉眼几乎看不出差别。
-
-   【16rem 是怎么来的 —— 改了页面容器就要回来重算】
-   这个基准不是随便定的，是"让两张横图并排正好放得下"倒推出来的：
-     内容区宽度 − 行间距  ≥  2 × 宽高比 × 基准宽
-     61rem      − 0.75rem ≥  2 × 1.778   × 基准宽   ⇒  基准宽 ≤ 16.94rem
-   取 16rem 留一点余量。这条式子跟着 --shell 走：容器 65rem 时是 17rem，
-   56rem（内容区 53rem）时降到 14rem，2026-10 字号加大、容器增到 64rem
-   （内容区 61rem）后又回到 16rem。**改 --shell 就必须回来重算这一步**，
-   否则两张并排放不下、会退化成一行一张 —— 页面变高、每张图还孤零零缩在宽行中间。
+   需求 3：保持原有比例（16:9、4:3 横向或纵向）进行交错排列（Staggered Layout）
    -------------------------------------------------------------------------- */
-
 .wall-photos {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  column-gap: var(--space-3);
-  row-gap: var(--space-4);
   margin-top: var(--space-5);
 }
 
-.wall-photos .photo {
-  flex: 0 1 auto;
-  width: calc(var(--ar) * 16rem);
-  max-width: 100%;
+.wall-photos--staggered {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  column-gap: var(--space-5);
+  row-gap: var(--space-5);
+  align-items: start;
 }
 
-/* 只放一张的墙：撑满内容区，高度按原比例走。
-   56rem 的上限是**有意的护栏**：内容区现在 61rem，撑满会比页面里任何东西都宽、
-   看着顶格显满；56rem(=896px) 和"两张图并排"同量级但略窄，跟全站宽度关系更顺。
-   所以这里 100% 会撞到上限、实际就是 896px —— PhotoWall 的 sizes 要照这个写。 */
+/* 偶数项下移形成错落有致的交错视觉节奏，同时保留每张照片 100% 原始宽高比 */
+.wall-photos--staggered .photo:nth-child(even) {
+  margin-top: var(--space-6);
+}
+
+/* 纵向照片（3:4 或 9:16）在列中适度内收居中，既保持原比例不压缩，又避免单张竖图过高 */
+.wall-photos--staggered .photo[data-orient^="portrait"] {
+  width: 82%;
+  margin-inline: auto;
+}
+
 .wall-photos--single .photo {
   width: 100%;
   max-width: 56rem;
@@ -101,7 +78,6 @@
 .wall-photos--single img {
   width: 100%;
   height: auto;
-  /* 竖幅长图限高：加 object-fit 后是被"按比例缩在里面"，不是压扁 */
   max-height: 85vh;
   object-fit: contain;
 }
@@ -113,31 +89,58 @@
   font-size: var(--text-xs);
 }
 
-/* --------------------------------------------------------------------------
-   单张照片
-   -------------------------------------------------------------------------- */
-
 .photo {
-  margin: 0; /* figure 默认带外边距，网格自己控制间距 */
+  margin: 0;
+  padding: 0.4rem;
+  border: 1px solid var(--rule);
+  background: var(--paper);
+  border-radius: 4px;
   transition: transform var(--dur-base) var(--ease),
+              border-color var(--dur-base) ease,
               box-shadow var(--dur-base) ease;
 }
 
 .photo:hover {
   transform: translateY(-3px);
+  border-color: var(--accent);
   box-shadow: 0 16px 34px -20px rgba(20, 20, 19, 0.45);
 }
 
-/* 照片本身：铺满所在格子的宽度，高度按原比例走 —— 不裁切也不拉伸 */
+/* 核心：width: 100%; height: auto; aspect-ratio: var(--ar); 不做任何裁切或强制压缩 */
 .wall-photos img {
   display: block;
   width: 100%;
   height: auto;
-  border-radius: 3px;
+  aspect-ratio: var(--ar);
+  object-fit: contain;
+  border-radius: 2px;
+}
+
+.photo-link {
+  display: block;
+  position: relative;
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.photo-ratio-tag {
+  position: absolute;
+  right: 0.5rem;
+  bottom: 0.5rem;
+  padding: 0.1rem 0.48rem;
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: 0.68rem;
+  letter-spacing: 0.06em;
+  color: #faf9f5;
+  background: rgba(20, 20, 19, 0.72);
+  border: 1px solid rgba(217, 119, 87, 0.55);
+  border-radius: 2px;
+  backdrop-filter: blur(4px);
+  pointer-events: none;
 }
 
 .photo-meta {
-  padding: var(--space-3) var(--space-4);
+  padding: var(--space-2) var(--space-3) var(--space-1);
   font-family: var(--sans);
   font-size: var(--text-xs);
   letter-spacing: 0.06em;
@@ -156,12 +159,7 @@
   white-space: nowrap;
 }
 
-/* 墨绿：照片区的识别色，用在悬停态和强调处 */
 .photo:hover .photo-caption { color: var(--pine); }
-
-/* --------------------------------------------------------------------------
-   照片页的空状态
-   -------------------------------------------------------------------------- */
 
 .gallery-empty {
   padding: var(--space-9) 0;
@@ -177,14 +175,6 @@
   border-bottom: 1px solid currentColor;
 }
 
-/* --------------------------------------------------------------------------
-   点击放大 —— 覆盖层
-   照片本身是链接（没 JS 时点击就是浏览器打开图片），这里只管把它变得更好用
-   -------------------------------------------------------------------------- */
-
-.photo-link { display: block; border-radius: 3px; }
-
-/* 覆盖层打开时锁住页面滚动，免得背景跟着滑 */
 body.lightbox-open { overflow: hidden; }
 
 .lightbox {
@@ -195,7 +185,6 @@ body.lightbox-open { overflow: hidden; }
   align-items: center;
   justify-content: center;
   padding: var(--space-6) var(--space-7);
-  /* 0.97 而不是更透：照片页底下是亮色画布，太透会把画面上的字透上来 */
   background: rgba(22, 22, 20, 0.97);
   animation: lightbox-in var(--dur-base) var(--ease);
 }
@@ -232,7 +221,6 @@ body.lightbox-open { overflow: hidden; }
 .lightbox-nav[data-dir="prev"] { left: var(--space-2); top: 50%; transform: translateY(-50%); }
 .lightbox-nav[data-dir="next"] { right: var(--space-2); top: 50%; transform: translateY(-50%); }
 
-/* 底部一行：单张说明（若有）+ 第几张/共几张 */
 .lightbox-note {
   position: absolute;
   bottom: var(--space-4);
@@ -250,8 +238,13 @@ body.lightbox-open { overflow: hidden; }
 
 .lightbox-count { font-variant-numeric: tabular-nums; }
 
-@media (max-width: 34rem) {
-  /* 窄屏把箭头的可点区域留够（手指点得到），图片再收一点高度 */
+@media (max-width: 42rem) {
+  .wall-photos--staggered {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .wall-photos--staggered .photo:nth-child(even) {
+    margin-top: 0;
+  }
   .lightbox { padding: var(--space-5) 2.75rem; }
   .lightbox img { max-height: 76vh; }
   .lightbox button { font-size: 2rem; }

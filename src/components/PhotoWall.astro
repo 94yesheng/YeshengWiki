@@ -2,23 +2,9 @@
 /**
  * 一面照片墙
  *
- * 「照片墙」是照片页的基本单位：可以只有一张照片，也可以有很多张。
- * 标题、时间、地点、记录都属于这面墙；单张照片只有可选的说明。
- *
- * 【照片不做任何裁切或拉伸】每张照片保持原始宽高比。多张照片时靠 flex 的
- * 比例分配排成"对齐的行"（justified rows）：每张的 flex-basis 与 flex-grow
- * 都按自己的宽高比来给，于是同一行被拉伸到等高、整行填满容器宽度，而比例不变。
- * 宽高比通过内联的 --ar 传给 CSS。
- *
- * 【点击放大】每张照片外面套一个指向大图的 <a>：
- *   · 没有 JS —— 点击就是浏览器打开图片本身，朴素但可用
- *   · 有 JS  —— 下面的 script 拦截点击，改成覆盖层，支持 Esc / ←→ / 点背景关闭
- * 这是全站第二处客户端脚本（第一处是文章列表页的标签筛选），刻意做小。
- *
- * 图片走 astro:assets 的 Image 组件：
- *   · widths + sizes 让浏览器按屏宽取合适尺寸（手机不下大图 —— 主机带宽只有 8Mbps）
- *   · loading="lazy" 让视口外的照片推迟加载
- *   · 覆盖层复用 1600px 那一档，不额外生成文件
+ * 【需求 3：保持原有比例交错排列，主要适配 16:9、4:3 横向或纵向图片】
+ * · 绝不裁切或强制压缩照片比例（width: 100%; height: auto; aspect-ratio: var(--ar);）
+ * · 多张照片采用双列/三列交错排列（Staggered Masonry），通过列间错位与原生横纵比例差异形成自然交错节律
  */
 import { Image, getImage } from 'astro:assets';
 import type { PhotoWall as Wall } from '../utils/photos';
@@ -27,31 +13,18 @@ import { cjkSpacing } from '../utils/typography';
 
 interface Props {
   wall: Wall;
-  /** 在时间线里用：月和年已经单独成节点了，墙上再写一遍日期是重复，只留地点 */
   hideDate?: boolean;
 }
 
 const { wall, hideDate = false } = Astro.props;
 
-/** 时间与地点拼一行：二〇二四年七月十七日 · 重庆（时间线里只剩地点） */
 const meta = [wall.date && !hideDate ? chineseFullDate(wall.date) : '', wall.place].filter(Boolean);
 const single = wall.photos.length === 1;
 
-/* 告诉浏览器每张图实际占多宽。
-   注意：sizes 不只是"下哪一档图"——对 width:auto 的图，它还会参与算出布局宽度。
-   写小了浏览器就会按那个宽度渲染，照片看起来像被压过（踩过一次）。
-
-   这几个数是跟着页面容器走的，改 .wrap 的 --shell 时必须回来一起改：
-     · 页面容器 64rem、两侧各 --pad-x(1.5rem) ⇒ 可用宽度 61rem
-     · 单张的墙是 100%，但撞到 gallery.css 里 56rem 的上限 ⇒ 实际 56rem
-     · 多张的每张是 calc(宽高比 × 16rem)，横图封顶约 28rem；一行放不下时靠
-       flex-shrink 收缩，这里按上限报：多下一档图，总比把图压扁好 */
 const sizes = single
   ? '(max-width: 64rem) 92vw, 56rem'
-  : '(max-width: 34rem) 92vw, 28rem';
+  : '(max-width: 34rem) 92vw, 30rem';
 
-/* 覆盖层用的地址：取 1600px 那一档（和网格里 largest 的变体是同一个文件），
-   原图比 1600 还小的就别放大，避免生成虚大的文件 */
 const bigSrcs = await Promise.all(
   wall.photos.map(async (photo) => {
     const width = Math.min(1600, photo.image.width);
@@ -59,6 +32,15 @@ const bigSrcs = await Promise.all(
     return src;
   })
 );
+
+function getRatioBadge(w: number, h: number): { label: string; orient: string } {
+  const ar = w / h;
+  if (ar >= 1.62) return { label: '16:9 · 横向', orient: 'landscape-16-9' };
+  if (ar >= 1.15) return { label: '4:3 · 横向', orient: 'landscape-4-3' };
+  if (ar <= 0.65) return { label: '9:16 · 纵向', orient: 'portrait-9-16' };
+  if (ar < 0.92) return { label: '3:4 · 纵向', orient: 'portrait-3-4' };
+  return { label: '1:1 · 方幅', orient: 'square' };
+}
 ---
 
 <section class="wall">
@@ -71,35 +53,41 @@ const bigSrcs = await Promise.all(
 
   {
     wall.photos.length > 0 ? (
-      <div class:list={['wall-photos', single && 'wall-photos--single']}>
-        {wall.photos.map((photo, i) => (
-          <figure
-            class="photo"
-            style={`--ar: ${(photo.image.width / photo.image.height).toFixed(4)}`}
-          >
-            <a
-              class="photo-link"
-              href={bigSrcs[i]}
-              data-lightbox
-              data-caption={photo.caption || ''}
-              data-wall={wall.title}
+      <div class:list={['wall-photos', single ? 'wall-photos--single' : 'wall-photos--staggered']}>
+        {wall.photos.map((photo, i) => {
+          const ar = (photo.image.width / photo.image.height).toFixed(4);
+          const ratioInfo = getRatioBadge(photo.image.width, photo.image.height);
+          return (
+            <figure
+              class="photo"
+              data-orient={ratioInfo.orient}
+              style={`--ar: ${ar}; --stagger-idx: ${i % 2};`}
             >
-              <Image
-                src={photo.image}
-                alt={photo.caption || wall.title}
-                widths={[480, 720, 1080, 1600]}
-                sizes={sizes}
-                loading="lazy"
-                decoding="async"
-              />
-            </a>
-            {photo.caption && (
-              <figcaption class="photo-meta">
-                <span class="photo-caption">{photo.caption}</span>
-              </figcaption>
-            )}
-          </figure>
-        ))}
+              <a
+                class="photo-link"
+                href={bigSrcs[i]}
+                data-lightbox
+                data-caption={photo.caption || ''}
+                data-wall={wall.title}
+              >
+                <Image
+                  src={photo.image}
+                  alt={photo.caption || wall.title}
+                  widths={[480, 720, 1080, 1600]}
+                  sizes={sizes}
+                  loading="lazy"
+                  decoding="async"
+                />
+                <span class="photo-ratio-tag">{ratioInfo.label}</span>
+              </a>
+              {photo.caption && (
+                <figcaption class="photo-meta">
+                  <span class="photo-caption">{photo.caption}</span>
+                </figcaption>
+              )}
+            </figure>
+          );
+        })}
       </div>
     ) : (
       <p class="wall-empty">这面墙还没有照片。</p>
@@ -108,11 +96,6 @@ const bigSrcs = await Promise.all(
 </section>
 
 <script>
-  /*
-   * 点击放大 —— 覆盖层
-   * 渐进增强：照片本身是链接，没 JS 时点击打开图片；这里只负责"把它变得更好用"。
-   * 支持：Esc 关闭、←→ 翻页、点背景关闭、打开时锁定页面滚动。
-   */
   const OPEN_CLASS = 'lightbox-open';
   let box: HTMLDivElement | null = null;
   let items: HTMLAnchorElement[] = [];
@@ -134,7 +117,6 @@ const bigSrcs = await Promise.all(
       if (t.closest('.lightbox-close')) return close();
       if (t.closest('[data-dir="prev"]')) return show(at - 1);
       if (t.closest('[data-dir="next"]')) return show(at + 1);
-      /* 点图片以外的区域关闭 */
       if (!t.closest('img')) close();
     });
     document.body.appendChild(el);
@@ -161,8 +143,6 @@ const bigSrcs = await Promise.all(
     box ??= build();
     document.body.classList.add(OPEN_CLASS);
     show(items.indexOf(a));
-    // preventScroll：不带这个参数的话，focus() 默认会把元素滚进视口 ——
-    // 主页开了滚动吸附，那一下会在吸附容器上引起一次意外的跳动
     (box.querySelector('.lightbox-close') as HTMLElement).focus({ preventScroll: true });
   }
 

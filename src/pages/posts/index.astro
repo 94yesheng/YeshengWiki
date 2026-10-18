@@ -1,8 +1,4 @@
 ---
-/**
- * 文章列表 —— 左侧一条时间线：年 → 月 → 文章。
- * 骨架在 Timeline.astro 里，这里只负责把文章分组、把叶子组件传进去。
- */
 import BaseLayout from '../../layouts/BaseLayout.astro';
 import Timeline from '../../components/Timeline.astro';
 import TimelinePost from '../../components/TimelinePost.astro';
@@ -13,14 +9,27 @@ import { groupByYearMonth } from '../../utils/timeline';
 const posts = await getPublishedPosts();
 const tags = collectTags(posts);
 
-/* 时间线要的是"带日期的条目"，把文章包一层再交给它分组 */
 const years = groupByYearMonth(posts.map((post) => ({ date: post.data.pubDate, data: post })));
 ---
 
 <BaseLayout title="文章" description="按时间排列的全部文章，可以用标签筛选。">
   <div class="wrap">
     <div class="section-head">
-      <h1>文章</h1>
+      <h1>
+        <span class="section-planar-badge" aria-hidden="true">
+          <svg class="planar-icon planar-icon--infinity" viewBox="0 0 28 14">
+            <path d="M7.2 2.6C3.9 2.6 1.8 4.7 1.8 7C1.8 9.3 3.9 11.4 7.2 11.4C10.9 11.4 17.1 2.6 20.8 2.6C24.1 2.6 26.2 4.7 26.2 7C26.2 9.3 24.1 11.4 20.8 11.4C17.1 11.4 10.9 2.6 7.2 2.6Z" fill="none" stroke="currentColor" stroke-width="1.6"/>
+            <circle cx="7" cy="7" r="1" fill="currentColor"/>
+            <circle cx="21" cy="7" r="1" fill="currentColor"/>
+          </svg>
+          <svg class="planar-icon planar-icon--blackhole" viewBox="0 0 28 14">
+            <path d="M6.5 6.4C8.8 1.8 19.2 1.8 21.5 6.4" fill="none" stroke="currentColor" stroke-width="1.2"/>
+            <circle cx="14" cy="7" r="3.2" fill="currentColor"/>
+            <ellipse cx="14" cy="7.2" rx="11.2" ry="2.4" transform="rotate(-11 14 7.2)" fill="none" stroke="currentColor" stroke-width="1.35"/>
+          </svg>
+        </span>
+        <span>文章</span>
+      </h1>
       <p class="note">共 {posts.length} 篇</p>
     </div>
 
@@ -42,29 +51,12 @@ const years = groupByYearMonth(posts.map((post) => ({ date: post.data.pubDate, d
 </style>
 
 <script>
-  /**
-   * 标签筛选 —— 要和时间线的折叠配合。
-   *
-   * 【和折叠的分工】折叠状态只存在 DOM 上（按钮的 `aria-expanded` + 面板的 `data-open`），
-   * 这里改的是同一组属性，两边不各记一份，就不会互相打架。
-   *
-   * 【三条规则】
-   *   1. 逐条按标签开关 hidden（老逻辑）
-   *   2. 月里没有可见条目就藏掉这个月；整年没有就藏掉整年
-   *   3. **筛选时把有命中的年月展开** —— 不然筛出来的东西可能正折着，等于白筛；
-   *      清空筛选时再全部展开，回到默认状态
-   *
-   * 没有这段脚本时页面照常工作 —— 全部文章都在，只是不能筛。
-   */
   const chips = Array.from(document.querySelectorAll<HTMLElement>('[data-tag-filter] .chip'));
   const entries = Array.from(document.querySelectorAll<HTMLElement>('[data-entry]'));
   const years = Array.from(document.querySelectorAll<HTMLElement>('[data-year-section]'));
   const months = Array.from(document.querySelectorAll<HTMLElement>('[data-month-section]'));
   const emptyHint = document.querySelector<HTMLElement>('[data-empty]');
 
-  /** 展开/收起一个年或月。用 :scope > 是因为未标注时间的月份**没有** head，
-      那时第一个子元素是条目容器，直接拿 firstElementChild 会拿错。
-      面板用的是 `data-open` 而不是 `hidden` —— 那样才有高度动画（见 Timeline.astro）。 */
   function setOpen(section: HTMLElement, open: boolean) {
     const head = section.querySelector<HTMLElement>(':scope > .tl-year-head, :scope > .tl-month-head');
     const panel = head?.nextElementSibling as HTMLElement | null;
@@ -97,7 +89,6 @@ const years = groupByYearMonth(posts.map((post) => ({ date: post.data.pubDate, d
       if (has && tag) setOpen(year, true);
     }
 
-    // 取消筛选 → 回到默认的"全部展开"
     if (!tag) for (const section of [...years, ...months]) setOpen(section, true);
 
     if (emptyHint) emptyHint.hidden = shown > 0;

@@ -1,8 +1,4 @@
 ---
-/**
- * 照片页 —— 和文章页共用同一条时间线（年 → 月 → 照片墙）。
- * 时间线在这里**只做分组**：照片照旧铺在右边，点击放大那套完全不动。
- */
 import BaseLayout from '../layouts/BaseLayout.astro';
 import Timeline from '../components/Timeline.astro';
 import TimelineWall from '../components/TimelineWall.astro';
@@ -13,15 +9,28 @@ import '../styles/gallery.css';
 const walls = await getPhotoWalls();
 const photoCount = walls.reduce((sum, wall) => sum + wall.photos.length, 0);
 
-/* 没标时间的墙 date 是 null，分组时会归到最后的"未标注时间"里 */
 const years = groupByYearMonth(walls.map((wall) => ({ date: wall.date, data: wall })));
 ---
 
-<BaseLayout title="照片" description="按时间排列的照片墙。">
+<BaseLayout title="照片" description="保持原始比例（16:9、4:3 横向或纵向）交错排列的照片墙。">
   <div class="wrap">
     <div class="section-head">
-      <h1>照片</h1>
-      <p class="note">{walls.length} 面墙 · 共 {photoCount} 张</p>
+      <h1>
+        <span class="section-planar-badge" aria-hidden="true">
+          <svg class="planar-icon planar-icon--infinity" viewBox="0 0 28 14">
+            <path d="M7.2 2.6C3.9 2.6 1.8 4.7 1.8 7C1.8 9.3 3.9 11.4 7.2 11.4C10.9 11.4 17.1 2.6 20.8 2.6C24.1 2.6 26.2 4.7 26.2 7C26.2 9.3 24.1 11.4 20.8 11.4C17.1 11.4 10.9 2.6 7.2 2.6Z" fill="none" stroke="currentColor" stroke-width="1.6"/>
+            <circle cx="7" cy="7" r="1" fill="currentColor"/>
+            <circle cx="21" cy="7" r="1" fill="currentColor"/>
+          </svg>
+          <svg class="planar-icon planar-icon--blackhole" viewBox="0 0 28 14">
+            <path d="M6.5 6.4C8.8 1.8 19.2 1.8 21.5 6.4" fill="none" stroke="currentColor" stroke-width="1.2"/>
+            <circle cx="14" cy="7" r="3.2" fill="currentColor"/>
+            <ellipse cx="14" cy="7.2" rx="11.2" ry="2.4" transform="rotate(-11 14 7.2)" fill="none" stroke="currentColor" stroke-width="1.35"/>
+          </svg>
+        </span>
+        <span>照片</span>
+      </h1>
+      <p class="note">{walls.length} 面墙 · 共 {photoCount} 张 · 原比例交错排布（16:9 / 4:3）</p>
     </div>
   </div>
 

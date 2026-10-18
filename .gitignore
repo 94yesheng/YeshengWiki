@@ -36,3 +36,15 @@ pnpm-debug.log*
 
 # jetbrains setting folder
 .idea/
+
+# 本地合并备份、对比预览与导入快照，不进仓库
+.backup/
+.preview-compare/
+YeshengWiki-optimized/
+
+# 合并前未采用的本地实验文件：保留在磁盘作回滚参考，不参与构建
+src/components/ThemeVeil.astro
+src/scripts/theme-runtime.js
+src/styles/theme-extras.css
+scripts/artifact-patches/
+divergence-meter (4).html

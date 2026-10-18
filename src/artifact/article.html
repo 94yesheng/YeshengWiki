@@ -1,10 +1,45 @@
+<!-- 需求 7：结合无限主题与主页无限粒子模型的简洁加载动画 -->
+  <div class="infinity-loader" id="infinity-loader" role="status" aria-live="polite" aria-label="正在加载页面">
+    <div class="loader-stage-box">
+      <canvas class="loader-infinity-canvas" id="loader-infinity-canvas"></canvas>
+      <svg class="loader-planar-svg" viewBox="0 0 240 120" aria-hidden="true">
+        <line x1="20" y1="60" x2="220" y2="60" stroke="currentColor" stroke-opacity="0.22" stroke-width="0.75" stroke-dasharray="3 4"/>
+        <line x1="120" y1="14" x2="120" y2="106" stroke="currentColor" stroke-opacity="0.22" stroke-width="0.75" stroke-dasharray="3 4"/>
+        <path d="M64 26C35 26 18 41 18 60C18 79 35 94 64 94C97 94 143 26 176 26C205 26 222 41 222 60C222 79 205 94 176 94C143 94 97 26 64 26Z" fill="none" stroke="currentColor" stroke-opacity="0.22" stroke-width="1.2"/>
+        <path class="loader-loop-trace" d="M64 26C35 26 18 41 18 60C18 79 35 94 64 94C97 94 143 26 176 26C205 26 222 41 222 60C222 79 205 94 176 94C143 94 97 26 64 26Z" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+        <circle cx="64" cy="60" r="2.6" fill="currentColor"/>
+        <circle cx="176" cy="60" r="2.6" fill="currentColor"/>
+      </svg>
+    </div>
+    <div class="loader-meta">
+      <span class="loader-title-kai">夜笙的小世界</span>
+      <span id="loader-status-text">INFINITY MANIFOLD // 正在展开纯粒子无限流形</span>
+      <div class="loader-bar-track">
+        <div class="loader-bar-fill" id="loader-bar-fill"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 需求 8：结合无限与黑洞主题的昼夜切换过渡动画层 -->
+  <div class="theme-transition-stage" id="theme-transition-stage" aria-hidden="true">
+    <canvas class="theme-transition-canvas" id="theme-transition-canvas"></canvas>
+    <div class="theme-transition-badge" id="theme-transition-badge">SINGULARITY TRANSITION // ∞ ↔ BLACK HOLE</div>
+  </div>
   <header class="site-nav-bar">
     <div class="wrap">
       <div class="nav-left-cluster">
         <a href="/" class="nav-brand" aria-label="夜笙的小世界 主页">
           <span class="nav-brand-mark" aria-hidden="true">
-            <svg viewBox="0 0 36 18">
-              <path d="M9.5 3.5C5.2 3.5 2.5 6.1 2.5 9C2.5 11.9 5.2 14.5 9.5 14.5C14.2 14.5 21.8 3.5 26.5 3.5C30.8 3.5 33.5 6.1 33.5 9C33.5 11.9 30.8 14.5 26.5 14.5C21.8 14.5 14.2 3.5 9.5 3.5Z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+            <svg class="planar-icon planar-icon--infinity" viewBox="0 0 36 18" aria-hidden="true">
+              <path d="M9.5 3.5C5.2 3.5 2.5 6.1 2.5 9C2.5 11.9 5.2 14.5 9.5 14.5C14.2 14.5 21.8 3.5 26.5 3.5C30.8 3.5 33.5 6.1 33.5 9C33.5 11.9 30.8 14.5 26.5 14.5C21.8 14.5 14.2 3.5 9.5 3.5Z" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"/>
+              <circle cx="9.2" cy="9" r="1.3" fill="currentColor"/>
+              <circle cx="26.8" cy="9" r="1.3" fill="currentColor"/>
+            </svg>
+            <svg class="planar-icon planar-icon--blackhole" viewBox="0 0 36 18" aria-hidden="true">
+              <path d="M8.5 8.2C11.2 2.4 24.8 2.4 27.5 8.2" fill="none" stroke="currentColor" stroke-width="1.35" stroke-linecap="round"/>
+              <path d="M10.5 10.2C13.2 14.8 22.8 14.8 25.5 10.2" fill="none" stroke="currentColor" stroke-width="1.1" stroke-opacity="0.75" stroke-linecap="round"/>
+              <circle cx="18" cy="9" r="4.2" fill="currentColor"/>
+              <ellipse cx="18" cy="9.2" rx="14.5" ry="3.1" transform="rotate(-11 18 9.2)" fill="none" stroke="currentColor" stroke-width="1.5"/>
             </svg>
           </span>
           <span class="nav-brand-text">夜笙</span>
@@ -25,15 +60,17 @@
             <span class="nav-idx">03</span><span>程序</span>
           </a>
           <a href="/links/" class="site-nav-link">
-            <span class="nav-idx">04</span><span>友链</span>
+            <span class="nav-idx">04</span><span>友链·站点</span>
           </a>
         </nav>
       </div>
 
       <div class="nav-right-cluster">
+        <!-- 预览切换器：import-artifact.mjs 会在生成 Astro 模板时自动剥离此块 -->
+        
 
         <!-- 白天无限环 / 夜间黑洞 联动切换按钮 -->
-        <button type="button" class="nav-math-pill" id="nav-theme-pill" title="点击切换白天（立体无限环）/ 夜间（卡冈图雅黑洞）">
+        <button type="button" class="nav-math-pill" id="nav-theme-pill" title="点击切换白天（纯粒子无限环）/ 夜间（卡冈图雅黑洞）">
           <svg id="nav-theme-svg" viewBox="0 0 18 18" aria-hidden="true">
             <circle cx="9" cy="9" r="3.6"/>
             <path d="M9 2v2M9 14v2M2 9h2M14 9h2M4.1 4.1l1.4 1.4M12.5 12.5l1.4 1.4M13.9 4.1l-1.4 1.4M5.5 12.5l-1.4 1.4"/>
@@ -43,6 +80,7 @@
       </div>
     </div>
   </header>
+  <!-- 视图二：文章详细页（右侧搭载《三体》三个天体的混沌运动模型） -->
   <section class="article-detail-view" id="article-view">
     <div class="wrap">
       <article class="article-q-frame">
@@ -50,10 +88,44 @@
         <span class="q-corner q-corner--tr"></span>
         <span class="q-corner q-corner--bl"></span>
         <span class="q-corner q-corner--br"></span>
+        <div class="planar-watermark" aria-hidden="true">
+            <svg class="planar-wm planar-wm--infinity" viewBox="0 0 240 120">
+              <circle cx="64" cy="60" r="42" fill="none" stroke="currentColor" stroke-width="0.75" stroke-dasharray="3 4"/>
+              <circle cx="176" cy="60" r="42" fill="none" stroke="currentColor" stroke-width="0.75" stroke-dasharray="3 4"/>
+              <line x1="12" y1="60" x2="228" y2="60" stroke="currentColor" stroke-width="0.6" stroke-dasharray="2 5"/>
+              <line x1="120" y1="12" x2="120" y2="108" stroke="currentColor" stroke-width="0.6" stroke-dasharray="2 5"/>
+              <path d="M64 24C34 24 16 40 16 60C16 80 34 96 64 96C98 96 142 24 176 24C206 24 224 40 224 60C224 80 206 96 176 96C142 96 98 24 64 24Z" fill="none" stroke="currentColor" stroke-width="1.6"/>
+              <path d="M64 32C40 32 25 44 25 60C25 76 40 88 64 88C94 88 146 32 176 32C200 32 215 44 215 60C215 76 200 88 176 88C146 88 94 32 64 32Z" fill="none" stroke="currentColor" stroke-width="0.8" stroke-opacity="0.6"/>
+              <circle cx="64" cy="60" r="3" fill="currentColor"/>
+              <circle cx="176" cy="60" r="3" fill="currentColor"/>
+              <circle cx="120" cy="60" r="2.2" fill="none" stroke="currentColor" stroke-width="1.2"/>
+            </svg>
+            <svg class="planar-wm planar-wm--blackhole" viewBox="0 0 240 120">
+              <circle cx="120" cy="60" r="48" fill="none" stroke="currentColor" stroke-width="0.7" stroke-dasharray="3 5"/>
+              <path d="M56 54C74 14 166 14 184 54" fill="none" stroke="currentColor" stroke-width="1.35"/>
+              <path d="M68 67C86 98 154 98 172 67" fill="none" stroke="currentColor" stroke-width="1.05" stroke-opacity="0.75"/>
+              <circle cx="120" cy="60" r="22" fill="currentColor" fill-opacity="0.16" stroke="currentColor" stroke-width="1.5"/>
+              <circle cx="120" cy="60" r="14" fill="currentColor"/>
+              <ellipse cx="120" cy="61" rx="96" ry="18" transform="rotate(-10 120 61)" fill="none" stroke="currentColor" stroke-width="1.6"/>
+              <ellipse cx="120" cy="61" rx="74" ry="13" transform="rotate(-10 120 61)" fill="none" stroke="currentColor" stroke-width="0.85" stroke-dasharray="4 3"/>
+            </svg>
+          </div>
 
         <div class="q-topbar">
           <div class="q-topbar-cell">
             <span class="q-sec-badge">DOC // @@ENTRY_NO@@</span>
+            <span class="planar-motif-badge" aria-hidden="true">
+                <svg class="planar-icon planar-icon--infinity" viewBox="0 0 28 14">
+                  <path d="M7.2 2.6C3.9 2.6 1.8 4.7 1.8 7C1.8 9.3 3.9 11.4 7.2 11.4C10.9 11.4 17.1 2.6 20.8 2.6C24.1 2.6 26.2 4.7 26.2 7C26.2 9.3 24.1 11.4 20.8 11.4C17.1 11.4 10.9 2.6 7.2 2.6Z" fill="none" stroke="currentColor" stroke-width="1.5"/>
+                  <circle cx="7" cy="7" r="1" fill="currentColor"/>
+                  <circle cx="21" cy="7" r="1" fill="currentColor"/>
+                </svg>
+                <svg class="planar-icon planar-icon--blackhole" viewBox="0 0 28 14">
+                  <path d="M6.5 6.4C8.8 1.8 19.2 1.8 21.5 6.4" fill="none" stroke="currentColor" stroke-width="1.2"/>
+                  <circle cx="14" cy="7" r="3.2" fill="currentColor"/>
+                  <ellipse cx="14" cy="7.2" rx="11.2" ry="2.4" transform="rotate(-11 14 7.2)" fill="none" stroke="currentColor" stroke-width="1.3"/>
+                </svg>
+              </span>
             <span>ARTICLE BLUEPRINT // 象限网格文章详细页</span>
           </div>
           <div class="q-topbar-cell q-topbar-cell--center" id="detail-topbar-title">
@@ -64,7 +136,7 @@
           </div>
         </div>
 
-        <!-- 紧凑型文章首部双象限：左标题与元数据 + 右动态无限环流形画布（去掉原静态封面图） -->
+        <!-- 紧凑型文章首部双象限：左标题与元数据 + 右《三体》三个天体引力运动模型画布 -->
         <div class="article-hero-grid">
           <div class="article-hero-meta-cell q-joint">
             <div>
@@ -102,23 +174,27 @@
           </div>
 
           <div class="article-hero-kinetic-cell">
-            <div class="article-kinetic-canvas-wrap">
-              <canvas class="article-infinity-canvas" id="article-infinity-canvas" aria-label="文章页动态无限环流形动效"></canvas>
+            <div class="article-kinetic-canvas-wrap" title="点击对《三体》三个恒星施加引力初态微扰">
+              <div class="threebody-hud-overlay">
+                <span class="threebody-era-badge" id="threebody-era-badge">CHAOTIC ERA // 乱纪元</span>
+                <span id="threebody-flux-readout">3 SUNS + TRISOLARIS · CLICK TO PERTURB</span>
+              </div>
+              <canvas class="article-infinity-canvas" id="article-infinity-canvas" aria-label="文章页《三体》三恒星与行星引力运动模型"></canvas>
             </div>
             <div class="cover-caption-bar">
-              <span>KINETIC MANIFOLD // 谐波无限环动效场</span>
+              <span>THREE-BODY ORBITAL MODEL // 三体天体运动场</span>
               <span>@@KINETIC_CAPTION@@</span>
             </div>
           </div>
         </div>
 
-        <!-- 三栏平衡工作区：左章节目录 + 中宽幅正文 + 右技术拓扑与参数速查伴读栏（彻底解决正文右侧空旷） -->
+        <!-- 三栏平衡工作区：左章节目录 + 中宽幅正文 + 右技术拓扑与参数速查伴读栏 -->
         <div class="article-workspace-grid">
           <aside class="article-sidebar-q" aria-label="文章章节大纲">
             <div class="article-sidebar-sticky">
               <div>
                 <h2 class="toc-box-title">INDEX // 章节坐标导览</h2>
-@@TOC@@
+                @@TOC@@
               </div>
 
               <div class="reading-progress-card">
@@ -134,49 +210,65 @@
 
               <div class="reading-progress-card">
                 <span>QUICK ACTIONS // 快速操作</span>
-                <div style="display:flex; gap:0.4rem; margin-top:0.25rem;">
+                <div style="display:flex; gap:0.4rem; margin-top:0.25rem; flex-wrap:wrap;">
                   <button type="button" class="stage-mini-btn" id="detail-toggle-theme" style="flex:1;">切换昼夜</button>
                   <button type="button" class="stage-mini-btn" id="detail-copy-link" style="flex:1;">复制链接</button>
+                  <button type="button" class="stage-mini-btn" id="detail-perturb-threebody" style="width:100%;">扰动三体天体初态 (PERTURB)</button>
                 </div>
               </div>
             </div>
           </aside>
 
           <div class="article-prose-q" id="article-prose-body">
-@@PROSE@@
+            @@PROSE@@
           </div>
 
           <!-- 右侧技术伴读栏：拓扑图解 + 关键参数速查 + 同系列文章快速切换 -->
           <aside class="article-RightRail-q" aria-label="文章伴读与技术速查栏">
             <div class="article-sidebar-sticky">
-@@RAIL_TOPOLOGY@@
+              @@RAIL_TOPOLOGY@@
 
-@@RAIL_SPEC@@
+              @@RAIL_SPEC@@
 
               <div class="rail-blueprint-card">
                 <div class="rail-card-kicker">
                   <span>ARCHIVE // 同系列文章切换</span>
                   <span>5 ENTRIES</span>
                 </div>
-@@RAIL_RELATED@@
+                @@RAIL_RELATED@@
               </div>
             </div>
           </aside>
         </div>
 
-@@PAGER@@
+        @@PAGER@@
 
         <div class="q-footbar">
-          <span>ARTICLE BLUEPRINT // 3-COLUMN ULTRAWIDE EDITION</span>
+          <span>ARTICLE BLUEPRINT // THREE-BODY ORBITAL EDITION</span>
           <span>LAYOUT: <span class="telemetry-accent">96REM ULTRAWIDE</span></span>
           <span>YESHENG.WIKI</span>
         </div>
       </article>
     </div>
   </section>
-  <!-- 页脚 + 命运石之门世界线变动率探测仪（无任何 emoji） -->
+  <!-- 页脚 + 平面无限/黑洞几何装饰带 + 命运石之门世界线变动率探测仪 -->
   <footer class="site-foot">
     <div class="wrap">
+      <div class="planar-divider-bar" aria-hidden="true">
+        <span class="planar-divider-icon">
+          <svg class="planar-icon planar-icon--infinity" viewBox="0 0 36 18" aria-hidden="true">
+              <path d="M9.5 3.5C5.2 3.5 2.5 6.1 2.5 9C2.5 11.9 5.2 14.5 9.5 14.5C14.2 14.5 21.8 3.5 26.5 3.5C30.8 3.5 33.5 6.1 33.5 9C33.5 11.9 30.8 14.5 26.5 14.5C21.8 14.5 14.2 3.5 9.5 3.5Z" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"/>
+              <circle cx="9.2" cy="9" r="1.3" fill="currentColor"/>
+              <circle cx="26.8" cy="9" r="1.3" fill="currentColor"/>
+            </svg>
+            <svg class="planar-icon planar-icon--blackhole" viewBox="0 0 36 18" aria-hidden="true">
+              <path d="M8.5 8.2C11.2 2.4 24.8 2.4 27.5 8.2" fill="none" stroke="currentColor" stroke-width="1.35" stroke-linecap="round"/>
+              <path d="M10.5 10.2C13.2 14.8 22.8 14.8 25.5 10.2" fill="none" stroke="currentColor" stroke-width="1.1" stroke-opacity="0.75" stroke-linecap="round"/>
+              <circle cx="18" cy="9" r="4.2" fill="currentColor"/>
+              <ellipse cx="18" cy="9.2" rx="14.5" ry="3.1" transform="rotate(-11 18 9.2)" fill="none" stroke="currentColor" stroke-width="1.5"/>
+            </svg>
+        </span>
+      </div>
       <div class="site-foot-inner">
         <span>© 二〇二六 夜笙 · YESHENG.WIKI</span>
         <span>
@@ -194,7 +286,7 @@
     </div>
   </footer>
 
-  <!-- 需求 6 & 7：美化后的右下角悬浮窗（磨砂玻璃 + 象限边框 + 重绘矢量 SVG 图标，无 emoji） -->
+  <!-- 右下角悬浮球 -->
   <div class="fab" id="fab">
     <div class="fab-actions" id="fab-actions">
       <div class="fab-item">
@@ -206,6 +298,7 @@
         </button>
       </div>
 
+      
 
       <div class="fab-item">
         <span class="fab-chip-label">TOP // 回到顶部</span>
@@ -230,12 +323,12 @@
     </button>
   </div>
 
-  <!-- 左下角：昼夜粒子与线密度控制面板 -->
+  <!-- 左下角：昼夜纯粒子流形与动画控制面板 -->
   <aside class="math-lab" id="math-lab" data-collapsed="true" aria-label="昼夜粒子场参数设置">
     <div class="math-lab-head" id="math-lab-head">
       <div class="math-lab-title">
-        <span class="math-lab-symbol">L3</span>
-        <span>线粒流形参数控制台</span>
+        <span class="math-lab-symbol">∞</span>
+        <span>纯粒子流形与三体控制台</span>
       </div>
       <button type="button" class="math-lab-toggle" id="math-lab-toggle" aria-label="展开或收起面板">展开 +</button>
     </div>
@@ -243,21 +336,21 @@
     <div class="math-lab-body">
       <div class="lab-group">
         <div class="lab-label">
-          <span>01 · 昼夜粒子场切换</span>
+          <span>01 · 昼夜粒子场切换（含过渡动画）</span>
           <span class="lab-val" id="lab-mode-indicator">DAY // INFINITY</span>
         </div>
         <div class="lab-seg">
-          <button type="button" class="lab-btn" data-theme-mode="light" aria-pressed="true">白天 · 纯净无限环</button>
+          <button type="button" class="lab-btn" data-theme-mode="light" aria-pressed="true">白天 · 纯粒子无限环</button>
           <button type="button" class="lab-btn" data-theme-mode="dark" aria-pressed="false">夜间 · 卡冈图雅黑洞</button>
         </div>
       </div>
 
       <div class="lab-group">
         <div class="lab-label">
-          <span>02 · 空间粒子数量 (N)</span>
-          <span class="lab-val" id="val-density">400 粒子</span>
+          <span>02 · 空间纯粒子数量 (N)</span>
+          <span class="lab-val" id="val-density">560 粒子</span>
         </div>
-        <input type="range" class="lab-slider" id="slider-density" min="240" max="540" step="20" value="400" />
+        <input type="range" class="lab-slider" id="slider-density" min="300" max="780" step="20" value="560" />
       </div>
 
       <div class="lab-group">
@@ -266,6 +359,10 @@
           <span class="lab-val" id="val-speed">1.0x</span>
         </div>
         <input type="range" class="lab-slider" id="slider-speed" min="0.3" max="2.2" step="0.1" value="1.0" />
+      </div>
+
+      <div class="lab-group">
+        <button type="button" class="lab-btn" id="btn-replay-loader" style="width:100%; text-align:center;">重播无限模型加载动画 (LOADER)</button>
       </div>
     </div>
   </aside>

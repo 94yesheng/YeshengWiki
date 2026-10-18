@@ -2,35 +2,146 @@
 import BaseLayout from '../layouts/BaseLayout.astro';
 ---
 
-<BaseLayout title="程序" description="做过的小工具与项目。">
+<BaseLayout title="程序" description="做过的小工具与实验项目。">
   <div class="wrap">
     <div class="section-head">
-      <h1>程序</h1>
-      <p class="note">还在搭</p>
+      <h1>
+        <span class="section-planar-badge" aria-hidden="true">
+          <svg class="planar-icon planar-icon--infinity" viewBox="0 0 28 14">
+            <path d="M7.2 2.6C3.9 2.6 1.8 4.7 1.8 7C1.8 9.3 3.9 11.4 7.2 11.4C10.9 11.4 17.1 2.6 20.8 2.6C24.1 2.6 26.2 4.7 26.2 7C26.2 9.3 24.1 11.4 20.8 11.4C17.1 11.4 10.9 2.6 7.2 2.6Z" fill="none" stroke="currentColor" stroke-width="1.6"/>
+            <circle cx="7" cy="7" r="1" fill="currentColor"/>
+            <circle cx="21" cy="7" r="1" fill="currentColor"/>
+          </svg>
+          <svg class="planar-icon planar-icon--blackhole" viewBox="0 0 28 14">
+            <path d="M6.5 6.4C8.8 1.8 19.2 1.8 21.5 6.4" fill="none" stroke="currentColor" stroke-width="1.2"/>
+            <circle cx="14" cy="7" r="3.2" fill="currentColor"/>
+            <ellipse cx="14" cy="7.2" rx="11.2" ry="2.4" transform="rotate(-11 14 7.2)" fill="none" stroke="currentColor" stroke-width="1.35"/>
+          </svg>
+        </span>
+        <span>程序</span>
+      </h1>
+      <p class="note">小工具与物理渲染实验</p>
     </div>
 
-    <div class="placeholder">
-      <p>这一页暂时是空的。</p>
-      <p>打算放自己写过的小工具和项目。等想清楚要放什么、怎么排，再往里填。</p>
+    <div class="prog-grid">
+      <article class="prog-card">
+        <div class="prog-kicker">MOD // 01 · CANVAS 2D</div>
+        <h2>Dual-Field &amp; Three-Body Engine · 昼夜粒子与三体引力场</h2>
+        <p>
+          本站主页与文章页搭载的零依赖数学物理渲染器：主页白天模式运行立体伯努利双纽线纯粒子流形，夜间模式运行零断层卡冈图雅黑洞视界与引力透镜光环；文章页右侧运行《三体》三恒星与行星混沌引力数值模拟。
+        </p>
+        <div class="prog-foot">
+          <a href="/">前往主页体验 →</a>
+          <a href="/posts/mc-server/">前往文章页体验三体模型 →</a>
+        </div>
+      </article>
+
+      <article class="prog-card">
+        <div class="prog-kicker">MOD // 02 · PYTHON GIS</div>
+        <h2>MapToPoster · 城市经纬路网海报生成器</h2>
+        <p>
+          输入任意城市名称或经纬度范围，基于 OpenStreetMap 道路与水系矢量数据，一键渲染极简理性的几何海报壁纸。
+        </p>
+        <div class="prog-foot">
+          <a href="/posts/maptoposter/">阅读项目笔记 →</a>
+        </div>
+      </article>
+
+      <article class="prog-card">
+        <div class="prog-kicker">MOD // 03 · SVG NIXIE</div>
+        <h2>Divergence Meter · 世界线变动率辉光管探测仪</h2>
+        <p>
+          致敬《命运石之门》的纯矢量多层阴极辉光管数字组件，在全站页脚滚动进入视口或切换夜间模式时触发世界线收束跳变。
+        </p>
+        <div class="prog-foot">
+          <span>页脚实时运行中</span>
+        </div>
+      </article>
+
+      <article class="prog-card">
+        <div class="prog-kicker">MOD // 04 · LLM WORKFLOW</div>
+        <h2>WeChat-DeepSeek Bridge · 即时通讯推理接入</h2>
+        <p>
+          将 DeepSeek API 接入日常微信对话流的配置方案与异常重试实践记录。
+        </p>
+        <div class="prog-foot">
+          <a href="/posts/deepseek-wechat/">阅读配置文档 →</a>
+        </div>
+      </article>
     </div>
   </div>
 </BaseLayout>
 
 <style>
-  .placeholder {
-    /* 成段中文：卡回阅读宽（页面容器比它宽） */
-    max-width: var(--measure);
-    margin: 0 auto;
-    padding: var(--space-7) 0;
+  .prog-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--space-4);
+    padding-top: var(--space-4);
     border-top: 1px solid var(--rule);
+  }
+
+  .prog-card {
+    border: 1px solid var(--rule);
+    background: var(--paper);
+    border-radius: 4px;
+    padding: var(--space-5);
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    gap: var(--space-3);
+    transition: border-color var(--dur-fast) ease, transform var(--dur-fast) var(--ease);
+  }
+
+  .prog-card:hover {
+    border-color: var(--accent);
+    transform: translateY(-2px);
+  }
+
+  .prog-kicker {
+    font-family: ui-monospace, Consolas, monospace;
+    font-size: 0.74rem;
+    letter-spacing: 0.1em;
+    color: var(--accent);
+  }
+
+  .prog-card h2 {
+    margin: 0;
+    font-family: var(--kai);
+    font-size: var(--text-md);
+    font-weight: 400;
+    letter-spacing: 0.05em;
+  }
+
+  .prog-card p {
+    margin: 0;
+    font-size: var(--text-sm);
+    line-height: 1.85;
     color: var(--muted);
   }
 
-  .placeholder p {
-    margin: 0 0 var(--space-3);
-    text-indent: 2em;
-    line-height: 2;
+  .prog-foot {
+    padding-top: var(--space-3);
+    border-top: 1px dashed var(--rule);
+    display: flex;
+    justify-content: space-between;
+    gap: var(--space-3);
+    flex-wrap: wrap;
+    font-size: var(--text-xs);
+    color: var(--faint);
   }
 
-  .placeholder p:last-child { margin-bottom: 0; }
+  .prog-foot a {
+    color: var(--accent);
+  }
+
+  .prog-foot a:hover {
+    text-decoration: underline;
+  }
+
+  @media (max-width: 44rem) {
+    .prog-grid {
+      grid-template-columns: minmax(0, 1fr);
+    }
+  }
 </style>

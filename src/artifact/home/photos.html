@@ -1,0 +1,136 @@
+<section class="screen section-photos" id="screen-photos">
+      <div class="wrap">
+        <div class="q-frame">
+          <span class="q-corner q-corner--tl"></span>
+          <span class="q-corner q-corner--tr"></span>
+          <span class="q-corner q-corner--bl"></span>
+          <span class="q-corner q-corner--br"></span>
+          <div class="planar-watermark" aria-hidden="true">
+            <svg class="planar-wm planar-wm--infinity" viewBox="0 0 240 120">
+              <circle cx="64" cy="60" r="42" fill="none" stroke="currentColor" stroke-width="0.75" stroke-dasharray="3 4"/>
+              <circle cx="176" cy="60" r="42" fill="none" stroke="currentColor" stroke-width="0.75" stroke-dasharray="3 4"/>
+              <line x1="12" y1="60" x2="228" y2="60" stroke="currentColor" stroke-width="0.6" stroke-dasharray="2 5"/>
+              <line x1="120" y1="12" x2="120" y2="108" stroke="currentColor" stroke-width="0.6" stroke-dasharray="2 5"/>
+              <path d="M64 24C34 24 16 40 16 60C16 80 34 96 64 96C98 96 142 24 176 24C206 24 224 40 224 60C224 80 206 96 176 96C142 96 98 24 64 24Z" fill="none" stroke="currentColor" stroke-width="1.6"/>
+              <path d="M64 32C40 32 25 44 25 60C25 76 40 88 64 88C94 88 146 32 176 32C200 32 215 44 215 60C215 76 200 88 176 88C146 88 94 32 64 32Z" fill="none" stroke="currentColor" stroke-width="0.8" stroke-opacity="0.6"/>
+              <circle cx="64" cy="60" r="3" fill="currentColor"/>
+              <circle cx="176" cy="60" r="3" fill="currentColor"/>
+              <circle cx="120" cy="60" r="2.2" fill="none" stroke="currentColor" stroke-width="1.2"/>
+            </svg>
+            <svg class="planar-wm planar-wm--blackhole" viewBox="0 0 240 120">
+              <circle cx="120" cy="60" r="48" fill="none" stroke="currentColor" stroke-width="0.7" stroke-dasharray="3 5"/>
+              <path d="M56 54C74 14 166 14 184 54" fill="none" stroke="currentColor" stroke-width="1.35"/>
+              <path d="M68 67C86 98 154 98 172 67" fill="none" stroke="currentColor" stroke-width="1.05" stroke-opacity="0.75"/>
+              <circle cx="120" cy="60" r="22" fill="currentColor" fill-opacity="0.16" stroke="currentColor" stroke-width="1.5"/>
+              <circle cx="120" cy="60" r="14" fill="currentColor"/>
+              <ellipse cx="120" cy="61" rx="96" ry="18" transform="rotate(-10 120 61)" fill="none" stroke="currentColor" stroke-width="1.6"/>
+              <ellipse cx="120" cy="61" rx="74" ry="13" transform="rotate(-10 120 61)" fill="none" stroke="currentColor" stroke-width="0.85" stroke-dasharray="4 3"/>
+            </svg>
+          </div>
+
+          <div class="q-topbar">
+            <div class="q-topbar-cell">
+              <span class="q-sec-badge">SEC 02</span>
+              <span class="planar-motif-badge" aria-hidden="true">
+                <svg class="planar-icon planar-icon--infinity" viewBox="0 0 28 14">
+                  <path d="M7.2 2.6C3.9 2.6 1.8 4.7 1.8 7C1.8 9.3 3.9 11.4 7.2 11.4C10.9 11.4 17.1 2.6 20.8 2.6C24.1 2.6 26.2 4.7 26.2 7C26.2 9.3 24.1 11.4 20.8 11.4C17.1 11.4 10.9 2.6 7.2 2.6Z" fill="none" stroke="currentColor" stroke-width="1.5"/>
+                  <circle cx="7" cy="7" r="1" fill="currentColor"/>
+                  <circle cx="21" cy="7" r="1" fill="currentColor"/>
+                </svg>
+                <svg class="planar-icon planar-icon--blackhole" viewBox="0 0 28 14">
+                  <path d="M6.5 6.4C8.8 1.8 19.2 1.8 21.5 6.4" fill="none" stroke="currentColor" stroke-width="1.2"/>
+                  <circle cx="14" cy="7" r="3.2" fill="currentColor"/>
+                  <ellipse cx="14" cy="7.2" rx="11.2" ry="2.4" transform="rotate(-11 14 7.2)" fill="none" stroke="currentColor" stroke-width="1.3"/>
+                </svg>
+              </span>
+              <h2 class="q-sec-title">
+                <a href="/photos/">
+                  <span>照片</span>
+                  <span class="q-sec-arrow" aria-hidden="true">-&gt;</span>
+                </a>
+              </h2>
+            </div>
+            <div class="q-topbar-cell q-topbar-cell--center">
+              保留每张照片原始宽高比（不强制压缩或裁切），适配 16:9、4:3 横向与纵向照片进行交错排列。
+            </div>
+            <div class="q-topbar-cell q-topbar-cell--right">
+              <span>NATIVE ASPECT RATIO · 16:9 &amp; 4:3 STAGGERED</span>
+            </div>
+          </div>
+
+          <div class="photos-q-meta-grid">
+            <div class="photos-q-wall-title-cell q-joint">
+              <span class="wall-coord-tag">WALL #01</span>
+              <h3 class="wall-title">随手拍的几张</h3>
+            </div>
+            <div class="photos-q-wall-note-cell">
+              <p class="wall-note">
+                100% 保持原图比例（含 16:9 横幅、4:3 横幅与 3:4 竖幅）交错排布。点击任意照片可开启全屏灯箱检视。
+              </p>
+              <span class="q-sec-badge">06 FRAMES · NATIVE RATIO</span>
+            </div>
+          </div>
+
+          <div class="photos-q-stage">
+            <div class="wall-photos-waterfall" id="demo-wall-photos">
+              <div class="stagger-col stagger-col--1">
+                <figure class="wf-item" data-orient="landscape-16-9" style="--ar: 1.7797">
+                  <a class="photo-link" data-lightbox href="/artifact/home/images/photo-01-large.jpg" data-index="#01" data-caption="二〇二四年十月七日 · 暮色天际线（16:9 横幅）">
+                    <img src="/artifact/home/images/photo-01-large.jpg" alt="PHOTO #01 · 二〇二四年十月七日 · 暮色天际线（16:9 横幅）" width="840" height="472" loading="lazy" />
+                    <span class="photo-idx-badge">#01</span>
+                    <span class="photo-ratio-badge">16:9 · 横向</span>
+                  </a>
+                </figure>
+                <figure class="wf-item" data-orient="landscape-4-3" style="--ar: 1.3659">
+                  <a class="photo-link" data-lightbox href="/artifact/home/images/photo-04-large.jpg" data-index="#04" data-caption="二〇二六年三月九日 · 城市经纬海报（4:3 横幅）">
+                    <img src="/artifact/home/images/photo-04-large.jpg" alt="PHOTO #04 · 二〇二六年三月九日 · 城市经纬海报（4:3 横幅）" width="840" height="615" loading="lazy" />
+                    <span class="photo-idx-badge">#04</span>
+                    <span class="photo-ratio-badge">4:3 · 横向</span>
+                  </a>
+                </figure>
+              </div>
+              <div class="stagger-col stagger-col--2">
+                <figure class="wf-item" data-orient="landscape-4-3" style="--ar: 1.3333">
+                  <a class="photo-link" data-lightbox href="/artifact/home/images/photo-02-large.jpg" data-index="#02" data-caption="二〇二二年六月一日 · 傍晚街景（4:3 横幅）">
+                    <img src="/artifact/home/images/photo-02-large.jpg" alt="PHOTO #02 · 二〇二二年六月一日 · 傍晚街景（4:3 横幅）" width="840" height="630" loading="lazy" />
+                    <span class="photo-idx-badge">#02</span>
+                    <span class="photo-ratio-badge">4:3 · 横向</span>
+                  </a>
+                </figure>
+                <figure class="wf-item" data-orient="landscape-16-9" style="--ar: 1.7834">
+                  <a class="photo-link" data-lightbox href="/artifact/home/images/photo-05-large.jpg" data-index="#05" data-caption="二〇二四年七月十七日 · 重庆江畔（16:9 横幅）">
+                    <img src="/artifact/home/images/photo-05-large.jpg" alt="PHOTO #05 · 二〇二四年七月十七日 · 重庆江畔（16:9 横幅）" width="840" height="471" loading="lazy" />
+                    <span class="photo-idx-badge">#05</span>
+                    <span class="photo-ratio-badge">16:9 · 横向</span>
+                  </a>
+                </figure>
+              </div>
+              <div class="stagger-col stagger-col--3">
+                <figure class="wf-item" data-orient="portrait-3-4" style="--ar: 0.75">
+                  <a class="photo-link" data-lightbox href="/artifact/home/images/photo-03-large.jpg" data-index="#03" data-caption="二〇二四年七月十七日 · 山城纵深（3:4 竖幅）">
+                    <img src="/artifact/home/images/photo-03-large.jpg" alt="PHOTO #03 · 二〇二四年七月十七日 · 山城纵深（3:4 竖幅）" width="630" height="840" loading="lazy" />
+                    <span class="photo-idx-badge">#03</span>
+                    <span class="photo-ratio-badge">3:4 · 纵向</span>
+                  </a>
+                </figure>
+                <figure class="wf-item" data-orient="landscape-16-9" style="--ar: 1.7834">
+                  <a class="photo-link" data-lightbox href="/artifact/home/images/photo-06-large.jpg" data-index="#06" data-caption="二〇二四年七月八日 · 远山云层（16:9 横幅）">
+                    <img src="/artifact/home/images/photo-06-large.jpg" alt="PHOTO #06 · 二〇二四年七月八日 · 远山云层（16:9 横幅）" width="840" height="471" loading="lazy" />
+                    <span class="photo-idx-badge">#06</span>
+                    <span class="photo-ratio-badge">16:9 · 横向</span>
+                  </a>
+                </figure>
+              </div>
+            </div>
+          </div>
+
+          <div class="q-footbar">
+            <span>当前交错画廊展示 <strong class="telemetry-accent">6 张原比例照片</strong>（16:9 横向 / 4:3 横向 / 3:4 纵向）</span>
+            <span>LIGHTBOX KEYS: <span class="telemetry-accent">ESC / LEFT / RIGHT</span></span>
+            <span style="font-family:var(--kai); font-size:var(--text-base); color:var(--muted);">摄于：二〇二二至二〇二六年</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 第四屏（03 · PROGRAMS 程序栏） -->

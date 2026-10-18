@@ -9,16 +9,9 @@ import { cjkSpacing } from '../utils/typography';
 import { THEME_BOOT } from '../utils/theme';
 
 interface Props {
-  /** 页面标题，会拼成「标题 —— 站名」 */
   title?: string;
   description?: string;
-  /** 照片页那种深色画布，需要整屏铺底 */
   bodyClass?: string;
-  /**
-   * 要不要渲染站名 + 签名那块（`SiteHeader` 的下半段）。
-   * 主页传 false —— 它把站名和签名放大成了自己的第一屏（hero），
-   * 再渲染一遍就会出现两个 <h1>、同一个站名写两遍。顶栏不受影响，永远都在。
-   */
   masthead?: boolean;
 }
 
@@ -56,30 +49,117 @@ const canonical = new URL(Astro.url.pathname, Astro.site);
     <meta name="twitter:card" content="summary" />
 
     <meta name="generator" content={Astro.generator} />
-
-    <!-- 手机浏览器地址栏的颜色；下面的脚本会按最终主题改写它 -->
     <meta name="theme-color" content="#faf9f5" />
 
-    <!--
-      夜间模式的"定调"脚本 —— **必须在首次绘制之前同步跑完**（否则会闪一下白，FOUC）。
-      内容在 src/utils/theme.ts 的 THEME_BOOT 里，后台 /studio/ 用的是同一份 ——
-      这里只负责把它内联出去。为什么不能 import、为什么要 set:html，见那个文件的注释。
-    -->
     <script is:inline set:html={THEME_BOOT}></script>
   </head>
 
   <body class={bodyClass}>
+    <!-- 需求 7：结合无限主题与主页无限粒子模型的简洁加载动画 -->
+    <div class="infinity-loader" id="infinity-loader" role="status" aria-live="polite" aria-label="正在加载页面">
+      <div class="loader-stage-box">
+        <canvas class="loader-infinity-canvas" id="loader-infinity-canvas"></canvas>
+        <svg class="loader-planar-svg" viewBox="0 0 240 120" aria-hidden="true">
+          <line x1="20" y1="60" x2="220" y2="60" stroke="currentColor" stroke-opacity="0.22" stroke-width="0.75" stroke-dasharray="3 4"/>
+          <line x1="120" y1="14" x2="120" y2="106" stroke="currentColor" stroke-opacity="0.22" stroke-width="0.75" stroke-dasharray="3 4"/>
+          <path d="M64 26C35 26 18 41 18 60C18 79 35 94 64 94C97 94 143 26 176 26C205 26 222 41 222 60C222 79 205 94 176 94C143 94 97 26 64 26Z" fill="none" stroke="currentColor" stroke-opacity="0.22" stroke-width="1.2"/>
+          <path class="loader-loop-trace" d="M64 26C35 26 18 41 18 60C18 79 35 94 64 94C97 94 143 26 176 26C205 26 222 41 222 60C222 79 205 94 176 94C143 94 97 26 64 26Z" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+          <circle cx="64" cy="60" r="2.6" fill="currentColor"/>
+          <circle cx="176" cy="60" r="2.6" fill="currentColor"/>
+        </svg>
+      </div>
+      <div class="loader-meta">
+        <span class="loader-title-kai">夜笙的小世界</span>
+        <span>INFINITY MANIFOLD // 正在展开无限流形</span>
+        <div class="loader-bar-track">
+          <div class="loader-bar-fill" id="loader-bar-fill"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 需求 8：结合无限与黑洞主题的昼夜切换过渡动画层 -->
+    <div class="theme-transition-stage" id="theme-transition-stage" aria-hidden="true">
+      <canvas class="theme-transition-canvas" id="theme-transition-canvas"></canvas>
+      <div class="theme-transition-badge" id="theme-transition-badge">SINGULARITY TRANSITION // ∞ ↔ BLACK HOLE</div>
+    </div>
+
+    <!-- 需求 6：子页背景简约平面无限（白天）/ 平面黑洞（黑夜）几何水印 -->
+    <div class="subpage-planar-watermark" aria-hidden="true">
+      <svg class="planar-icon planar-icon--infinity" viewBox="0 0 240 120">
+        <circle cx="64" cy="60" r="42" fill="none" stroke="currentColor" stroke-width="0.75" stroke-dasharray="3 4"/>
+        <circle cx="176" cy="60" r="42" fill="none" stroke="currentColor" stroke-width="0.75" stroke-dasharray="3 4"/>
+        <path d="M64 24C34 24 16 40 16 60C16 80 34 96 64 96C98 96 142 24 176 24C206 24 224 40 224 60C224 80 206 96 176 96C142 96 98 24 64 24Z" fill="none" stroke="currentColor" stroke-width="1.6"/>
+        <circle cx="64" cy="60" r="3" fill="currentColor"/>
+        <circle cx="176" cy="60" r="3" fill="currentColor"/>
+      </svg>
+      <svg class="planar-icon planar-icon--blackhole" viewBox="0 0 240 120">
+        <circle cx="120" cy="60" r="48" fill="none" stroke="currentColor" stroke-width="0.7" stroke-dasharray="3 5"/>
+        <path d="M56 54C74 14 166 14 184 54" fill="none" stroke="currentColor" stroke-width="1.35"/>
+        <path d="M68 67C86 98 154 98 172 67" fill="none" stroke="currentColor" stroke-width="1.05" stroke-opacity="0.75"/>
+        <circle cx="120" cy="60" r="14" fill="currentColor"/>
+        <ellipse cx="120" cy="61" rx="96" ry="18" transform="rotate(-10 120 61)" fill="none" stroke="currentColor" stroke-width="1.6"/>
+      </svg>
+    </div>
+
     <SiteHeader masthead={masthead} />
     <main>
       <slot />
     </main>
     <SiteFooter />
     <FloatingMenu />
+
+    <script is:inline>
+      (function () {
+        var loader = document.getElementById('infinity-loader');
+        var canvas = document.getElementById('loader-infinity-canvas');
+        var fill = document.getElementById('loader-bar-fill');
+        if (!loader) return;
+        var t0 = performance.now();
+        var dur = 520;
+        var palette = ['217, 119, 87', '232, 146, 110', '242, 179, 126', '202, 112, 82'];
+        function step(now) {
+          var p = Math.min(1, (now - t0) / dur);
+          if (fill) fill.style.width = Math.round(p * 100) + '%';
+          if (canvas) {
+            var dpr = Math.min(window.devicePixelRatio || 1, 2);
+            var rect = canvas.getBoundingClientRect();
+            if (rect.width > 10 && rect.height > 10) {
+              var lw = Math.round(rect.width * dpr);
+              var lh = Math.round(rect.height * dpr);
+              if (canvas.width !== lw || canvas.height !== lh) {
+                canvas.width = lw;
+                canvas.height = lh;
+              }
+              var ctx = canvas.getContext('2d');
+              var W = lw / dpr, H = lh / dpr;
+              ctx.save();
+              ctx.scale(dpr, dpr);
+              ctx.clearRect(0, 0, W, H);
+              var cx = W * 0.5, cy = H * 0.5, a = W * 0.36, b = H * 0.56;
+              var tSec = now * 0.0025;
+              for (var i = 0; i < 36; i++) {
+                var u = (i / 36) * Math.PI * 2 + tSec;
+                var su = Math.sin(u), cu = Math.cos(u), den = 1 + su * su;
+                var px = cx + (a * cu) / den;
+                var py = cy + (b * su * cu) / den;
+                ctx.beginPath();
+                ctx.arc(px, py, 1.4 + (i % 3) * 0.45, 0, Math.PI * 2);
+                ctx.fillStyle = 'rgba(' + palette[i % palette.length] + ', 0.86)';
+                ctx.fill();
+              }
+              ctx.restore();
+            }
+          }
+          if (p < 1) requestAnimationFrame(step);
+          else loader.dataset.loaded = 'true';
+        }
+        requestAnimationFrame(step);
+      })();
+    </script>
   </body>
 </html>
 
 <style>
-  /* 页脚是 flex 布局，里面再套一层 wrap 让它和正文对齐 */
   :global(.site-foot-inner) {
     display: flex;
     justify-content: space-between;

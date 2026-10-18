@@ -2,21 +2,18 @@
 /**
  * 主页 —— artifact 版。
  *
- * 整页 HTML 是从 code_artifact.html 原样切出来的（见 scripts/import-artifact.mjs），
- * 这里只负责把它塞进独立 shell。样式和行为都在 ArtifactLayout 里内联。
+ * 页面结构拆在 src/artifact/home/ 下：加载层 + 页头 + 五屏 + 页脚浮层，
+ * 由 HomeArtifact 按顺序拼回去；样式和行为仍在 ArtifactLayout 里内联。
  *
- * 【为什么用 set:html】
- * 这段 HTML 有 1.8MB（17 张内联 base64 图片），而且包含大量需要逐字保留的结构。
- * 用 `?raw` 在构建期取到字符串、`set:html` 原样输出 —— 不做转义、不加包裹层。
- * 千万不能写成 `{homeHtml}`，那会被转义成一整页纯文本。
- *
- * 【首页是冻结快照】文章队列、照片墙、程序/友链都是 artifact 里写死的内容，
- * 新增文章不会自动出现。这是「原封不动」的直接代价。
+ * 【为什么拆】
+ * 原先的 home.html 是 1.7MB 单文件（17 张 base64 图片内联），
+ * 网页端 agent 读取 GitHub 仓库时会被它撑爆上下文，反复列目录。
+ * 现在 HTML 每个 partial 不超过 13KB，图片单独放在 public/artifact/home/images/。
  */
 import ArtifactLayout from '../layouts/ArtifactLayout.astro';
-import homeHtml from '../artifact/home.html?raw';
+import HomeArtifact from '../components/HomeArtifact.astro';
 ---
 
 <ArtifactLayout page="home" bodyClass="home">
-  <Fragment set:html={homeHtml} />
+  <HomeArtifact />
 </ArtifactLayout>

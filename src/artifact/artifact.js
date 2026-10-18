@@ -16,7 +16,7 @@
   var state = {
     mode: 'infinity',
     view: document.body.dataset.page === 'article' ? 'article' : 'home',
-    particleCount: 400,
+    particleCount: 560,
     speed: 1.0,
     mouseStrength: 1.0,
     time: 0
@@ -24,19 +24,19 @@
 
   var MODE_META = {
     infinity: {
-      pillText: 'DAY // 立体无限环',
-      topbarTag: 'DAYLIGHT INFINITY // 纯净暖色流形与丝线粒子场',
-      coordText: 'SPATIAL LEMNISCATE · 多轨流形丝线与自然聚落星团交织的立体无限环',
+      pillText: 'DAY // 纯粒子无限环',
+      topbarTag: 'DAYLIGHT INFINITY // 纯净暖色流形与无尾迹纯粒子场',
+      coordText: 'SPATIAL LEMNISCATE · 自然聚落星团交织的纯粒子立体无限环（零线段干扰）',
       originBadge: 'ORIGIN (0, 0, L3)',
-      themeChip: 'DAY // 纯净无限环',
+      themeChip: 'DAY // 纯粒子无限环',
       equation: 'L3 : x = a·cos(t)/(1+sin²t), y = b·sin(t)cos(t)/(1+sin²t), z = c·sin(t)',
       labInd: 'DAY // INFINITY',
       fabLabel: 'NIGHT // 黑洞场'
     },
     gargantua: {
       pillText: 'NIGHT // 卡冈图雅黑洞',
-      topbarTag: 'NIGHT SINGULARITY // 卡冈图雅黑洞与引力测地线场',
-      coordText: 'GARGANTUA SINGULARITY · 视界黑球、多普勒光子环、引力透镜光线与开普勒流线',
+      topbarTag: 'NIGHT SINGULARITY // 卡冈图雅黑洞与连续引力透镜纯粒子场',
+      coordText: 'GARGANTUA SINGULARITY · 视界黑球、连续光子环与零断层开普勒粒子吸积盘',
       originBadge: 'SINGULARITY (r -> r_s)',
       themeChip: 'NIGHT // 卡冈图雅视界',
       equation: 'ds² = -(1-r_s/r)c²dt² + (1-r_s/r)⁻¹dr² + r²dΩ² · GRAVITATIONAL LENSING',
@@ -52,7 +52,270 @@
     return document.documentElement.dataset.theme === 'dark';
   }
 
-  function applyTheme(nextTheme) {
+  /* ========================================================================
+     需求 7：结合无限主题与主页无限粒子模型的简洁加载动画
+     ======================================================================== */
+  var loaderEl = document.getElementById('infinity-loader');
+  var loaderCanvas = document.getElementById('loader-infinity-canvas');
+  var loaderFill = document.getElementById('loader-bar-fill');
+  var loaderStatus = document.getElementById('loader-status-text');
+  var loaderAnimId = 0;
+  var loaderStartTs = 0;
+  var loaderActive = false;
+
+  function runInfinityLoader(durationMs) {
+    if (!loaderEl) return;
+    cancelAnimationFrame(loaderAnimId);
+    loaderEl.dataset.loaded = 'false';
+    loaderActive = true;
+    loaderStartTs = performance.now();
+    var dur = durationMs || 720;
+
+    function stepLoader(now) {
+      if (!loaderActive) return;
+      var elapsed = now - loaderStartTs;
+      var p = Math.min(1, elapsed / dur);
+      if (loaderFill) loaderFill.style.width = Math.round(p * 100) + '%';
+      if (loaderStatus) {
+        loaderStatus.textContent = p < 0.85
+          ? 'INFINITY MANIFOLD // 正在聚合纯粒子无限流形 (' + Math.round(p * 100) + '%)'
+          : 'INFINITY MANIFOLD // 流形就绪 · READY';
+      }
+
+      if (loaderCanvas) {
+        var dpr = Math.min(window.devicePixelRatio || 1, 2);
+        var rect = loaderCanvas.getBoundingClientRect();
+        if (rect.width > 10 && rect.height > 10) {
+          var lw = Math.round(rect.width * dpr);
+          var lh = Math.round(rect.height * dpr);
+          if (loaderCanvas.width !== lw || loaderCanvas.height !== lh) {
+            loaderCanvas.width = lw;
+            loaderCanvas.height = lh;
+          }
+          var lctx = loaderCanvas.getContext('2d');
+          var W = lw / dpr;
+          var H = lh / dpr;
+          lctx.save();
+          lctx.scale(dpr, dpr);
+          lctx.clearRect(0, 0, W, H);
+
+          var cx = W * 0.5;
+          var cy = H * 0.5;
+          var a = W * 0.36;
+          var b = H * 0.56;
+          var tSec = now * 0.0024;
+          var palette = ['217, 119, 87', '232, 146, 110', '242, 179, 126', '202, 112, 82'];
+
+          // 沿伯努利双纽线运动的 42 颗纯粒子（无尾迹线段，与主页无限模型完全一致）
+          for (var i = 0; i < 42; i++) {
+            var u = (i / 42) * Math.PI * 2 + tSec * (0.9 + (i % 3) * 0.15);
+            var sinU = Math.sin(u), cosU = Math.cos(u);
+            var den = 1 + sinU * sinU;
+            var spread = ((i % 5) - 2) * 2.2;
+            var px = cx + (a * cosU) / den + Math.cos(u * 2 + i) * spread;
+            var py = cy + (b * sinU * cosU) / den + Math.sin(u * 2 + i) * spread;
+            var r = 1.3 + (i % 4) * 0.45;
+            var col = palette[i % palette.length];
+
+            if (i % 4 === 0) {
+              lctx.beginPath();
+              lctx.arc(px, py, r * 2.2, 0, Math.PI * 2);
+              lctx.fillStyle = 'rgba(' + col + ', 0.18)';
+              lctx.fill();
+            }
+            lctx.beginPath();
+            lctx.arc(px, py, r, 0, Math.PI * 2);
+            lctx.fillStyle = 'rgba(' + col + ', 0.88)';
+            lctx.fill();
+          }
+          lctx.restore();
+        }
+      }
+
+      if (p < 1) {
+        loaderAnimId = requestAnimationFrame(stepLoader);
+      } else {
+        loaderActive = false;
+        loaderEl.dataset.loaded = 'true';
+      }
+    }
+
+    loaderAnimId = requestAnimationFrame(stepLoader);
+  }
+
+  // 页面首次载入启动简洁无限加载动画
+  runInfinityLoader(680);
+
+  var btnReplayLoader = document.getElementById('btn-replay-loader');
+  if (btnReplayLoader) {
+    btnReplayLoader.addEventListener('click', function () {
+      runInfinityLoader(950);
+    });
+  }
+
+  /* ========================================================================
+     需求 8：结合无限（∞）与黑洞（Singularity）主题的昼夜切换过渡动画
+     ======================================================================== */
+  var transStage = document.getElementById('theme-transition-stage');
+  var transCanvas = document.getElementById('theme-transition-canvas');
+  var transBadge = document.getElementById('theme-transition-badge');
+  var transAnimId = 0;
+
+  function playThemeTransition(targetTheme) {
+    if (!transStage || !transCanvas) return;
+    if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+
+    cancelAnimationFrame(transAnimId);
+    var toDark = targetTheme === 'dark';
+    transStage.dataset.active = 'true';
+    if (transBadge) {
+      transBadge.textContent = toDark
+        ? 'SINGULARITY COLLAPSE // 无限流形 ∞ 坍缩至卡冈图雅黑洞'
+        : 'MANIFOLD UNFOLD // 黑洞奇点展开至立体无限环 ∞';
+    }
+
+    var startTs = performance.now();
+    var duration = 740;
+
+    function stepTransition(now) {
+      var p = Math.min(1, (now - startTs) / duration);
+      var ease = 1 - Math.pow(1 - p, 3);
+      var fadeAlpha = p < 0.25 ? (p / 0.25) : (1 - (p - 0.25) / 0.75);
+      fadeAlpha = Math.max(0, Math.min(1, fadeAlpha));
+
+      var dpr = Math.min(window.devicePixelRatio || 1, 2);
+      var w = Math.round(window.innerWidth * dpr);
+      var h = Math.round(window.innerHeight * dpr);
+      if (transCanvas.width !== w || transCanvas.height !== h) {
+        transCanvas.width = w;
+        transCanvas.height = h;
+      }
+
+      var ctx = transCanvas.getContext('2d');
+      var W = w / dpr;
+      var H = h / dpr;
+      var cx = W * 0.5;
+      var cy = H * 0.5;
+      var minDim = Math.min(W, H);
+
+      ctx.save();
+      ctx.scale(dpr, dpr);
+      ctx.clearRect(0, 0, W, H);
+
+      // 背景径向引力波涟漪
+      var maxWaveR = Math.hypot(W, H) * 0.6;
+      var waveR = Math.max(8, ease * maxWaveR);
+      var waveGrad = ctx.createRadialGradient(cx, cy, waveR * 0.15, cx, cy, waveR);
+      if (toDark) {
+        waveGrad.addColorStop(0, 'rgba(18, 18, 17, ' + (fadeAlpha * 0.52).toFixed(3) + ')');
+        waveGrad.addColorStop(0.7, 'rgba(217, 119, 87, ' + (fadeAlpha * 0.16).toFixed(3) + ')');
+        waveGrad.addColorStop(1, 'rgba(18, 18, 17, 0)');
+      } else {
+        waveGrad.addColorStop(0, 'rgba(250, 249, 245, ' + (fadeAlpha * 0.52).toFixed(3) + ')');
+        waveGrad.addColorStop(0.7, 'rgba(242, 179, 126, ' + (fadeAlpha * 0.18).toFixed(3) + ')');
+        waveGrad.addColorStop(1, 'rgba(250, 249, 245, 0)');
+      }
+      ctx.fillStyle = waveGrad;
+      ctx.beginPath();
+      ctx.arc(cx, cy, waveR, 0, Math.PI * 2);
+      ctx.fill();
+
+      // 核心几何形变：morphFactor = 0 为平面无限环 ∞，morphFactor = 1 为黑洞奇点与吸积盘
+      var morph = toDark ? ease : (1 - ease);
+      var infScale = 1 - morph * 0.72;
+      var a = minDim * 0.16 * infScale;
+      var b = a * 0.85;
+      var bhR = minDim * 0.055 * (0.25 + 0.75 * morph);
+
+      // 绘制形变中的平面无限环 ∞
+      if (morph < 0.92) {
+        var infAlpha = (1 - morph) * fadeAlpha * 0.9;
+        ctx.beginPath();
+        for (var s = 0; s <= 96; s++) {
+          var t = (s / 96) * Math.PI * 2;
+          var st = Math.sin(t), ct = Math.cos(t);
+          var den = 1 + st * st;
+          var ix = (a * ct) / den;
+          var iy = (b * st * ct) / den;
+          // 随坍缩向中心旋转聚拢
+          var rot = morph * 1.15;
+          var rx = ix * Math.cos(rot) - iy * Math.sin(rot);
+          var ry = ix * Math.sin(rot) + iy * Math.cos(rot);
+          if (s === 0) ctx.moveTo(cx + rx, cy + ry);
+          else ctx.lineTo(cx + rx, cy + ry);
+        }
+        ctx.closePath();
+        ctx.strokeStyle = 'rgba(217, 119, 87, ' + infAlpha.toFixed(3) + ')';
+        ctx.lineWidth = 2.0;
+        ctx.stroke();
+      }
+
+      // 绘制形变中的平面黑洞视界与吸积环
+      if (morph > 0.08) {
+        var bhAlpha = morph * fadeAlpha * 0.95;
+        // 平面吸积椭圆环
+        ctx.save();
+        ctx.translate(cx, cy);
+        ctx.rotate(-0.19);
+        ctx.beginPath();
+        ctx.ellipse(0, 0, bhR * 2.55, bhR * 0.52, 0, 0, Math.PI * 2);
+        ctx.strokeStyle = 'rgba(242, 179, 126, ' + bhAlpha.toFixed(3) + ')';
+        ctx.lineWidth = 1.8;
+        ctx.stroke();
+
+        // 上方平面引力透镜弧
+        ctx.beginPath();
+        ctx.arc(0, 0, bhR * 1.25, Math.PI * 1.08, Math.PI * 1.92);
+        ctx.strokeStyle = 'rgba(217, 119, 87, ' + (bhAlpha * 0.85).toFixed(3) + ')';
+        ctx.lineWidth = 1.4;
+        ctx.stroke();
+        ctx.restore();
+
+        // 中心事件视界圆盘
+        ctx.beginPath();
+        ctx.arc(cx, cy, bhR, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(18, 18, 17, ' + bhAlpha.toFixed(3) + ')';
+        ctx.fill();
+        ctx.strokeStyle = 'rgba(255, 228, 190, ' + bhAlpha.toFixed(3) + ')';
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+      }
+
+      // 36 颗纯粒子随形变在双焦点与黑洞奇点之间收束/展开（纯粒子，无尾迹线）
+      for (var k = 0; k < 36; k++) {
+        var ang = (k / 36) * Math.PI * 2 + p * 2.2;
+        var stK = Math.sin(ang), ctK = Math.cos(ang);
+        var denK = 1 + stK * stK;
+        var infPx = (a * 1.15 * ctK) / denK;
+        var infPy = (b * 1.15 * stK * ctK) / denK;
+        var diskR = bhR * (1.25 + (k % 5) * 0.34);
+        var bhPx = diskR * Math.cos(ang * 1.5);
+        var bhPy = diskR * Math.sin(ang * 1.5) * 0.28;
+
+        var px = cx + infPx * (1 - morph) + bhPx * morph;
+        var py = cy + infPy * (1 - morph) + bhPy * morph;
+        ctx.beginPath();
+        ctx.arc(px, py, 1.6 + (k % 3) * 0.5, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(217, 119, 87, ' + (fadeAlpha * 0.85).toFixed(3) + ')';
+        ctx.fill();
+      }
+
+      ctx.restore();
+
+      if (p < 1) {
+        transAnimId = requestAnimationFrame(stepTransition);
+      } else {
+        transStage.dataset.active = 'false';
+      }
+    }
+
+    transAnimId = requestAnimationFrame(stepTransition);
+  }
+
+  function applyTheme(nextTheme, withTransition) {
+    if (withTransition) {
+      playThemeTransition(nextTheme);
+    }
     var mode = nextTheme === 'dark' ? 'gargantua' : 'infinity';
     state.mode = mode;
     document.documentElement.dataset.theme = nextTheme;
@@ -238,7 +501,7 @@
   }
   if (fabThemeBtn) {
     fabThemeBtn.addEventListener('click', function () {
-      applyTheme(isDark() ? 'light' : 'dark');
+      applyTheme(isDark() ? 'light' : 'dark', true);
     });
   }
   if (fabViewBtn) {
@@ -258,23 +521,23 @@
   if (navThemePill) {
     navThemePill.addEventListener('click', function () {
       var next = isDark() ? 'light' : 'dark';
-      applyTheme(next);
-      showToast(next === 'dark' ? '已切换至夜间模式：卡冈图雅黑洞场已启动' : '已切换至白天模式：纯净线粒无限环已启动');
+      applyTheme(next, true);
+      showToast(next === 'dark' ? '已切换至夜间模式：卡冈图雅黑洞纯粒子场已启动' : '已切换至白天模式：立体纯粒子无限环已启动');
     });
   }
 
   document.querySelectorAll('[data-theme-mode]').forEach(function (btn) {
     btn.addEventListener('click', function () {
       var next = btn.dataset.themeMode;
-      applyTheme(next);
-      showToast(next === 'dark' ? '已切换至夜间模式：卡冈图雅黑洞' : '已切换至白天模式：纯净线粒无限环');
+      applyTheme(next, true);
+      showToast(next === 'dark' ? '已切换至夜间模式：卡冈图雅黑洞' : '已切换至白天模式：纯粒子无限环');
     });
   });
 
   var detailToggleTheme = document.getElementById('detail-toggle-theme');
   if (detailToggleTheme) {
     detailToggleTheme.addEventListener('click', function () {
-      applyTheme(isDark() ? 'light' : 'dark');
+      applyTheme(isDark() ? 'light' : 'dark', true);
     });
   }
 
@@ -289,9 +552,20 @@
     });
   }
 
+  var btnCopySiteCard = document.getElementById('btn-copy-site-card');
+  if (btnCopySiteCard) {
+    btnCopySiteCard.addEventListener('click', function () {
+      var cardText = '站名：夜笙的小世界 | 网址：https://www.yesheng.wiki | 简介：一个普通人的自述 | RSS：https://www.yesheng.wiki/rss.xml';
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(cardText).catch(function () {});
+      }
+      showToast('已复制「夜笙的小世界」友链名片信息到剪贴板');
+    });
+  }
+
   function activateDarkAndScrollFoot(e) {
     if (e) e.preventDefault();
-    applyTheme('dark');
+    applyTheme('dark', true);
     window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
     showToast('已切换至夜间黑洞模式，底部世界线变动率探测仪已点亮');
   }
@@ -488,7 +762,7 @@
       e.preventDefault();
       var artKey = openArtTrigger.dataset.openArticle || currentSpotId || 'mc';
       setViewMode('article', artKey);
-      showToast('已进入象限网格文章详细页');
+      showToast('已进入文章详细页（右侧运行《三体》引力运动模型）');
       return;
     }
 
@@ -522,7 +796,7 @@
         cover: postLink.dataset.postCover || defaultSpot.cover,
         excerpt: postLink.dataset.postExcerpt || defaultSpot.excerpt
       }, postLink);
-      showToast('已在右侧预览《' + postLink.dataset.postTitle + '》，点击「阅读全文」可进入详细页');
+      showToast('已在右侧预览《' + postLink.dataset.postTitle + '》（16:9 横幅封面），点击「阅读全文」进入详细页');
       return;
     }
 
@@ -578,24 +852,12 @@
     }
   }
   window.addEventListener('scroll', onScrollUpdate, { passive: true });
+
   /* ========================================================================
-     7. 核心需求 1 & 4：三维数学粒子与流线引擎（v4 全新重构）
-        A) 无限环模型 (drawInfinity3DModel — 白天模式)：
-           - 彻底移除黑色粒子 (inkRGB)，100% 采用纯净暖赤陶 (#d97757)、暖珊瑚 (#e89271)、琥珀流金 (#f0b27a) 与暖砂金 (#c87a5b) 多层次纯净色板
-           - 打破机械均匀排版：采用多股有机纤维束聚落 (Organic Filament Clustering) + 非均匀幂律散射 + 疏密呼吸团簇
-           - 增加丰富「线的元素」：
-             1. 7 条连续 3D 伯努利双纽线流线丝带 (3D Parametric Lemniscate Streamlines)
-             2. 粒子间动态拓扑连线网络 (Constellation Filament Links)
-             3. 粒子沿流形切线方向的流光尾迹线 (Velocity Tangent Trails)
-        B) 卡冈图雅黑洞模型 (drawGargantuaParticleModel — 夜间模式完全重做)：
-           - 恢复并升华《星际穿越》卡冈图雅黑洞的极致深邃引力质感
-           - 增加丰富「线的元素」：
-             1. 多层开普勒相对论吸积盘测地线流线环 (Relativistic Accretion Geodesic Streamlines)
-             2. 黑球上下方受克尔强引力场弯曲的爱因斯坦引力透镜光线弧 (Upper & Lower Gravitational Lensing Light-Ray Arcs)
-             3. 高速掠过事件视界粒子的切向相对论光弧长尾迹 (Relativistic Doppler Streak Lines)
-           - 真实三维前后遮挡：后方流线与透镜光桥 -> 深渊视界黑球本体与非对称光子环 -> 前方赤道吸积盘流线与高能粒子束横跨黑球正前方
-        C) 文章详细页右上方无限环动效画布 (drawArticleHeaderInfinityCanvas)：
-           - 替代原右侧静态封面图，提供与详细页高度协调的动态无限环流线+粒子谐振场
+     核心引擎：
+     1. 主页白天模型 (drawInfinity3DModel)：纯粒子立体无限环（删去所有粒子连线与尾部线段，粒子本体纯粹是粒子）
+     2. 主页夜间模型 (drawGargantuaParticleModel)：零断层卡冈图雅黑洞纯粒子场（删去尾部线段，消除赤道与透镜弧之间的粒子断层）
+     3. 文章详细页右侧模型 (drawArticleThreeBodyCanvas)：《三体》三恒星 + 行星混沌引力运动模型
      ======================================================================== */
   var stageCanvas = document.getElementById('hero-stage-canvas');
   var articleCanvas = document.getElementById('article-infinity-canvas');
@@ -659,6 +921,18 @@
     articleCanvas.addEventListener('pointerleave', function () {
       artMouse.active = false;
     });
+    articleCanvas.addEventListener('click', function () {
+      perturbThreeBodySystem();
+      showToast('已对《三体》恒星系统施加引力微扰（蝴蝶效应已触发）');
+    });
+  }
+
+  var perturbBtn = document.getElementById('detail-perturb-threebody');
+  if (perturbBtn) {
+    perturbBtn.addEventListener('click', function () {
+      perturbThreeBodySystem();
+      showToast('已对《三体》恒星系统施加引力微扰');
+    });
   }
 
   function resizeCanvas() {
@@ -689,14 +963,13 @@
   window.addEventListener('resize', resizeCanvas);
   setTimeout(resizeCanvas, 30);
 
-  // 确定性伪随机生成器，用于生成自然有机的非均匀聚落分布
+  // 确定性伪随机生成器
   var rngSeed = 1337;
   function nextRand() {
     rngSeed = (rngSeed * 16807) % 2147483647;
     return (rngSeed - 1) / 2147483646;
   }
 
-  // 纯净无限环调色板（零黑色粒子，全部采用纯净暖调赤陶、琥珀、珊瑚与香槟色系）
   var PURE_INFINITY_PALETTE = [
     '217, 119, 87',   // 主赤陶色 #d97757
     '232, 146, 110',  // 暖珊瑚色 #e8926e
@@ -705,14 +978,11 @@
     '238, 165, 136'   // 柔光暖杏 #eea588
   ];
 
-  var MAX_PARTICLES = 540;
+  var MAX_PARTICLES = 780;
   var particles = [];
-
-  // 构建 6 个随机聚落中心，打破均匀分布，形成自然的星云疏密节律
   var clusterCenters = [0.28, 1.15, 2.05, 3.35, 4.22, 5.48];
 
   for (var i = 0; i < MAX_PARTICLES; i++) {
-    // 72% 的粒子围绕有机聚落中心非均匀聚集，28% 自由流散在流形内外
     var baseU;
     if (nextRand() < 0.72) {
       var cIdx = Math.floor(nextRand() * clusterCenters.length);
@@ -722,17 +992,19 @@
       baseU = nextRand() * Math.PI * 2;
     }
 
-    // 幂律径向偏移：中心丝带密集，外围有自然的星尘散逸（告别呆板等距管道）
-    var radialPow = Math.pow(nextRand(), 1.85);
-    var outlier = nextRand() < 0.14 ? (1.35 + nextRand() * 1.15) : 1.0;
+    var radialPow = Math.pow(nextRand(), 1.75);
+    var outlier = nextRand() < 0.14 ? (1.3 + nextRand() * 1.0) : 1.0;
     var crossAngle = nextRand() * Math.PI * 2;
-    var streamId = i % 5; // 5 股交织的三维流线丝带
+    var streamId = i % 7;
 
-    // 黑洞参数：向内缘幂律加密，带有旋臂角度扰动
-    var bhR = Math.pow(nextRand(), 1.55);
+    // 黑洞参数：连续无断层分布
+    // branch 0 (52%): 主吸积盘 + 北极引力透镜连续主拱桥
+    // branch 1 (28%): 主吸积盘 + 南极次级引力透镜连续下拱桥
+    // branch 2 (20%): 紧贴事件视界外缘的 360° 连续光子环粒子带（彻底填平赤道与极区过渡）
+    var bhR = Math.pow(nextRand(), 1.38);
     var bhPhi = nextRand() * Math.PI * 2;
     var bhRoleRand = nextRand();
-    var bhBranch = bhRoleRand < 0.64 ? 0 : (bhRoleRand < 0.84 ? 1 : 2);
+    var bhBranch = bhRoleRand < 0.52 ? 0 : (bhRoleRand < 0.80 ? 1 : 2);
 
     particles.push({
       idx: i,
@@ -743,11 +1015,8 @@
       cy: Math.sin(crossAngle) * radialPow * outlier,
       cz: (nextRand() - 0.5) * 2.0 * radialPow * outlier,
       phaseOffset: nextRand() * Math.PI * 2,
-      // 自然的有机粒径变化（核心亮点 + 星尘微粒）
-      size: 1.15 + Math.pow(nextRand(), 1.6) * 1.65,
+      size: 1.2 + Math.pow(nextRand(), 1.55) * 1.75,
       colorRGB: PURE_INFINITY_PALETTE[i % PURE_INFINITY_PALETTE.length],
-      trailFactor: 0.6 + nextRand() * 0.9,
-      // 黑洞专属属性
       rNorm: bhR,
       phi: bhPhi,
       branch: bhBranch,
@@ -820,7 +1089,7 @@
   function drawDetachedReferenceFrame(ctx, cx, cy, W, H, faintRGB, accentRGB) {
     var rOuter = Math.min(W, H) * 0.468;
     ctx.save();
-    ctx.strokeStyle = 'rgba(' + faintRGB + ', 0.22)';
+    ctx.strokeStyle = 'rgba(' + faintRGB + ', 0.20)';
     ctx.lineWidth = 0.75;
     for (var q = 0; q < 4; q++) {
       var startA = q * (Math.PI * 0.5) + 0.14;
@@ -830,9 +1099,8 @@
       ctx.stroke();
     }
 
-    // 水平与垂直微弱蓝图基准线
     ctx.setLineDash([3, 6]);
-    ctx.strokeStyle = 'rgba(' + accentRGB + ', 0.12)';
+    ctx.strokeStyle = 'rgba(' + accentRGB + ', 0.11)';
     ctx.beginPath();
     ctx.moveTo(cx - rOuter * 1.08, cy);
     ctx.lineTo(cx + rOuter * 1.08, cy);
@@ -843,93 +1111,26 @@
   }
 
   /* ----------------------------------------------------------------------
-     白天模型：立体无限环（纯净暖色无黑点 + 有机疏密聚落 + 三维丝带流线 + 粒子拓扑连线）
+     需求 1（白天模型）：立体纯粒子无限环
+     删去所有粒子间连线、删去尾部线段、删去背景丝带线，粒子本体纯粹是发光粒子
      ---------------------------------------------------------------------- */
-  function evalInfinityPoint3D(t, streamOffset, radSpread, a, b, c, time) {
-    var sinT = Math.sin(t);
-    var cosT = Math.cos(t);
-    var denom = 1 + sinT * sinT;
-
-    var bx = (a * cosT) / denom;
-    var by = (b * sinT * cosT) / denom;
-    var bz = c * sinT;
-
-    // 多股谐波丝带偏移，形成富有张力的线网结构
-    var ribbonWave = t * 2.0 + streamOffset + time * 0.55;
-    var ox = Math.cos(ribbonWave) * radSpread;
-    var oy = Math.sin(ribbonWave) * radSpread * 0.88;
-    var oz = Math.sin(t * 3.0 + streamOffset) * radSpread * 1.12;
-
-    return { x: bx + ox, y: by + oy, z: bz + oz };
-  }
-
   function drawInfinity3DModel(ctx, cx, cy, W, H, dt) {
     var minDim = Math.min(W, H);
     var a = Math.min(W * 0.44, minDim * 0.52);
     var b = a * 0.88;
     var c = a * 0.34;
-    var tubeRadius = a * 0.095;
+    var tubeRadius = a * 0.105;
     var fov = 680;
 
-    // 有界三维章动微倾，恒定保持立体「∞」拓扑
     var rotX = 0.22 * Math.sin(state.time * 0.36) + mouse.sny * 0.15;
     var rotY = 0.24 * Math.cos(state.time * 0.28) + mouse.snx * 0.17;
     var rotZ = -0.06 + 0.075 * Math.sin(state.time * 0.22);
 
-    // 1. 左右双叶焦点几何靶标与椭圆轨道辅助线
-    var focusX = a * 0.62;
-    [-focusX, focusX].forEach(function (fx3) {
-      var fp = project3D(fx3, 0, 0, rotX, rotY, rotZ, cx, cy, fov);
-      ctx.save();
-      ctx.strokeStyle = 'rgba(217, 119, 87, 0.34)';
-      ctx.lineWidth = 0.85;
-      ctx.beginPath();
-      ctx.arc(fp.sx, fp.sy, 11, 0, Math.PI * 2);
-      ctx.stroke();
-      ctx.beginPath();
-      ctx.moveTo(fp.sx - 5, fp.sy);
-      ctx.lineTo(fp.sx + 5, fp.sy);
-      ctx.moveTo(fp.sx, fp.sy - 5);
-      ctx.lineTo(fp.sx, fp.sy + 5);
-      ctx.stroke();
-      ctx.restore();
-    });
-
-    // 2. 绘制「线的元素 ①」：7 条交织的三维连续参数双纽线流线丝带 (3D Harmonic Ribbon Streamlines)
-    var numRibbons = 7;
-    var ribbonSteps = 110;
-    ctx.save();
-    for (var rIdx = 0; rIdx < numRibbons; rIdx++) {
-      var sOff = (rIdx / numRibbons) * Math.PI * 2;
-      var rSpread = (rIdx === 0) ? 0 : tubeRadius * (0.28 + (rIdx % 3) * 0.26);
-      var isCoreRibbon = (rIdx === 0 || rIdx === 3);
-      ctx.beginPath();
-      for (var s = 0; s <= ribbonSteps; s++) {
-        var tVal = (s / ribbonSteps) * Math.PI * 2;
-        var p3 = evalInfinityPoint3D(tVal, sOff, rSpread, a, b, c, state.time);
-        var pr = project3D(p3.x, p3.y, p3.z, rotX, rotY, rotZ, cx, cy, fov);
-        var mw = computeMouseWaveOffset(pr.sx, pr.sy);
-        var sx = pr.sx + mw.ox * 0.55;
-        var sy = pr.sy + mw.oy * 0.55;
-        if (s === 0) ctx.moveTo(sx, sy);
-        else ctx.lineTo(sx, sy);
-      }
-      ctx.closePath();
-      ctx.strokeStyle = isCoreRibbon
-        ? 'rgba(217, 119, 87, 0.32)'
-        : 'rgba(232, 146, 110, ' + (0.12 + (rIdx % 3) * 0.05).toFixed(3) + ')';
-      ctx.lineWidth = isCoreRibbon ? 1.25 : 0.75;
-      ctx.stroke();
-    }
-    ctx.restore();
-
-    // 3. 计算全部有机非均匀粒子的三维坐标与切向速度向量（用于绘制流光尾迹线）
     var count = Math.min(state.particleCount, MAX_PARTICLES);
     var renderList = [];
 
     for (var i = 0; i < count; i++) {
       var pt = particles[i];
-      // 速度随曲线曲率产生自然涨落（双叶两端略缓，中心交叉鞍点加速）
       var speedMod = 0.78 + 0.42 * Math.sin(pt.u * 2.0 + pt.phaseOffset);
       pt.u = (pt.u + pt.uSpeed * speedMod * 0.68 * dt * state.speed) % (Math.PI * 2);
 
@@ -942,8 +1143,7 @@
       var by = (b * sinT * cosT) / denom;
       var bz = c * sinT;
 
-      // 多股有机丝带截面位置 + 呼吸脉动
-      var streamAngle = (pt.streamId / 5) * Math.PI * 2 + t * 1.5 + state.time * 0.55;
+      var streamAngle = (pt.streamId / 7) * Math.PI * 2 + t * 1.5 + state.time * 0.55;
       var cosTw = Math.cos(streamAngle), sinTw = Math.sin(streamAngle);
       var rx = pt.cx * cosTw - pt.cy * sinTw;
       var ry = pt.cx * sinTw + pt.cy * cosTw;
@@ -954,85 +1154,34 @@
       var oz = pt.cz * localSpread * 1.08;
 
       var proj = project3D(bx + ox, by + oy, bz + oz, rotX, rotY, rotZ, cx, cy, fov);
-
-      // 计算微小前瞻点以获取精确切线方向（用于绘制粒子尾迹线）
-      var tPrev = t - 0.045 * pt.trailFactor;
-      var sinP = Math.sin(tPrev), cosP = Math.cos(tPrev), denP = 1 + sinP * sinP;
-      var prevProj = project3D(
-        (a * cosP) / denP + ox,
-        (b * sinP * cosP) / denP + oy,
-        c * sinP + oz,
-        rotX, rotY, rotZ, cx, cy, fov
-      );
-
       updateParticleSpring(pt, proj.sx, proj.sy, dt);
 
       renderList.push({
         x: proj.sx + pt.dx,
         y: proj.sy + pt.dy,
-        tx: prevProj.sx + pt.dx * 0.85,
-        ty: prevProj.sy + pt.dy * 0.85,
         z: proj.z,
         size: pt.size,
         colorRGB: pt.colorRGB,
-        glow: pt.glow,
-        streamId: pt.streamId
+        glow: pt.glow
       });
     }
 
     renderList.sort(function (p1, p2) { return p2.z - p1.z; });
 
-    // 4. 绘制「线的元素 ②」：邻近粒子动态拓扑连线网 (Constellation Filament Lines)
-    ctx.save();
-    ctx.lineWidth = 0.68;
-    var maxLinkDistSq = Math.pow(minDim * 0.082, 2);
-    for (var m = 0; m < renderList.length; m += 2) {
-      var pA = renderList[m];
-      var linksDrawn = 0;
-      for (var n = m + 1; n < renderList.length; n += 2) {
-        var pB = renderList[n];
-        if (Math.abs(pA.z - pB.z) > a * 0.32) continue;
-        var dx = pA.x - pB.x;
-        var dy = pA.y - pB.y;
-        var dSq = dx * dx + dy * dy;
-        if (dSq < maxLinkDistSq && dSq > 9) {
-          var distAlpha = (1 - dSq / maxLinkDistSq) * 0.26;
-          ctx.strokeStyle = 'rgba(217, 119, 87, ' + distAlpha.toFixed(3) + ')';
-          ctx.beginPath();
-          ctx.moveTo(pA.x, pA.y);
-          ctx.lineTo(pB.x, pB.y);
-          ctx.stroke();
-          linksDrawn++;
-          if (linksDrawn >= 2) break;
-        }
-      }
-    }
-    ctx.restore();
-
-    // 5. 绘制「线的元素 ③」：粒子切向流光尾迹线 + 纯净暖色系发光粒子本体（无任何黑色粒子）
+    // 纯粒子渲染（无任何尾部线段、无粒子间连线）
     for (var j = 0; j < renderList.length; j++) {
       var r = renderList[j];
-      var depthNorm = Math.max(0.35, Math.min(1.0, 0.74 - r.z / (a * 1.85)));
-      var alpha = Math.min(0.96, 0.42 + 0.50 * depthNorm + r.glow * 0.28);
-      var radius = r.size * (0.88 + 0.22 * depthNorm) + r.glow * 0.45;
+      var depthNorm = Math.max(0.32, Math.min(1.0, 0.74 - r.z / (a * 1.85)));
+      var alpha = Math.min(0.98, 0.44 + 0.50 * depthNorm + r.glow * 0.28);
+      var radius = r.size * (0.88 + 0.26 * depthNorm) + r.glow * 0.5;
 
-      // 切向流光尾迹线
-      ctx.beginPath();
-      ctx.moveTo(r.x, r.y);
-      ctx.lineTo(r.tx, r.ty);
-      ctx.strokeStyle = 'rgba(' + r.colorRGB + ', ' + (alpha * 0.42).toFixed(3) + ')';
-      ctx.lineWidth = Math.max(0.65, radius * 0.62);
-      ctx.stroke();
-
-      // 柔光外晕（针对较亮的主粒子）
-      if (r.size > 2.1 || r.glow > 0.15) {
+      if (r.size > 1.95 || r.glow > 0.12) {
         ctx.beginPath();
-        ctx.arc(r.x, r.y, radius * 2.1, 0, Math.PI * 2);
-        ctx.fillStyle = 'rgba(' + r.colorRGB + ', ' + (alpha * 0.16).toFixed(3) + ')';
+        ctx.arc(r.x, r.y, radius * 2.25, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(' + r.colorRGB + ', ' + (alpha * 0.18).toFixed(3) + ')';
         ctx.fill();
       }
 
-      // 纯净暖色粒子核心
       ctx.beginPath();
       ctx.arc(r.x, r.y, radius, 0, Math.PI * 2);
       ctx.fillStyle = 'rgba(' + r.colorRGB + ', ' + alpha.toFixed(3) + ')';
@@ -1041,19 +1190,18 @@
   }
 
   /* ----------------------------------------------------------------------
-     夜间模型：卡冈图雅黑洞（完全重做 v4 — 恢复星际穿越级质感 + 丰富引力透镜流线与吸积盘轨线）
+     需求 1（夜间模型）：卡冈图雅黑洞纯粒子模型（消除视觉断层 + 移除尾部线段）
      ---------------------------------------------------------------------- */
   function drawGargantuaParticleModel(ctx, cx, cy, W, H, dt) {
     var minDim = Math.min(W, H);
     var Rs = minDim * 0.136; // 事件视界半径
-    var tiltRad = 1.405 + Math.sin(state.time * 0.22) * 0.02 + mouse.sny * 0.05;
-    var rollRad = -0.22 + Math.cos(state.time * 0.16) * 0.018 + mouse.snx * 0.05;
+    var tiltRad = 1.385 + Math.sin(state.time * 0.22) * 0.018 + mouse.sny * 0.045;
+    var rollRad = -0.21 + Math.cos(state.time * 0.16) * 0.016 + mouse.snx * 0.045;
     var cr = Math.cos(rollRad), sr = Math.sin(rollRad);
 
-    var rInner = Rs * 1.15;
+    var rInner = Rs * 1.08;
     var rOuter = Math.min(W * 0.46, minDim * 0.50);
 
-    // 辅助函数：将黑洞局部坐标旋转映射到屏幕
     function toScreen(lx, ly) {
       return {
         x: cx + (lx * cr - ly * sr),
@@ -1061,170 +1209,98 @@
       };
     }
 
-    // --------------------------------------------------------------------
-    // 第一层：背景深空引力场氛围辉光 + 后方爱因斯坦引力透镜光线弧（线的元素 A）
-    // --------------------------------------------------------------------
+    // 1. 背景深空引力场柔和光晕
     ctx.save();
-    var ambientHalo = ctx.createRadialGradient(cx, cy, Rs * 0.85, cx, cy, rOuter * 0.95);
+    var ambientHalo = ctx.createRadialGradient(cx, cy, Rs * 0.88, cx, cy, rOuter * 0.95);
     ambientHalo.addColorStop(0, 'rgba(217, 119, 87, 0.22)');
-    ambientHalo.addColorStop(0.28, 'rgba(235, 148, 110, 0.10)');
-    ambientHalo.addColorStop(0.65, 'rgba(180, 95, 65, 0.03)');
+    ambientHalo.addColorStop(0.32, 'rgba(235, 148, 110, 0.09)');
+    ambientHalo.addColorStop(0.68, 'rgba(180, 95, 65, 0.025)');
     ambientHalo.addColorStop(1, 'rgba(20, 20, 19, 0)');
     ctx.fillStyle = ambientHalo;
     ctx.beginPath();
     ctx.arc(cx, cy, rOuter * 0.95, 0, Math.PI * 2);
     ctx.fill();
-
-    // 绘制上方与下方多条连续引力透镜弯曲光线弧 (Einstein Lensing Geodesic Lines)
-    var numLensArcs = 9;
-    for (var la = 0; la < numLensArcs; la++) {
-      var lFrac = la / (numLensArcs - 1);
-      var arcR = Rs * (1.06 + lFrac * 0.88);
-      var archHeight = Rs * (1.05 + lFrac * 0.72);
-
-      // 上方引力透镜光桥线
-      ctx.beginPath();
-      for (var step = 0; step <= 64; step++) {
-        var ang = Math.PI * (step / 64); // 0 -> PI
-        var lx = Math.cos(ang) * (arcR * 1.38);
-        var ly = -Math.sin(ang) * archHeight;
-        var sp = toScreen(lx, ly);
-        if (step === 0) ctx.moveTo(sp.x, sp.y);
-        else ctx.lineTo(sp.x, sp.y);
-      }
-      var topAlpha = (1 - lFrac * 0.75) * 0.34;
-      ctx.strokeStyle = la < 3 ? 'rgba(255, 215, 175, ' + topAlpha.toFixed(3) + ')' : 'rgba(217, 119, 87, ' + (topAlpha * 0.8).toFixed(3) + ')';
-      ctx.lineWidth = la === 0 ? 1.5 : 0.85;
-      ctx.stroke();
-
-      // 下方次级相对论引力透镜光桥线
-      ctx.beginPath();
-      for (var stepB = 0; stepB <= 64; stepB++) {
-        var angB = Math.PI * (stepB / 64);
-        var lxB = Math.cos(angB) * (arcR * 1.28);
-        var lyB = Math.sin(angB) * (archHeight * 0.90);
-        var spB = toScreen(lxB, lyB);
-        if (stepB === 0) ctx.moveTo(spB.x, spB.y);
-        else ctx.lineTo(spB.x, spB.y);
-      }
-      var botAlpha = (1 - lFrac * 0.78) * 0.26;
-      ctx.strokeStyle = la < 2 ? 'rgba(255, 205, 165, ' + botAlpha.toFixed(3) + ')' : 'rgba(217, 119, 87, ' + (botAlpha * 0.75).toFixed(3) + ')';
-      ctx.lineWidth = la === 0 ? 1.25 : 0.75;
-      ctx.stroke();
-    }
-
-    // 绘制后半部分吸积盘开普勒椭圆流线（线的元素 B — 位于黑球后方）
-    var numDiskLines = 11;
-    for (var dl = 0; dl < numDiskLines; dl++) {
-      var dFrac = dl / (numDiskLines - 1);
-      var diskR = rInner + Math.pow(dFrac, 1.25) * (rOuter - rInner);
-      ctx.beginPath();
-      for (var ds = 0; ds <= 60; ds++) {
-        var phiBack = Math.PI + (ds / 60) * Math.PI; // PI -> 2*PI (后半盘)
-        var bx = diskR * Math.cos(phiBack);
-        // 后半盘受引力向上抬升弯折
-        var rawY = diskR * Math.sin(phiBack) * Math.cos(tiltRad);
-        var lensLift = -Math.sin(phiBack - Math.PI) * Rs * 0.62 * (1 - dFrac * 0.55);
-        var spD = toScreen(bx, rawY + lensLift);
-        if (ds === 0) ctx.moveTo(spD.x, spD.y);
-        else ctx.lineTo(spD.x, spD.y);
-      }
-      ctx.strokeStyle = 'rgba(217, 119, 87, ' + ((1 - dFrac * 0.7) * 0.24).toFixed(3) + ')';
-      ctx.lineWidth = 0.75;
-      ctx.stroke();
-    }
     ctx.restore();
 
-    // --------------------------------------------------------------------
-    // 第二层：计算所有黑洞吸积盘与透镜弧粒子的运动与切向相对论光迹线
-    // --------------------------------------------------------------------
+    // 2. 计算全部黑洞纯粒子的连续三维投影位置（彻底消除左右翼赤道交界处的跳跃断层）
     var count = Math.min(state.particleCount, MAX_PARTICLES);
     var backParticles = [];
     var frontParticles = [];
 
     for (var i = 0; i < count; i++) {
       var pt = particles[i];
-      // 开普勒相对论角速度：越靠近视界旋转越快
-      var keplerOmega = 1.28 / Math.pow(0.24 + pt.rNorm, 1.38);
+      var keplerOmega = 1.25 / Math.pow(0.22 + pt.rNorm, 1.32);
       pt.phi = (pt.phi + keplerOmega * dt * state.speed) % (Math.PI * 2);
 
-      var r = rInner + pt.rNorm * (rOuter - rInner) + pt.bhJitter * Rs * 0.05;
       var cosP = Math.cos(pt.phi);
       var sinP = Math.sin(pt.phi);
+      var lx, ly;
+      var isFrontDisk = false;
 
-      var isFrontDisk = (pt.branch === 0 && sinP >= -0.04);
-
-      var lx = r * cosP;
-      var ly = r * sinP * Math.cos(tiltRad) + pt.cz * 2.8;
-
-      // 计算切向速度方向（用于绘制相对论光迹长线）
-      var txDir = -sinP;
-      var tyDir = cosP * Math.cos(tiltRad);
-
-      if (!isFrontDisk) {
-        var behind = Math.max(0, -sinP);
-        if (pt.branch === 0) {
-          var arch = Math.sqrt(Math.max(0, (r * 0.90) * (r * 0.90) - (lx * 0.70) * (lx * 0.70)));
-          ly = -arch * (0.76 + 0.26 * behind) * (1 - pt.rNorm * 0.35) + ly * 0.22;
-          txDir = -cosP * 0.45;
-          tyDir = -sinP * 0.82;
-        } else if (pt.branch === 1) {
-          var topR = Rs * (1.08 + 0.75 * pt.rNorm);
-          var topY = -Math.sqrt(Math.max(0, topR * topR - (lx * 0.65) * (lx * 0.65)));
-          ly = topY * (0.86 + 0.24 * behind) + pt.bhJitter * 3.0;
-          txDir = -1.0;
-          tyDir = (lx / Math.max(Rs * 0.4, topR)) * 0.48;
-        } else {
-          var botR = Rs * (1.07 + 0.62 * pt.rNorm);
-          var botY = Math.sqrt(Math.max(0, botR * botR - (lx * 0.68) * (lx * 0.68)));
-          ly = botY * (0.82 + 0.22 * behind) + pt.bhJitter * 2.8;
-          txDir = -1.0;
-          tyDir = -(lx / Math.max(Rs * 0.4, botR)) * 0.45;
-        }
-
-        // 视界排斥边界：确保后方引力透镜粒子沿着黑球外侧光子环绕射，不穿入黑球内部
-        var dCenter = Math.hypot(lx, ly);
-        var minAllowedR = Rs * 1.035;
-        if (dCenter < minAllowedR && dCenter > 0.001) {
-          lx *= (minAllowedR / dCenter);
-          ly *= (minAllowedR / dCenter);
-        }
+      if (pt.branch === 2) {
+        // branch 2: 360° 连续环绕事件视界外缘的高能光子环与内晕粒子流（无死角衔接上下透镜弧与赤道盘）
+        var rHalo = Rs * (1.035 + 0.52 * Math.pow(pt.rNorm, 1.45));
+        lx = rHalo * cosP * (1.12 + 0.22 * pt.rNorm);
+        ly = rHalo * sinP * (1.02 + 0.10 * pt.rNorm) + pt.cz * 2.0;
+        isFrontDisk = false;
       } else {
-        // 前方赤道吸积盘：极其锐利扁平地横切黑球赤道前方，略带引力微沉
-        var frontDip = Math.exp(-(lx * lx) / (2 * (Rs * 1.15) * (Rs * 1.15)));
-        ly = r * sinP * Math.cos(tiltRad) * 0.72 + frontDip * Rs * 0.06;
+        // branch 0 & 1: 连续吸积盘 + 上下爱因斯坦引力透镜拱桥
+        var r = rInner + pt.rNorm * (rOuter - rInner) + pt.bhJitter * Rs * 0.04;
+        lx = r * cosP;
+        var flatY = r * sinP * Math.cos(tiltRad) + pt.cz * 2.5;
+
+        if (sinP >= 0) {
+          // 前半赤道盘（横跨黑球正前方）：在 sinP = 0 处 ly = pt.cz * 2.5，与后半盘在左右两翼 100% 连续衔接
+          isFrontDisk = true;
+          var frontDip = Math.sin(pt.phi) * Math.exp(-(lx * lx) / (2 * (Rs * 1.25) * (Rs * 1.25)));
+          ly = flatY * 0.82 + frontDip * Rs * 0.06;
+        } else {
+          // 后半盘受克尔引力场平滑弯曲：弯曲幅度严格正比于 s = -sinP（在 sinP = 0 处 s = 0，因此零断层！）
+          isFrontDisk = false;
+          var s = -sinP; // 0 (左右翼交界) -> 1 (黑球正后方) -> 0
+          var sCurve = Math.pow(s, 0.84);
+          if (pt.branch === 0) {
+            // 北极上方主引力透镜拱桥
+            var topArchH = Rs * (1.08 + 0.78 * Math.pow(pt.rNorm, 0.88)) + r * 0.14 * (1 - pt.rNorm);
+            ly = flatY * (1 - s * 0.72) - sCurve * topArchH;
+          } else {
+            // 南极下方次级引力透镜拱桥
+            var botArchH = Rs * (1.04 + 0.66 * Math.pow(pt.rNorm, 0.90)) + r * 0.12 * (1 - pt.rNorm);
+            ly = flatY * (1 - s * 0.72) + sCurve * botArchH;
+          }
+
+          // 平滑视界排斥包络（仅随 s 平滑生效，绝不在赤道翼产生突变）
+          var dCenter = Math.hypot(lx, ly);
+          var minR = Rs * (1.0 + 0.035 * s);
+          if (dCenter < minR && dCenter > 0.001) {
+            var pushScale = 1 + ((minR / dCenter) - 1) * s;
+            lx *= pushScale;
+            ly *= pushScale;
+          }
+        }
       }
 
       var sp = toScreen(lx, ly);
       updateParticleSpring(pt, sp.x, sp.y, dt);
 
-      // 相对论多普勒聚束效应（左侧迎面而来极亮偏白金/琥珀，右侧退行偏深赤陶）
-      var doppler = Math.max(0.28, Math.min(1.45, 0.88 - 0.54 * cosP));
-      var innerHeat = Math.pow(1 - pt.rNorm, 1.6);
-      var alpha = Math.min(0.98, (0.38 + 0.48 * doppler + 0.25 * innerHeat) * (1 - pt.rNorm * 0.28) + pt.glow * 0.28);
+      // 相对论多普勒增亮效应（迎面侧更亮偏暖白金，退行侧偏深赤陶）
+      var doppler = Math.max(0.32, Math.min(1.42, 0.88 - 0.50 * cosP));
+      var innerHeat = pt.branch === 2 ? (0.65 + 0.35 * (1 - pt.rNorm)) : Math.pow(1 - pt.rNorm, 1.55);
+      var alpha = Math.min(0.98, (0.40 + 0.46 * doppler + 0.24 * innerHeat) * (1 - pt.rNorm * 0.25) + pt.glow * 0.28);
 
-      // 颜色随温度与多普勒频移自然过渡：内圈左侧炽白金 -> 中圈暖琥珀 -> 外圈赤陶色
       var colorRGB;
-      if (innerHeat > 0.55 && doppler > 0.95) {
-        colorRGB = '255, 238, 210'; // 炽热光子白金
-      } else if (innerHeat > 0.28 || doppler > 0.90) {
-        colorRGB = '244, 178, 120'; // 琥珀亮金
+      if (innerHeat > 0.54 && doppler > 0.92) {
+        colorRGB = '255, 238, 210';
+      } else if (innerHeat > 0.26 || doppler > 0.88) {
+        colorRGB = '244, 178, 120';
       } else {
-        colorRGB = '217, 119, 87';  // 经典赤陶
+        colorRGB = '217, 119, 87';
       }
-
-      // 切线方向投射到屏幕，用于绘制流光长弧线（线的元素 C）
-      var scrTx = txDir * cr - tyDir * sr;
-      var scrTy = txDir * sr + tyDir * cr;
-      var tLen = Math.hypot(scrTx, scrTy) + 0.001;
-      var streakLen = (6.5 + innerHeat * 16.0 + doppler * 6.0) * pt.trailFactor;
 
       var item = {
         x: sp.x + pt.dx,
         y: sp.y + pt.dy,
-        vx: (scrTx / tLen) * streakLen,
-        vy: (scrTy / tLen) * streakLen,
-        r: pt.size * (0.78 + 0.24 * innerHeat) + pt.glow * 0.35,
+        r: pt.size * (0.82 + 0.28 * innerHeat) + pt.glow * 0.4,
         colorRGB: colorRGB,
         alpha: alpha,
         innerHeat: innerHeat
@@ -1234,18 +1310,15 @@
       else backParticles.push(item);
     }
 
-    function renderGargantuaBatch(list) {
+    function renderPureParticles(list) {
       for (var k = 0; k < list.length; k++) {
         var p = list[k];
-        // 绘制粒子切向相对论光迹线
-        ctx.beginPath();
-        ctx.moveTo(p.x - p.vx * 0.45, p.y - p.vy * 0.45);
-        ctx.lineTo(p.x + p.vx * 0.55, p.y + p.vy * 0.55);
-        ctx.strokeStyle = 'rgba(' + p.colorRGB + ', ' + (p.alpha * 0.52).toFixed(3) + ')';
-        ctx.lineWidth = Math.max(0.65, p.r * 0.68);
-        ctx.stroke();
-
-        // 粒子核心亮点
+        if (p.r > 1.85 || p.innerHeat > 0.5) {
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, p.r * 2.2, 0, Math.PI * 2);
+          ctx.fillStyle = 'rgba(' + p.colorRGB + ', ' + (p.alpha * 0.18).toFixed(3) + ')';
+          ctx.fill();
+        }
         ctx.beginPath();
         ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
         ctx.fillStyle = 'rgba(' + p.colorRGB + ', ' + p.alpha.toFixed(3) + ')';
@@ -1253,24 +1326,20 @@
       }
     }
 
-    // 渲染黑球后方的引力透镜粒子与尾迹
-    renderGargantuaBatch(backParticles);
+    // 渲染黑球后方的连续引力透镜纯粒子
+    renderPureParticles(backParticles);
 
-    // --------------------------------------------------------------------
-    // 第三层：中央事件视界黑球本体 + 锐利非对称光子环 (Event Horizon & Photon Ring)
-    // --------------------------------------------------------------------
+    // 3. 中央事件视界黑球本体 + 光子环微光边缘
     ctx.save();
-    // 视界外缘炽热光子层光晕
-    var photonGlow = ctx.createRadialGradient(cx - Rs * 0.08, cy, Rs * 0.94, cx, cy, Rs * 1.38);
-    photonGlow.addColorStop(0, 'rgba(255, 225, 185, 0.55)');
-    photonGlow.addColorStop(0.28, 'rgba(217, 119, 87, 0.28)');
+    var photonGlow = ctx.createRadialGradient(cx - Rs * 0.08, cy, Rs * 0.94, cx, cy, Rs * 1.32);
+    photonGlow.addColorStop(0, 'rgba(255, 225, 185, 0.48)');
+    photonGlow.addColorStop(0.32, 'rgba(217, 119, 87, 0.22)');
     photonGlow.addColorStop(1, 'rgba(217, 119, 87, 0)');
     ctx.fillStyle = photonGlow;
     ctx.beginPath();
-    ctx.arc(cx, cy, Rs * 1.38, 0, Math.PI * 2);
+    ctx.arc(cx, cy, Rs * 1.32, 0, Math.PI * 2);
     ctx.fill();
 
-    // 纯粹深渊黑球本体（真实遮挡后方一切光线）
     var abyssGrad = ctx.createRadialGradient(cx - Rs * 0.22, cy - Rs * 0.20, Rs * 0.05, cx, cy, Rs);
     abyssGrad.addColorStop(0, '#100f0e');
     abyssGrad.addColorStop(0.55, '#070706');
@@ -1280,67 +1349,269 @@
     ctx.arc(cx, cy, Rs, 0, Math.PI * 2);
     ctx.fillStyle = abyssGrad;
     ctx.fill();
-
-    // 紧贴事件视界边缘的锐利光子环（左侧多普勒增亮白金弧，右侧暖赤陶细弧）
-    ctx.beginPath();
-    ctx.arc(cx, cy, Rs * 1.015, 0, Math.PI * 2);
-    ctx.strokeStyle = 'rgba(235, 150, 108, 0.72)';
-    ctx.lineWidth = 1.35;
-    ctx.stroke();
-
-    ctx.beginPath();
-    ctx.arc(cx, cy, Rs * 1.012, Math.PI * 0.55, Math.PI * 1.45);
-    ctx.strokeStyle = 'rgba(255, 240, 215, 0.92)';
-    ctx.lineWidth = 1.95;
-    ctx.stroke();
     ctx.restore();
 
-    // --------------------------------------------------------------------
-    // 第四层：横跨黑球正前方的前景赤道吸积盘连续流线（线的元素 D）+ 前景高能粒子流
-    // --------------------------------------------------------------------
-    ctx.save();
-    var numFrontLines = 14;
-    for (var fl = 0; fl < numFrontLines; fl++) {
-      var fFrac = fl / (numFrontLines - 1);
-      var fRadius = rInner + Math.pow(fFrac, 1.3) * (rOuter - rInner);
-      ctx.beginPath();
-      for (var fs = 0; fs <= 64; fs++) {
-        var phiFront = (fs / 64) * Math.PI; // 0 -> PI (前半赤道盘)
-        var fx = fRadius * Math.cos(phiFront);
-        var fy = fRadius * Math.sin(phiFront) * Math.cos(tiltRad) * 0.72;
-        var frontDipLine = Math.exp(-(fx * fx) / (2 * (Rs * 1.15) * (Rs * 1.15)));
-        fy += frontDipLine * Rs * 0.06;
-        var spF = toScreen(fx, fy);
-        var mwF = computeMouseWaveOffset(spF.x, spF.y);
-        var sxF = spF.x + mwF.ox * 0.45;
-        var syF = spF.y + mwF.oy * 0.45;
-        if (fs === 0) ctx.moveTo(sxF, syF);
-        else ctx.lineTo(sxF, syF);
-      }
-      var isInnerBridge = fl < 4;
-      var lineAlpha = (1 - fFrac * 0.68) * (isInnerBridge ? 0.52 : 0.28);
-      ctx.strokeStyle = isInnerBridge
-        ? 'rgba(255, 222, 185, ' + lineAlpha.toFixed(3) + ')'
-        : 'rgba(217, 119, 87, ' + lineAlpha.toFixed(3) + ')';
-      ctx.lineWidth = isInnerBridge ? 1.25 : 0.75;
-      ctx.stroke();
-    }
-    ctx.restore();
-
-    // 渲染横跨黑球正前方的高速前景粒子与切向光迹
-    renderGargantuaBatch(frontParticles);
+    // 4. 渲染横跨黑球正前方的赤道吸积盘纯粒子流
+    renderPureParticles(frontParticles);
   }
 
   /* ----------------------------------------------------------------------
-     文章详细页右上象限：动态无限环谐振场画布 (drawArticleHeaderInfinityCanvas)
+     需求 2：文章详细页右侧模型 —— 《三体》三个天体的混沌引力运动模型
+     模拟三颗恒星 (S1, S2, S3) 与三体行星 (Trisolaris) 在三维引力场中的混沌运动
      ---------------------------------------------------------------------- */
-  function drawArticleHeaderInfinityCanvas(ctx, W, H, time) {
+  var threeBodyState = {
+    suns: [],
+    planet: null,
+    dust: [],
+    era: 'CHAOTIC',
+    flux: 1.42
+  };
+
+  function initThreeBodySystem() {
+    threeBodyState.suns = [
+      {
+        name: 'ALPHA // 恒星 α',
+        mass: 1.18,
+        x: -78, y: -32, z: 18,
+        vx: 16, vy: -42, vz: 14,
+        radius: 6.8,
+        colorRGB: '242, 179, 126', // 琥珀流金巨星
+        coreHex: '#fff4df',
+        trail: []
+      },
+      {
+        name: 'BETA // 恒星 β',
+        mass: 1.04,
+        x: 82, y: -18, z: -22,
+        vx: 18, vy: 46, vz: -12,
+        radius: 6.0,
+        colorRGB: '217, 119, 87',  // 赤陶主序星
+        coreHex: '#ffe3d1',
+        trail: []
+      },
+      {
+        name: 'GAMMA // 恒星 γ',
+        mass: 0.90,
+        x: -4, y: 64, z: 6,
+        vx: -42, vy: -4, vz: -4,
+        radius: 5.0,
+        colorRGB: '238, 165, 136', // 暖白高密伴星
+        coreHex: '#ffffff',
+        trail: []
+      }
+    ];
+
+    threeBodyState.planet = {
+      name: 'TRISOLARIS // 三体星',
+      x: 24, y: 12, z: -8,
+      vx: -28, vy: 34, vz: 18,
+      radius: 2.5,
+      colorRGB: '120, 140, 93',
+      trail: []
+    };
+
+    threeBodyState.dust = [];
+    for (var d = 0; d < 76; d++) {
+      var ang = (d / 76) * Math.PI * 2;
+      var rad = 28 + (d % 9) * 14;
+      threeBodyState.dust.push({
+        x: Math.cos(ang) * rad,
+        y: Math.sin(ang) * rad * 0.72,
+        z: ((d % 7) - 3) * 16,
+        vx: -Math.sin(ang) * 22,
+        vy: Math.cos(ang) * 18,
+        vz: ((d % 5) - 2) * 5,
+        size: 1.0 + (d % 3) * 0.45,
+        colorRGB: PURE_INFINITY_PALETTE[d % PURE_INFINITY_PALETTE.length]
+      });
+    }
+  }
+
+  initThreeBodySystem();
+
+  function perturbThreeBodySystem() {
+    var suns = threeBodyState.suns;
+    for (var i = 0; i < suns.length; i++) {
+      suns[i].vx += (Math.random() - 0.5) * 38;
+      suns[i].vy += (Math.random() - 0.5) * 38;
+      suns[i].vz += (Math.random() - 0.5) * 26;
+    }
+    // 质心动量归零
+    var px = 0, py = 0, pz = 0, totalM = 0;
+    for (var j = 0; j < suns.length; j++) {
+      px += suns[j].vx * suns[j].mass;
+      py += suns[j].vy * suns[j].mass;
+      pz += suns[j].vz * suns[j].mass;
+      totalM += suns[j].mass;
+    }
+    for (var k = 0; k < suns.length; k++) {
+      suns[k].vx -= px / totalM;
+      suns[k].vy -= py / totalM;
+      suns[k].vz -= pz / totalM;
+    }
+  }
+
+  function stepThreeBodyPhysics(dt) {
+    var suns = threeBodyState.suns;
+    var planet = threeBodyState.planet;
+    if (!suns.length || !planet) return;
+
+    var subSteps = 4;
+    var h = (dt * state.speed * 1.15) / subSteps;
+    var G = 165000;
+    var softSq = 34 * 34;
+
+    for (var step = 0; step < subSteps; step++) {
+      var ax = [0, 0, 0], ay = [0, 0, 0], az = [0, 0, 0];
+
+      // 三颗恒星之间的相互万有引力 + 边界柔和中心约束势（防止三体系统逃逸出视口）
+      for (var i = 0; i < 3; i++) {
+        for (var j = 0; j < 3; j++) {
+          if (i === j) continue;
+          var dx = suns[j].x - suns[i].x;
+          var dy = suns[j].y - suns[i].y;
+          var dz = suns[j].z - suns[i].z;
+          var rSq = dx * dx + dy * dy + dz * dz + softSq;
+          var invR3 = 1 / (rSq * Math.sqrt(rSq));
+          var f = G * suns[j].mass * invR3;
+          ax[i] += dx * f;
+          ay[i] += dy * f;
+          az[i] += dz * f;
+        }
+        // 柔性边界谐振约束
+        var distOrigin = Math.hypot(suns[i].x, suns[i].y, suns[i].z);
+        var pull = 0.22 + (distOrigin > 95 ? (distOrigin - 95) * 0.012 : 0);
+        ax[i] -= suns[i].x * pull;
+        ay[i] -= suns[i].y * pull;
+        az[i] -= suns[i].z * pull * 1.25;
+      }
+
+      var bx = 0, by = 0, bz = 0, bvx = 0, bvy = 0, bvz = 0, tm = 0;
+      for (var m = 0; m < 3; m++) {
+        suns[m].vx += ax[m] * h;
+        suns[m].vy += ay[m] * h;
+        suns[m].vz += az[m] * h;
+
+        // 速度维里包络调节，保持三体混沌轨道长期充满活力且不发散
+        var vMag = Math.hypot(suns[m].vx, suns[m].vy, suns[m].vz);
+        if (vMag > 92) {
+          var sDown = 92 / vMag;
+          suns[m].vx *= sDown;
+          suns[m].vy *= sDown;
+          suns[m].vz *= sDown;
+        } else if (vMag < 22) {
+          var sUp = 22 / (vMag + 0.1);
+          suns[m].vx *= sUp;
+          suns[m].vy *= sUp;
+          suns[m].vz *= sUp;
+        }
+
+        suns[m].x += suns[m].vx * h;
+        suns[m].y += suns[m].vy * h;
+        suns[m].z += suns[m].vz * h;
+
+        bx += suns[m].x * suns[m].mass;
+        by += suns[m].y * suns[m].mass;
+        bz += suns[m].z * suns[m].mass;
+        bvx += suns[m].vx * suns[m].mass;
+        bvy += suns[m].vy * suns[m].mass;
+        bvz += suns[m].vz * suns[m].mass;
+        tm += suns[m].mass;
+      }
+
+      // 保持三体系统质心稳定在画布中心
+      bx /= tm; by /= tm; bz /= tm;
+      bvx /= tm; bvy /= tm; bvz /= tm;
+      for (var n = 0; n < 3; n++) {
+        suns[n].x -= bx * 0.25;
+        suns[n].y -= by * 0.25;
+        suns[n].z -= bz * 0.25;
+        suns[n].vx -= bvx * 0.15;
+        suns[n].vy -= bvy * 0.15;
+        suns[n].vz -= bvz * 0.15;
+      }
+
+      // 三体行星在三颗太阳引力场中的混沌穿梭
+      var pax = -planet.x * 0.32;
+      var pay = -planet.y * 0.32;
+      var paz = -planet.z * 0.42;
+      for (var sIdx = 0; sIdx < 3; sIdx++) {
+        var pdx = suns[sIdx].x - planet.x;
+        var pdy = suns[sIdx].y - planet.y;
+        var pdz = suns[sIdx].z - planet.z;
+        var prSq = pdx * pdx + pdy * pdy + pdz * pdz + 26 * 26;
+        var pf = (G * 0.62 * suns[sIdx].mass) / (prSq * Math.sqrt(prSq));
+        pax += pdx * pf;
+        pay += pdy * pf;
+        paz += pdz * pf;
+      }
+      planet.vx += pax * h;
+      planet.vy += pay * h;
+      planet.vz += paz * h;
+      var pvMag = Math.hypot(planet.vx, planet.vy, planet.vz);
+      if (pvMag > 115) {
+        planet.vx *= 115 / pvMag;
+        planet.vy *= 115 / pvMag;
+        planet.vz *= 115 / pvMag;
+      }
+      planet.x += planet.vx * h;
+      planet.y += planet.vy * h;
+      planet.z += planet.vz * h;
+    }
+
+    // 记录轨迹点并计算三体星当前所处纪元（恒纪元 vs 乱纪元）
+    var totalFlux = 0;
+    for (var tIdx = 0; tIdx < 3; tIdx++) {
+      var sun = suns[tIdx];
+      sun.trail.push({ x: sun.x, y: sun.y, z: sun.z });
+      if (sun.trail.length > 68) sun.trail.shift();
+
+      var distP = Math.hypot(sun.x - planet.x, sun.y - planet.y, sun.z - planet.z);
+      totalFlux += (sun.mass * 2400) / (distP * distP + 400);
+    }
+    planet.trail.push({ x: planet.x, y: planet.y, z: planet.z });
+    if (planet.trail.length > 82) planet.trail.shift();
+
+    threeBodyState.flux = totalFlux;
+    if (totalFlux > 2.15) {
+      threeBodyState.era = 'CHAOTIC ERA // 乱纪元 · 烈日凌空';
+    } else if (totalFlux < 0.78) {
+      threeBodyState.era = 'CHAOTIC ERA // 乱纪元 · 飞星严寒';
+    } else {
+      threeBodyState.era = 'STABLE ERA // 恒纪元 · 引力平衡';
+    }
+
+    // 更新周围纯星尘微粒（仅绘制纯粒子，无尾迹线段）
+    var dust = threeBodyState.dust;
+    for (var dIdx = 0; dIdx < dust.length; dIdx++) {
+      var dp = dust[dIdx];
+      var dax = -dp.x * 0.25, day = -dp.y * 0.25, daz = -dp.z * 0.35;
+      for (var si = 0; si < 3; si++) {
+        var ddx = suns[si].x - dp.x;
+        var ddy = suns[si].y - dp.y;
+        var ddz = suns[si].z - dp.z;
+        var drSq = ddx * ddx + ddy * ddy + ddz * ddz + 42 * 42;
+        var df = (G * 0.24 * suns[si].mass) / (drSq * Math.sqrt(drSq));
+        dax += ddx * df;
+        day += ddy * df;
+        daz += ddz * df;
+      }
+      dp.vx = (dp.vx + dax * dt) * 0.992;
+      dp.vy = (dp.vy + day * dt) * 0.992;
+      dp.vz = (dp.vz + daz * dt) * 0.992;
+      dp.x += dp.vx * dt;
+      dp.y += dp.vy * dt;
+      dp.z += dp.vz * dt;
+    }
+  }
+
+  function drawArticleThreeBodyCanvas(ctx, W, H, dt) {
+    stepThreeBodyPhysics(dt);
+
     var cx = W * 0.5;
-    var cy = H * 0.5;
+    var cy = H * 0.52;
     var minDim = Math.min(W, H);
-    var a = Math.min(W * 0.39, minDim * 0.68);
-    var b = a * 0.84;
-    var c = a * 0.30;
+    var viewScale = minDim / 185;
     var fov = 520;
 
     var targetAx = artMouse.active ? artMouse.nx : 0;
@@ -1348,68 +1619,168 @@
     artMouse.snx += (targetAx - artMouse.snx) * 0.08;
     artMouse.sny += (targetAy - artMouse.sny) * 0.08;
 
-    var rotX = 0.24 * Math.sin(time * 0.45) + artMouse.sny * 0.22;
-    var rotY = 0.26 * Math.cos(time * 0.34) + artMouse.snx * 0.25;
-    var rotZ = -0.05 + 0.06 * Math.sin(time * 0.28);
+    var rotX = 0.28 + 0.14 * Math.sin(state.time * 0.32) + artMouse.sny * 0.28;
+    var rotY = 0.22 * Math.cos(state.time * 0.25) + artMouse.snx * 0.32;
+    var rotZ = 0.08 * Math.sin(state.time * 0.19);
 
-    // 蓝图背景十字准星与双焦点圆环
+    var dark = isDark();
+    var faintRGB = dark ? '120, 115, 106' : '170, 166, 156';
+
+    // 1. 蓝图背景坐标网与质心准星
     ctx.save();
     ctx.setLineDash([2, 5]);
-    ctx.strokeStyle = 'rgba(217, 119, 87, 0.16)';
+    ctx.strokeStyle = 'rgba(217, 119, 87, 0.15)';
     ctx.lineWidth = 0.75;
     ctx.beginPath();
     ctx.moveTo(12, cy);
     ctx.lineTo(W - 12, cy);
-    ctx.moveTo(cx, 10);
-    ctx.lineTo(cx, H - 10);
+    ctx.moveTo(cx, 12);
+    ctx.lineTo(cx, H - 12);
+    ctx.stroke();
+
+    ctx.setLineDash([3, 4]);
+    ctx.strokeStyle = 'rgba(' + faintRGB + ', 0.22)';
+    ctx.beginPath();
+    ctx.arc(cx, cy, minDim * 0.41, 0, Math.PI * 2);
     ctx.stroke();
     ctx.restore();
 
-    // 绘制 5 条连续谐波无限环丝带线
-    var ribbonCount = 5;
-    var steps = 90;
-    for (var r = 0; r < ribbonCount; r++) {
-      var off = (r / ribbonCount) * Math.PI * 2;
-      var spread = r === 0 ? 0 : a * (0.05 + (r % 3) * 0.032);
+    var suns = threeBodyState.suns;
+    var planet = threeBodyState.planet;
+
+    // 2. 绘制周围引力场星尘纯粒子（纯圆点，无尾迹线）
+    var dust = threeBodyState.dust;
+    for (var d = 0; d < dust.length; d++) {
+      var dp = dust[d];
+      var dProj = project3D(dp.x * viewScale, dp.y * viewScale, dp.z * viewScale, rotX, rotY, rotZ, cx, cy, fov);
+      var dAlpha = Math.max(0.22, Math.min(0.75, 0.55 - dProj.z / 260));
       ctx.beginPath();
-      for (var s = 0; s <= steps; s++) {
-        var t = (s / steps) * Math.PI * 2;
-        var p3 = evalInfinityPoint3D(t, off, spread, a, b, c, time * 1.15);
-        var pr = project3D(p3.x, p3.y, p3.z, rotX, rotY, rotZ, cx, cy, fov);
-        if (s === 0) ctx.moveTo(pr.sx, pr.sy);
-        else ctx.lineTo(pr.sx, pr.sy);
-      }
-      ctx.closePath();
-      ctx.strokeStyle = r === 0 ? 'rgba(217, 119, 87, 0.45)' : 'rgba(232, 146, 110, 0.20)';
-      ctx.lineWidth = r === 0 ? 1.35 : 0.8;
-      ctx.stroke();
+      ctx.arc(dProj.sx, dProj.sy, dp.size * dProj.scale, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(' + dp.colorRGB + ', ' + dAlpha.toFixed(3) + ')';
+      ctx.fill();
     }
 
-    // 绘制沿无限环轨道巡航的 48 颗纯净暖色发光节点与尾迹线
-    var nodeCount = 48;
-    for (var k = 0; k < nodeCount; k++) {
-      var pt = particles[k * 3];
-      var uNow = (pt.u + time * 0.45 * (0.8 + (k % 4) * 0.15)) % (Math.PI * 2);
-      var spreadNow = a * 0.065 * ((k % 5) / 4);
-      var pos3 = evalInfinityPoint3D(uNow, k * 1.1, spreadNow, a, b, c, time * 1.15);
-      var prev3 = evalInfinityPoint3D(uNow - 0.08, k * 1.1, spreadNow, a, b, c, time * 1.15);
-      var prNow = project3D(pos3.x, pos3.y, pos3.z, rotX, rotY, rotZ, cx, cy, fov);
-      var prPrev = project3D(prev3.x, prev3.y, prev3.z, rotX, rotY, rotZ, cx, cy, fov);
+    // 3. 绘制三颗恒星的混沌引力轨道尾迹曲线与三体星轨道
+    for (var i = 0; i < 3; i++) {
+      var sun = suns[i];
+      if (sun.trail.length > 2) {
+        ctx.save();
+        for (var t = 1; t < sun.trail.length; t++) {
+          var p0 = project3D(sun.trail[t - 1].x * viewScale, sun.trail[t - 1].y * viewScale, sun.trail[t - 1].z * viewScale, rotX, rotY, rotZ, cx, cy, fov);
+          var p1 = project3D(sun.trail[t].x * viewScale, sun.trail[t].y * viewScale, sun.trail[t].z * viewScale, rotX, rotY, rotZ, cx, cy, fov);
+          var frac = t / sun.trail.length;
+          ctx.beginPath();
+          ctx.moveTo(p0.sx, p0.sy);
+          ctx.lineTo(p1.sx, p1.sy);
+          ctx.strokeStyle = 'rgba(' + sun.colorRGB + ', ' + (frac * 0.52).toFixed(3) + ')';
+          ctx.lineWidth = 0.6 + frac * 1.35;
+          ctx.stroke();
+        }
+        ctx.restore();
+      }
+    }
 
-      var depthA = Math.max(0.4, Math.min(0.95, 0.72 - prNow.z / (a * 1.8)));
-      var col = PURE_INFINITY_PALETTE[k % PURE_INFINITY_PALETTE.length];
-
+    if (planet && planet.trail.length > 2) {
+      ctx.save();
+      ctx.setLineDash([2, 2]);
       ctx.beginPath();
-      ctx.moveTo(prNow.sx, prNow.sy);
-      ctx.lineTo(prPrev.sx, prPrev.sy);
-      ctx.strokeStyle = 'rgba(' + col + ', ' + (depthA * 0.55).toFixed(3) + ')';
-      ctx.lineWidth = 1.2;
+      for (var ptIdx = 0; ptIdx < planet.trail.length; ptIdx++) {
+        var pp = project3D(planet.trail[ptIdx].x * viewScale, planet.trail[ptIdx].y * viewScale, planet.trail[ptIdx].z * viewScale, rotX, rotY, rotZ, cx, cy, fov);
+        if (ptIdx === 0) ctx.moveTo(pp.sx, pp.sy);
+        else ctx.lineTo(pp.sx, pp.sy);
+      }
+      ctx.strokeStyle = dark ? 'rgba(147, 168, 120, 0.55)' : 'rgba(120, 140, 93, 0.55)';
+      ctx.lineWidth = 1.05;
       ctx.stroke();
+      ctx.restore();
+    }
 
-      ctx.beginPath();
-      ctx.arc(prNow.sx, prNow.sy, 1.5 + (k % 3) * 0.45, 0, Math.PI * 2);
-      ctx.fillStyle = 'rgba(' + col + ', ' + depthA.toFixed(3) + ')';
-      ctx.fill();
+    // 4. 计算三颗恒星与行星的当前屏幕坐标，绘制三体引力张力三角形 Δ(S1,S2,S3)
+    var projSuns = suns.map(function (s, idx) {
+      var pr = project3D(s.x * viewScale, s.y * viewScale, s.z * viewScale, rotX, rotY, rotZ, cx, cy, fov);
+      return {
+        idx: idx,
+        sun: s,
+        sx: pr.sx,
+        sy: pr.sy,
+        z: pr.z,
+        scale: pr.scale
+      };
+    });
+
+    ctx.save();
+    ctx.setLineDash([3, 4]);
+    ctx.strokeStyle = 'rgba(217, 119, 87, 0.28)';
+    ctx.lineWidth = 0.85;
+    ctx.beginPath();
+    ctx.moveTo(projSuns[0].sx, projSuns[0].sy);
+    ctx.lineTo(projSuns[1].sx, projSuns[1].sy);
+    ctx.lineTo(projSuns[2].sx, projSuns[2].sy);
+    ctx.closePath();
+    ctx.stroke();
+    ctx.restore();
+
+    // 5. 按景深排序绘制三颗太阳（日冕光晕 + 核心）与三体行星
+    var renderBodies = projSuns.slice();
+    if (planet) {
+      var prPlanet = project3D(planet.x * viewScale, planet.y * viewScale, planet.z * viewScale, rotX, rotY, rotZ, cx, cy, fov);
+      renderBodies.push({
+        isPlanet: true,
+        planet: planet,
+        sx: prPlanet.sx,
+        sy: prPlanet.sy,
+        z: prPlanet.z,
+        scale: prPlanet.scale
+      });
+    }
+
+    renderBodies.sort(function (a, b) { return b.z - a.z; });
+
+    for (var bIdx = 0; bIdx < renderBodies.length; bIdx++) {
+      var item = renderBodies[bIdx];
+      if (item.isPlanet) {
+        var prR = Math.max(2.2, item.planet.radius * item.scale);
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(item.sx, item.sy, prR + 4.2, 0, Math.PI * 2);
+        ctx.strokeStyle = dark ? 'rgba(147, 168, 120, 0.78)' : 'rgba(120, 140, 93, 0.78)';
+        ctx.lineWidth = 1.0;
+        ctx.stroke();
+
+        ctx.beginPath();
+        ctx.arc(item.sx, item.sy, prR, 0, Math.PI * 2);
+        ctx.fillStyle = dark ? '#93a878' : '#788c5d';
+        ctx.fill();
+        ctx.restore();
+      } else {
+        var sObj = item.sun;
+        var sR = Math.max(3.8, sObj.radius * item.scale);
+        var coronaGrad = ctx.createRadialGradient(item.sx, item.sy, sR * 0.2, item.sx, item.sy, sR * 3.4);
+        coronaGrad.addColorStop(0, 'rgba(' + sObj.colorRGB + ', 0.75)');
+        coronaGrad.addColorStop(0.45, 'rgba(' + sObj.colorRGB + ', 0.22)');
+        coronaGrad.addColorStop(1, 'rgba(' + sObj.colorRGB + ', 0)');
+
+        ctx.beginPath();
+        ctx.arc(item.sx, item.sy, sR * 3.4, 0, Math.PI * 2);
+        ctx.fillStyle = coronaGrad;
+        ctx.fill();
+
+        ctx.beginPath();
+        ctx.arc(item.sx, item.sy, sR, 0, Math.PI * 2);
+        ctx.fillStyle = sObj.coreHex;
+        ctx.fill();
+        ctx.lineWidth = 1.3;
+        ctx.strokeStyle = 'rgba(' + sObj.colorRGB + ', 0.95)';
+        ctx.stroke();
+      }
+    }
+
+    // 同步更新画布上方三体纪元 HUD 遥测读数
+    var eraBadge = document.getElementById('threebody-era-badge');
+    var fluxReadout = document.getElementById('threebody-flux-readout');
+    if (eraBadge) eraBadge.textContent = threeBodyState.era;
+    if (fluxReadout) {
+      fluxReadout.textContent = 'SOLAR FLUX Φ=' + threeBodyState.flux.toFixed(2) + ' · CLICK TO PERTURB';
     }
   }
 
@@ -1468,8 +1839,8 @@
 
       if (telemetryPhase && telemetryCursor && telemetryPcount) {
         var phaseVal = ((state.time * 0.5) % (Math.PI * 2)).toFixed(2);
-        telemetryPhase.textContent = (state.mode === 'infinity' ? '∞ HARMONIC RIBBON · t=' : 'KERR GEODESIC · t=') + phaseVal + ' rad';
-        telemetryPcount.textContent = 'N = ' + state.particleCount + ' · ORGANIC + LINES';
+        telemetryPhase.textContent = (state.mode === 'infinity' ? '∞ PURE PARTICLE MANIFOLD · t=' : 'KERR CONTINUOUS HALO · t=') + phaseVal + ' rad';
+        telemetryPcount.textContent = 'N = ' + state.particleCount + ' · PURE PARTICLES ONLY';
         if (mouse.active) {
           var pot = (Math.hypot(mouse.nx, mouse.ny) * 0.42).toFixed(3);
           telemetryCursor.textContent = 'ΔΦ = ' + pot + ' (' + mouse.nx.toFixed(2) + ', ' + mouse.ny.toFixed(2) + ')';
@@ -1484,7 +1855,7 @@
       aCtx.save();
       aCtx.scale(dpr, dpr);
       aCtx.clearRect(0, 0, aW, aH);
-      drawArticleHeaderInfinityCanvas(aCtx, aW, aH, state.time);
+      drawArticleThreeBodyCanvas(aCtx, aW, aH, dt);
       aCtx.restore();
     }
 
@@ -1494,7 +1865,7 @@
   }
 
   /* ========================================================================
-     8. 实验室面板事件与主题初始化
+     实验室面板事件与主题初始化
      ======================================================================== */
   var sliderDensity = document.getElementById('slider-density');
   var valDensity = document.getElementById('val-density');
@@ -1526,12 +1897,10 @@
     });
   }
 
-  // 全站固定使用超宽布局 (96rem Ultrawide)
   document.body.dataset.scale = 'ultrawide';
 
   // 主题已由 <head> 里的 THEME_BOOT 定调（localStorage + prefers-color-scheme）。
-  // 这里只把结果同步到画布状态与图标，绝不再重新决定主题。
-  applyTheme(isDark() ? 'dark' : 'light');
+  applyTheme(isDark() ? 'dark' : 'light', false);
 
   resizeCanvas();
   onScrollUpdate();

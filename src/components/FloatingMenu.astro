@@ -1,20 +1,4 @@
 ---
-/**
- * 右下角的圆形悬浮窗 —— 点一下展开，里面是「夜间模式」和「回到顶部」。
- * 以后要加功能，就往 .fab-actions 里再塞一个 <button>，并在脚本里接上 data-action。
- *
- * 【挂在哪】BaseLayout 的 SiteFooter 之后，所以**所有访客页面**都有。
- * 后台 /studio/ 是独立页面、不用 BaseLayout，所以不会有它 —— 那是另一个应用。
- *
- * 【脚本怎么写】不依赖 DOM 就绪 —— 组件可能在页面里出现多次，但 Astro 打包后
- * 只执行一次。（主题的切法 import 自 utils/theme.ts，后台用的是同一份。）
- *
- * 【z-index 必须低于灯箱】照片页的灯箱是 60（gallery.css），这里用 50 ——
- * 否则看大图时右下角会压着一个圆按钮。
- *
- * 【图标】用 Unicode 字形 + aria-label，跟站里现有做法一致（灯箱的 × ‹ ›、
- * 子页入口的 → 都是这么写的），不引入图标库。
- */
 import '../styles/fab.css';
 ---
 
@@ -40,10 +24,7 @@ import '../styles/fab.css';
   </button>
 </div>
 
-
-
 <script>
-  // 主题的切法与定调样式在 utils/theme.ts（后台用的是同一份）
   import { toggleTheme } from '../utils/theme';
 
   const fab = document.getElementById('fab');
@@ -54,7 +35,6 @@ import '../styles/fab.css';
 
     const isOpen = () => fab.dataset.open === 'true';
 
-    /** 深浅切换按钮的图标/文案要跟着当前主题走 */
     const syncThemeBtn = () => {
       const dark = document.documentElement.dataset.theme === 'dark';
       if (icon) icon.textContent = dark ? '☀' : '☾';
@@ -62,15 +42,12 @@ import '../styles/fab.css';
     };
 
     syncThemeBtn();
+    window.addEventListener('themechange', syncThemeBtn);
 
     const setOpen = (open: boolean, focusPanel = true) => {
-      // 用 data-open 而不是 hidden：隐藏靠 CSS 的 visibility，
-      // 这样才有过渡可做（见上面 .fab-actions 的注释）
       if (open) fab.dataset.open = 'true';
       else delete fab.dataset.open;
       main?.setAttribute('aria-expanded', String(open));
-      // 图标不换字符 —— 由 CSS 把 + 旋转 45° 变成 ×（见 [data-main-icon]）
-      // 只在用户主动操作时搬焦点；首屏初始化时别去抢
       if (focusPanel) {
         const target = open
           ? fab.querySelector<HTMLButtonElement>('.fab-actions button')
@@ -81,19 +58,16 @@ import '../styles/fab.css';
 
     main?.addEventListener('click', () => setOpen(!isOpen()));
 
-    // Esc 收起并把焦点还回主按钮 —— 项目里灯箱有这个缺口的先例，这里补上
     fab.addEventListener('keydown', (e) => {
       if ((e as KeyboardEvent).key === 'Escape' && isOpen()) setOpen(false);
     });
 
     themeBtn?.addEventListener('click', () => {
-      // 切换 + 记住 + 同步地址栏颜色都在 theme.ts 里
       toggleTheme();
       syncThemeBtn();
     });
 
     fab.querySelector('[data-action="top"]')?.addEventListener('click', () => {
-      // 平滑与否交给 CSS 的 scroll-behavior（prefers-reduced-motion 时它自己会关掉）
       window.scrollTo({ top: 0 });
       setOpen(false, false);
     });

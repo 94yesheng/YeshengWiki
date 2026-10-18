@@ -13,7 +13,7 @@
       { "href": "/posts/", "label": "文章" },
       { "href": "/photos/", "label": "照片" },
       { "href": "/programs/", "label": "程序" },
-      { "href": "/links/", "label": "友链" }
+      { "href": "/links/", "label": "友链与站点" }
     ]
   },
   "home": {
@@ -23,9 +23,9 @@
     ],
     "sections": [
       { "href": "/posts/", "title": "文章", "desc": "按时间排列的长短文字，可以用标签筛。" },
-      { "href": "/photos/", "title": "照片", "desc": "随手拍下的东西，按时间倒着排。" },
-      { "href": "/programs/", "title": "程序", "desc": "做过的小工具与项目。这一页还在搭。" },
-      { "href": "/links/", "title": "友链", "desc": "常看的博客和网站。" }
+      { "href": "/photos/", "title": "照片", "desc": "保持原始宽高比交错排布的日常照片。" },
+      { "href": "/programs/", "title": "程序", "desc": "做过的小工具与实验项目。" },
+      { "href": "/links/", "title": "友链与站点说明", "desc": "常看的独立博客友链与本站架构说明。" }
     ]
   }
 }
