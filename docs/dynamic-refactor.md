@@ -30,6 +30,16 @@
 - **`src/artifact/*.html` 和 `artifact.js` 已手工插入 `@@占位符@@` / 服务端数据分支；不要直接重跑 `npm run import:artifact`，否则会覆盖。** 必须重跑时先备份，再重放 `.work/patch-*.mjs` 的替换。
 - 下一步：动态 sitemap、staging（systemd + Nginx + 真实 DB）、切线上。
 
+### Staging 现状（2026-10-19）
+
+- 代码：`/var/www/blog-app`（`npm ci` + `npm run build:dynamic`）
+- 数据：`/var/www/blog-data-staging/blog.db` + `uploads/`
+- 服务：`blog-staging.service`（`blog` 用户，`127.0.0.1:4321`）
+- 环境：`/etc/blog-staging.env`（root 600）
+- 访问：SSH 隧道 `ssh -L 4323:127.0.0.1:4321 root@<server>`，浏览器开 `http://127.0.0.1:4323`
+- 已验证：全部页面 200、`/api/health`、后台登录、FS 列表、创建/删除文章并即时反映到公开页、图片 `/uploads` 200
+- Nginx 仍指向静态 `/var/www/blog`；生产反代配置待切换
+
 ## 1. 决策（默认按推荐方案）
 
 | 项 | 选择 |

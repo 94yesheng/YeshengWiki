@@ -1,6 +1,5 @@
 // @ts-check
 import { defineConfig } from 'astro/config';
-import sitemap from '@astrojs/sitemap';
 import node from '@astrojs/node';
 
 /**
@@ -24,10 +23,7 @@ export default defineConfig({
   output: dynamic ? 'server' : 'static',
   ...(dynamic ? { adapter: node({ mode: 'standalone' }) } : {}),
 
-  integrations: [
-    // 后台不要进站点地图：它带 noindex，被搜索引擎收录没有意义
-    sitemap({ filter: (page) => !page.includes('/studio') && !page.includes('/admin') }),
-  ],
+  integrations: [],
 
   vite: {
     ssr: {
