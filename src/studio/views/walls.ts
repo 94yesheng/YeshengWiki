@@ -39,12 +39,70 @@ const DEMO_IMG_MAP: Record<string, string> = {
   '2026-03-09-鸡煲.jpg': '/artifact/home/images/post-cover-jibao.jpg',
 };
 
+/**
+ * 生产环境没有 Vite 的 /src/ 静态服务，`/src/assets/photos/...` 会 404。
+ * 已知的展示图走 DEMO_IMG_MAP；其余先给占位图，等 hydratePhotoPreviews 用
+ * GitHub Contents API 取回二进制后换成 blob URL。
+ */
 function resolvePhotoPreviewUrl(file: string): string {
-  if (!file) return '/artifact/home/images/photo-01-large.jpg';
+  if (!file) return '/studio/photo-placeholder.svg';
   if (file.startsWith('blob:') || file.startsWith('data:') || file.startsWith('http') || file.startsWith('/')) {
     return file;
   }
-  return DEMO_IMG_MAP[file] ?? `/src/assets/photos/${file}`;
+  return DEMO_IMG_MAP[file] ?? '/studio/photo-placeholder.svg';
+}
+
+/** 图片预览缓存：文件名 → blob URL；同一张只取一次 */
+const previewCache = new Map<string, string>();
+const previewLoading = new Map<string, Promise<string | null>>();
+
+function mimeOf(file: string): string {
+  const ext = file.split('.').pop()?.toLowerCase();
+  if (ext === 'png') return 'image/png';
+  if (ext === 'webp') return 'image/webp';
+  if (ext === 'avif') return 'image/avif';
+  if (ext === 'gif') return 'image/gif';
+  return 'image/jpeg';
+}
+
+async function loadPhotoPreview(file: string): Promise<string | null> {
+  if (!file) return null;
+  // 已知的展示图 / 刚上传的本地预览先用本地 URL，不浪费一次 API 请求。
+  const local = DEMO_IMG_MAP[file];
+  if (local) return local;
+  if (state.demoMode || !state.gh) return null;
+  const cached = previewCache.get(file);
+  if (cached) return cached;
+  const pending = previewLoading.get(file);
+  if (pending) return pending;
+
+  const job = (async () => {
+    try {
+      const bin = await state.gh!.getBinary(`src/assets/photos/${file}`);
+      if (!bin) return null;
+      const bytes = new Uint8Array(bin.bytes);
+      const url = URL.createObjectURL(new Blob([bytes.buffer as ArrayBuffer], { type: mimeOf(file) }));
+      previewCache.set(file, url);
+      return url;
+    } catch {
+      return null; // 预览失败就保留占位图，不打断编辑
+    } finally {
+      previewLoading.delete(file);
+    }
+  })();
+  previewLoading.set(file, job);
+  return job;
+}
+
+/** 把页面里带 data-photo-preview 的占位图换成真实图片 */
+function hydratePhotoPreviews(root: ParentNode): void {
+  root.querySelectorAll<HTMLImageElement>('img[data-photo-preview]').forEach((img) => {
+    const file = img.dataset.photoPreview;
+    if (!file) return;
+    void loadPhotoPreview(file).then((url) => {
+      if (url && img.isConnected) img.src = url;
+    });
+  });
 }
 
 function currentWall(): WallEntry | null {
@@ -155,7 +213,7 @@ export function renderWallView(): void {
                     const isSelected = i === selIdx;
                     return `<div class="st-photo-card${isSelected ? ' is-selected' : ''}" data-select-photo="${i}">
                       <div class="st-photo-card-thumb">
-                        <img src="${esc(resolvePhotoPreviewUrl(p.file))}" alt="${esc(p.title || p.caption || p.file)}" loading="lazy" />
+                        <img src="${esc(resolvePhotoPreviewUrl(p.file))}" data-photo-preview="${esc(p.file)}" alt="${esc(p.title || p.caption || p.file)}" loading="lazy" />
                         <span class="st-photo-idx">#${String(i + 1).padStart(2, '0')}</span>
                         <span class="st-photo-ratio">${esc(p.ratioPill?.split(' ')[0] || '16:9')}</span>
                       </div>
@@ -264,6 +322,7 @@ export function renderWallView(): void {
   });
 
   renderWallPreview();
+  hydratePhotoPreviews(edit);
 }
 
 function renderSinglePhotoEditorHtml(p: WallPhoto, idx: number, total: number): string {
@@ -490,7 +549,7 @@ function renderWallPreview(): void {
         </div>
 
         <div class="st-user-photo-stage">
-          <img src="${esc(resolvePhotoPreviewUrl(p.file))}" alt="${esc(p.title || p.caption || p.file)}" />
+          <img src="${esc(resolvePhotoPreviewUrl(p.file))}" data-photo-preview="${esc(p.file)}" alt="${esc(p.title || p.caption || p.file)}" />
           <span class="cover-ratio-pill">${esc(p.ratioPill || '16:9 HORIZONTAL')}</span>
         </div>
 
@@ -544,6 +603,7 @@ function renderWallPreview(): void {
         </div>
       </div>
     </div>`;
+  hydratePhotoPreviews(box);
 }
 
 async function uploadImages(w: WallEntry, files: File[]): Promise<void> {
@@ -557,11 +617,14 @@ async function uploadImages(w: WallEntry, files: File[]): Promise<void> {
       let savedName = `${w.date ? `${w.date}-` : ''}${prepared.filename}`;
       if (!state.demoMode && state.gh) {
         savedName = await uploadPhoto(state.gh, prepared, w.date, [...state.photoFiles, ...w.photos.map((p) => p.file)]);
-      } else {
-        // 演示模式下使用本地 ObjectURL 以便即时在检视台预览真图
-        const blobUrl = URL.createObjectURL(file);
-        DEMO_IMG_MAP[savedName] = blobUrl;
       }
+      // 无论真实上传还是演示模式，都先用压缩后的字节生成本地预览：
+      // 上传完立刻能看到图，不必再等一次 GitHub API。
+      const blobUrl = URL.createObjectURL(
+        new Blob([new Uint8Array(prepared.bytes).buffer as ArrayBuffer], { type: 'image/jpeg' })
+      );
+      DEMO_IMG_MAP[savedName] = blobUrl;
+      previewCache.set(savedName, blobUrl);
 
       state.photoFiles.push(savedName);
       const autoCount = telemetry.autoFields?.length ?? 0;

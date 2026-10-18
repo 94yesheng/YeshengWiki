@@ -21,6 +21,8 @@ export interface Draft {
   post?: {
     entry: PostEntry;
     fields: Record<string, unknown>;
+    /** 打开时的字段快照，用来判断"有没有真改过"（默认值不算改动） */
+    baseline: Record<string, unknown>;
     body: string;
     editor?: EditorHandle;
     dateTouched?: boolean;

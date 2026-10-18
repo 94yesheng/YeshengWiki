@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 180" role="img" aria-label="照片预览占位图">
+  <rect width="320" height="180" fill="#f0eee6"/>
+  <rect x="8.5" y="8.5" width="303" height="163" fill="none" stroke="#d97757" stroke-opacity="0.28"/>
+  <circle cx="160" cy="76" r="21" fill="none" stroke="#d97757" stroke-opacity="0.55"/>
+  <path d="M63 142l55-48 35 29 31-23 73 42" fill="none" stroke="#d97757" stroke-opacity="0.5" stroke-width="2"/>
+  <circle cx="224" cy="55" r="9" fill="none" stroke="#d97757" stroke-opacity="0.45"/>
+  <text x="160" y="164" text-anchor="middle" font-family="ui-monospace, Consolas, monospace" font-size="9.5" letter-spacing="1.2" fill="#6b6862">PHOTO PREVIEW // 图片预览占位</text>
+</svg>

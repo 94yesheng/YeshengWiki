@@ -39,6 +39,7 @@ import { enterDemoMode, renderNoVault, renderUnlock } from './views/login';
 import {
   createNewPost,
   foldStagedPostDraft,
+  postDraftEdited,
   previewCurrentPost,
   renderPostView,
   savePostCurrent,
@@ -48,6 +49,7 @@ import {
   foldStagedWallDraft,
   renderWallView,
   saveWallCurrent,
+  wallDraftEdited,
 } from './views/walls';
 import { postListHtml, wirePostList } from './views/postlist';
 import { renderLinksView } from './views/links';
@@ -219,7 +221,7 @@ function renderBar(): void {
   });
 
   $('#st-refresh')?.addEventListener('click', () => {
-    settleLeaving();
+    if (!settleLeaving()) return;
     discardStaged();
     void loadAll();
   });
@@ -227,6 +229,7 @@ function renderBar(): void {
   $('#st-save')?.addEventListener('click', () => void saveCurrent());
 
   $('#st-lock')?.addEventListener('click', () => {
+    if (!settleLeaving()) return;
     forgetSession();
     if (state.vault) renderUnlock('已锁定会话');
     else renderNoVault();
@@ -251,17 +254,30 @@ const NAV: Array<{ key: Collection; label: string; count: () => number }> = [
   { key: 'site',  label: '设置', count: () => 4 },
 ];
 
+/**
+ * 当前草稿里有没有"真改过"的东西。
+ * 不只看 state.dirty：它只在第一次输入时置位，用户把改动撤销回去也仍然是 true。
+ */
+function hasUnsavedWork(): boolean {
+  if (!state.dirty) return false;
+  if (state.collection === 'posts' && state.draft.post) return postDraftEdited();
+  if (state.collection === 'walls' && state.draft.wall) return wallDraftEdited();
+  return true;
+}
+
 function settleLeaving(): boolean {
-  // 只把编辑器里的当前内容折回草稿；不再弹「未保存」确认框。
-  // 切换板块/条目、刷新、锁定都直接继续，未保存的草稿随会话状态丢弃。
+  // 先把编辑器里的当前内容折回草稿，再判断有没有真实改动。
   foldStagedPostDraft();
   foldStagedWallDraft();
-  return true;
+  if (!hasUnsavedWork()) return true;
+  // 所有离开入口都是同步函数，所以这里用同步 confirm；
+  // 换成页内的 showConfirm 需要把整条导航链改成 async，风险大于收益。
+  return window.confirm('有未保存的修改，离开后这些修改会丢失。确定继续吗？');
 }
 
 function selectCollection(c: Collection): void {
   if (c === state.collection) return;
-  settleLeaving();
+  if (!settleLeaving()) return;
   state.collection = c;
   state.selected =
     c === 'posts'    ? (state.posts[0]?.id ?? null)
@@ -377,7 +393,7 @@ function renderList(): void {
 
 function selectEntry(id: string): void {
   if (state.selected === id) return;
-  settleLeaving();
+  if (!settleLeaving()) return;
   state.selected = id;
   if (state.collection === 'posts' || state.collection === 'walls') {
     state.draft.post = undefined;
@@ -536,5 +552,12 @@ async function boot(): Promise<void> {
 }
 
 registerHooks({ render: renderApp, reload: loadAll, settle: settleLeaving, dirty: renderBar });
+
+// 关闭标签页 / 刷新浏览器时的最后一道保险。浏览器只显示通用文案，无法自定义。
+window.addEventListener('beforeunload', (e) => {
+  if (state.demoMode || !hasUnsavedWork()) return;
+  // 现代浏览器用 preventDefault 即可触发确认框（returnValue 已废弃）。
+  e.preventDefault();
+});
 
 void boot();

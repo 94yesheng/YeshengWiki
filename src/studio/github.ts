@@ -111,6 +111,25 @@ export class Github {
     return { text: new TextDecoder().decode(bytes), sha: data.sha, path };
   }
 
+  /** 读一个二进制文件（图片预览用）；不存在或超过 API 内联上限返回 null */
+  async getBinary(path: string): Promise<{ bytes: Uint8Array; sha: string } | null> {
+    const res = await this.request(`/repos/${this.ref.owner}/${this.ref.repo}/contents/${path}?ref=${this.ref.branch}`);
+    if (res.status === 404) return null;
+    if (!res.ok) throw this.fail(res.status);
+    const data = (await res.json()) as { content?: string; sha: string; encoding?: string };
+
+    // Contents API 对 1MB 以上的文件不内联 content（encoding: "none"），
+    // 这时改走 Git Blobs API —— 上限 100MB，仍然是同一份 base64 语义。
+    if (typeof data.content === 'string' && data.content) {
+      return { bytes: base64ToBytes(data.content), sha: data.sha };
+    }
+    const blobRes = await this.request(`/repos/${this.ref.owner}/${this.ref.repo}/git/blobs/${data.sha}`);
+    if (!blobRes.ok) return null;
+    const blob = (await blobRes.json()) as { content?: string; encoding?: string };
+    if (typeof blob.content !== 'string' || !blob.content) return null;
+    return { bytes: base64ToBytes(blob.content), sha: data.sha };
+  }
+
   /** 列目录（GitHub 不分页上限 1000 条，我们的目录远小于这个数） */
   async listDir(dir: string): Promise<DirEntry[]> {
     const res = await this.request(`/repos/${this.ref.owner}/${this.ref.repo}/contents/${dir}?ref=${this.ref.branch}`);

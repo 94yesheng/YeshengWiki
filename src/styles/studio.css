@@ -1651,6 +1651,18 @@
   overflow: auto;
 }
 
+.pv-missing {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.35rem 0.6rem;
+  border: 1px dashed var(--rule);
+  color: var(--faint);
+  font-family: var(--mono);
+  font-size: 0.68rem;
+  line-height: 1.5;
+}
+
 .st-pick {
   max-height: 12rem;
   overflow-y: auto;

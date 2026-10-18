@@ -443,13 +443,13 @@ npm run build
 |---|---|
 | 本地看效果 | `npm run dev` → `http://localhost:4321` |
 | 写新文章 | `src/content/posts/xxx.md`，frontmatter 见 6.1；或用 `/studio/` 点「＋」 |
-| 加一面照片墙 | 图片放 `src/assets/photos/`；`src/content/photos/` 新建 json（见 6.2） |
+| 加一面照片墙 | 图片放 `src/assets/photos/`；`src/content/photos/` 新建 json（见 6.2）。**注意：`/photos/` 目前是 artifact 静态快照，新增墙不会自动出现在页面上**；后台编辑只维护数据，要上线需同步设计源并重跑生成器，或先改造成构建期渲染 |
 | 加友链 | 编辑 `src/content/links.json` |
 | 改站名 / 导航 / 自我介绍 | `src/site.data.json`（`site.config.ts` 只负责读取） |
 | 改纸墨配色 / 字号 | `src/styles/tokens.css`；改字号注意楷体 ≥20px |
-| 改 HUD 视觉 | 主页改 `src/artifact/home/*.html`；其余改设计源 → `npm run import:artifact`（主页拆分不会被覆盖） |
+| 改 HUD 视觉 | 主页改 `src/artifact/home/*.html`；其余改设计源 → `npm run import:artifact`。**重跑生成器会重写全部 `home/*.html` partial，手改内容会被覆盖**；手改后不要再跑，或把改动回写到设计源 |
 | 改三套 canvas 模型 | 直接改 `src/artifact/artifact.js`；重跑 `import:artifact` 会覆盖，需同步设计源 |
-| 改加载/切换动画 | `src/scripts/theme-runtime.js` + `src/styles/theme-extras.css` |
+| 改加载/切换动画 | `src/artifact/artifact.js`（HUD 页实际运行的逻辑）。`src/scripts/theme-runtime.js` / `src/styles/theme-extras.css` 是未启用的本地实验文件，不在仓库、也不参与构建 |
 | 改主页吸附手感 | `src/artifact/home-snap.js` 里的 `THRESHOLD` / `DURATION` |
 | 换域名 | `astro.config.mjs` 的 `site` + `site.data.json` 的 `url` |
 | 让一篇文章不公开 | frontmatter `draft: true` |

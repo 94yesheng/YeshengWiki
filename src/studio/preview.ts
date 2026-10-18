@@ -17,8 +17,25 @@ function fixImagePaths(html: string): string {
   return html.replace(/(<img\b[^>]*\bsrc=")([^"]+)(")/g, (_whole, head: string, src: string, tail: string) => {
     if (/^(https?:|data:|blob:|\/)/.test(src)) return `${head}${src}${tail}`;
     const m = /\.\.\/\.\.\/(assets\/[^"]+)$/.exec(src);
-    const fixed = m ? `/src/${m[1]}` : src;
-    return `${head}${fixed}${tail} onerror="this.replaceWith(Object.assign(document.createElement('span'),{className:'pv-missing',textContent:'图片：${src.split('/').pop() ?? ''}（预览环境未挂载原图，发布后正常）'}))"`;
+    return `${head}${m ? `/src/${m[1]}` : src}${tail}`;
+  });
+}
+
+/**
+ * 预览里的图片可能因为原图没被构建到 /src/ 而加载失败。
+ * 用 DOM 监听替换成占位文字，不再把文件名拼进内联 onerror —— 那是一个 XSS 面。
+ */
+function markMissingImages(root: ParentNode): void {
+  root.querySelectorAll<HTMLImageElement>('img').forEach((img) => {
+    const showMissing = () => {
+      if (!img.parentNode) return;
+      const span = img.ownerDocument.createElement('span');
+      span.className = 'pv-missing';
+      span.textContent = `图片：${(img.getAttribute('src') || '').split('/').pop() ?? ''}（预览环境未挂载原图，发布后正常）`;
+      img.replaceWith(span);
+    };
+    if (img.complete && img.naturalWidth === 0) showMissing();
+    else img.addEventListener('error', showMissing, { once: true });
   });
 }
 
@@ -95,6 +112,14 @@ export async function openPreview(input: PreviewInput): Promise<void> {
     iframe.className = 'pv-page';
     frameHost?.append(iframe);
     iframe.srcdoc = '<!doctype html>' + doc.documentElement.outerHTML;
+    iframe.addEventListener(
+      'load',
+      () => {
+        const inner = iframe.contentDocument;
+        if (inner) markMissingImages(inner);
+      },
+      { once: true }
+    );
   } else if (frameHost) {
     frameHost.innerHTML = `
       <div class="pv-fallback" style="padding:2rem 3rem;">
@@ -107,6 +132,7 @@ export async function openPreview(input: PreviewInput): Promise<void> {
           <div class="ed-area" style="padding:1.5rem 0;min-height:auto;">${bodyHtml}</div>
         </div>
       </div>`;
+    markMissingImages(frameHost);
   }
 
   document.body.append(overlay);

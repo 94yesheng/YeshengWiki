@@ -13,7 +13,7 @@ import {
   uploadPostAsset,
   type PostEntry,
 } from '../content';
-import { effectiveChanges, parsePost } from '../frontmatter';
+import { parsePost } from '../frontmatter';
 import { createEditor } from '../editor';
 import { normalizeHtml, renderMarkdown } from '../md';
 import { openPreview } from '../preview';
@@ -94,26 +94,30 @@ function postDraft(): Draft['post'] {
     const d = entry.parsed.data;
     const rawSpecs = Array.isArray(d.railSpecs) ? (d.railSpecs as RailSpecRow[]) : [];
     const rawTopo = (d.railTopology ?? {}) as RailTopologyCfg;
+    const fields: Record<string, unknown> = {
+      title: d.title ?? '',
+      pubDate: String(d.pubDate ?? ''),
+      description: d.description ?? '',
+      lead: d.lead ?? '',
+      tags: [...(Array.isArray(d.tags) ? (d.tags as string[]) : [])],
+      entryBadge: d.entryBadge ?? '',
+      cover: d.cover ?? '',
+      coverCaption: d.coverCaption ?? '',
+      featured: d.featured === true,
+      kineticCaption: d.kineticCaption ?? '',
+      railMode: d.railMode ?? (entry.id === 'mc-server' ? 'topology' : rawSpecs.length ? 'custom' : 'follow'),
+      railSpecs: rawSpecs.map((r) => ({ label: String(r.label ?? ''), value: String(r.value ?? '') })),
+      railTopology: { ...rawTopo },
+      updatedDate: d.updatedDate ? String(d.updatedDate) : '',
+      draft: d.draft === true,
+      autoUpdated: typeof d.autoUpdated === 'boolean' ? d.autoUpdated : undefined,
+    };
     state.draft.post = {
       entry,
-      fields: {
-        title: d.title ?? '',
-        pubDate: String(d.pubDate ?? ''),
-        description: d.description ?? '',
-        lead: d.lead ?? '',
-        tags: [...(Array.isArray(d.tags) ? (d.tags as string[]) : [])],
-        entryBadge: d.entryBadge ?? '',
-        cover: d.cover ?? '',
-        coverCaption: d.coverCaption ?? '',
-        featured: d.featured === true,
-        kineticCaption: d.kineticCaption ?? '',
-        railMode: d.railMode ?? (entry.id === 'mc-server' ? 'topology' : rawSpecs.length ? 'custom' : 'follow'),
-        railSpecs: rawSpecs.map((r) => ({ label: String(r.label ?? ''), value: String(r.value ?? '') })),
-        railTopology: { ...rawTopo },
-        updatedDate: d.updatedDate ? String(d.updatedDate) : '',
-        draft: d.draft === true,
-        autoUpdated: typeof d.autoUpdated === 'boolean' ? d.autoUpdated : undefined,
-      },
+      fields,
+      // 打开时的字段快照：判断"有没有真改过"只跟它比，不跟文件原值比。
+      // 像 railMode 这类有 UI 默认值、原文件里又没有的字段，跟原值比会误报成"改了"。
+      baseline: JSON.parse(JSON.stringify(fields)) as Record<string, unknown>,
       body: entry.parsed.body,
       dateTouched: false,
       rightTab: 'format',
@@ -451,6 +455,11 @@ export function renderPostView(): void {
       toast(`路由标识「${nextSlug}」已被其它文章占用`, true);
       (e.target as HTMLInputElement).value = d.entry.id;
       return;
+    }
+    // 第一次改名时记住旧文件；之后 A→B→C 仍以最初的 A 为准。
+    if (!d.entry.prevPath) {
+      d.entry.prevPath = d.entry.path;
+      d.entry.prevSha = d.entry.sha;
     }
     d.entry.id = nextSlug;
     d.entry.path = `${DIRS.posts}/${nextSlug}.md`;
@@ -883,17 +892,13 @@ function removePost(entry: PostEntry): void {
   toast('已暂存删除 —— 点右上角「保存」正式提交，点「重新读取」可撤销');
 }
 
-function realChanges(d: NonNullable<Draft['post']>): Record<string, unknown> {
-  return effectiveChanges(d.entry.parsed, diffFields(d.entry.parsed.data, d.fields, [...POST_FIELDS]));
-}
-
 export function postDraftEdited(): boolean {
   const d = state.draft.post;
   if (!d) return false;
-  const changed = realChanges(d);
-  const manualDate = d.dateTouched === true && 'updatedDate' in changed;
-  delete changed.updatedDate;
-  if (manualDate || Object.keys(changed).length) return true;
+  // 只改了路由也算未保存改动 —— 否则切走时会被静默丢掉。
+  if (d.entry.prevPath && d.entry.prevPath !== d.entry.path) return true;
+  // 跟"打开时的快照"比，而不是跟文件原值比：默认值不会被误判成用户改动。
+  if (JSON.stringify(d.fields) !== JSON.stringify(d.baseline)) return true;
   const body = d.editor?.getMarkdown() ?? d.body;
   return normalizeHtml(renderMarkdown(body)) !== normalizeHtml(renderMarkdown(d.body));
 }
@@ -933,10 +938,10 @@ export async function savePostCurrent(gh: Github): Promise<boolean> {
   const body = d.editor?.getMarkdown() ?? d.body;
   const bodySame = normalizeHtml(renderMarkdown(body)) === normalizeHtml(renderMarkdown(d.body));
 
-  const changedExceptDate = realChanges(d);
-  const manualDate = d.dateTouched === true && 'updatedDate' in changedExceptDate;
-  delete changedExceptDate.updatedDate;
-  const hasRealEdit = isNew || Object.keys(changedExceptDate).length > 0 || !bodySame || manualDate;
+  const fieldsChanged = JSON.stringify(d.fields) !== JSON.stringify(d.baseline);
+  // 只改路由时字段和正文都没变，但保存仍然必须走 —— 否则改名永远不会提交。
+  const renamed = !!(d.entry.prevPath && d.entry.prevPath !== d.entry.path);
+  const hasRealEdit = isNew || renamed || fieldsChanged || !bodySame;
 
   if (!hasRealEdit) {
     toast('当前文章没有任何改动');
@@ -947,7 +952,8 @@ export async function savePostCurrent(gh: Github): Promise<boolean> {
     d.fields.updatedDate = isoDate(new Date());
   }
 
-  const changed = diffFields(d.entry.parsed.data, d.fields, [...POST_FIELDS]);
+  // 跟打开时的快照比：只写用户真正动过的字段，不会把 UI 默认值带进 frontmatter。
+  const changed = diffFields(d.baseline, d.fields, [...POST_FIELDS]);
   await savePost(gh, d.entry, changed, bodySame ? d.body : body);
   return true;
 }

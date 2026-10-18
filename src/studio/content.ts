@@ -29,6 +29,9 @@ export interface PostEntry {
   sha: string;
   id: string;
   parsed: ParsedFile;
+  /** 改过路由、但还没保存时，旧文件的路径与 sha；保存成功后清空 */
+  prevPath?: string;
+  prevSha?: string;
 }
 
 export async function loadPosts(gh: Github): Promise<PostEntry[]> {
@@ -101,7 +104,30 @@ export async function savePost(
   const text = buildPostText(post, changed, body);
   const title = String(changed.title ?? post.parsed.data.title ?? post.id);
   const verb = post.sha ? '更新' : '新建';
-  await gh.putText(post.path, text, `content: ${verb}文章「${title}」\n\n（经后台编辑，只改动实际修改的字段）`, post.sha);
+  const message = `content: ${verb}文章「${title}」\n\n（经后台编辑，只改动实际修改的字段）`;
+
+  // 改过路由：先写新文件，成功后再删旧文件。
+  // 顺序不能反 —— 先删后写一旦写入失败，文章就没了；这个顺序最坏只是留下两个文件，可以重试。
+  if (post.prevPath && post.prevSha && post.prevPath !== post.path) {
+    // 上一次可能已经写成功、只差删旧文件；新路径已存在时用它的 sha 更新，避免 422。
+    const existingNew = await gh.getFile(post.path);
+    await gh.putText(
+      post.path,
+      text,
+      `content: 重命名文章「${title}」\n\n${post.prevPath} -> ${post.path}`,
+      existingNew?.sha
+    );
+    await gh.deleteFile(
+      post.prevPath,
+      post.prevSha,
+      `content: 重命名文章「${title}」，删除旧文件 ${post.prevPath}`
+    );
+    post.prevPath = undefined;
+    post.prevSha = undefined;
+    return;
+  }
+
+  await gh.putText(post.path, text, message, post.sha);
 }
 
 export function newPostTemplate(title: string, date: string, tags: string[], draft = false): string {
