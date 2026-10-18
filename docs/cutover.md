@@ -1,7 +1,13 @@
 # 动态版切线上清单
 
-> 现状：动态版已部署在 staging（`blog-staging.service`，127.0.0.1:4321），
-> 线上 Nginx 仍指向静态 `/var/www/blog`。切换前必须先验收 staging。
+> 现状（2026-10-19）：
+> - 生产动态版已切换，直接访问 `http://150.40.177.193/` 生效
+> - 生产服务 `blog.service`（127.0.0.1:4322），数据 `/var/www/blog-data`
+> - Nginx 已改为动态反代；静态配置备份在 `/root/blog-static.conf.bak`
+> - 域名仍指向旧主机；HTTPS 待 DNS 切换后签
+> - `/admin/` 已 301 到 `/studio/`
+>
+> 回滚：`cp -a /root/blog-static.conf.bak /etc/nginx/sites-available/blog && nginx -t && systemctl reload nginx`，静态文件仍在 `/var/www/blog`。
 
 ## 0. 验收 staging
 
@@ -95,19 +101,20 @@ nginx -t && systemctl reload nginx
 静态文件仍在 `/var/www/blog`，回滚不需要动数据库。生产 Node 服务可以停：
 `systemctl stop blog`。
 
-## 5. 备份（切完后）
+## 5. 备份（已生效）
 
-- 每日 `sqlite3 /var/www/blog-data/blog.db ".backup '/var/www/backups/blog-$(date +%F).db'"`
-- 每日打包 `/var/www/blog-data/uploads`
-- 保留 7 天；备份目录不要放在 web root
+- `/usr/local/bin/blog-backup`：SQLite `.backup` + uploads tar + Nginx 配置，保留 7 天
+- `/etc/cron.d/blog-backup`：每天 03:30
+- 备份目录：`/var/www/backups`（不在 web root）
 
 ## 6. 待办
 
-- [ ] staging 验收
-- [ ] 生产 DB/systemd
-- [ ] 切 Nginx
-- [ ] DNS 改到 150.40.177.193
+- [x] staging 验收
+- [x] 生产 DB/systemd
+- [x] 切 Nginx
+- [x] 备份 cron
+- [x] 退役 `/admin/`（301 到 `/studio/`）
+- [ ] DNS 改到 `150.40.177.193`（`www` A，`@` A）
 - [ ] certbot 签 HTTPS
-- [ ] 备份 cron
-- [ ] 退役 `/admin/`、`vault`、GitHub Actions FTP 流水线
+- [ ] 退役 `vault` / GitHub Actions FTP 流水线
 - [ ] README/CLAUDE 更新为动态架构

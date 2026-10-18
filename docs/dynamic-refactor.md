@@ -28,17 +28,19 @@
 - **所有公开页面已改为动态；此分支的 `npm run build`（静态）不再保证通过。**
 - 线上回滚点：`feat/studio-v2-desktop` 分支 + 服务器 `/var/www/blog` 的静态文件。
 - **`src/artifact/*.html` 和 `artifact.js` 已手工插入 `@@占位符@@` / 服务端数据分支；不要直接重跑 `npm run import:artifact`，否则会覆盖。** 必须重跑时先备份，再重放 `.work/patch-*.mjs` 的替换。
-- 下一步：动态 sitemap、staging（systemd + Nginx + 真实 DB）、切线上。
+- 下一步：DNS + HTTPS（代码与部署已完成）。
 
-### Staging 现状（2026-10-19）
+### 部署现状（2026-10-19）
 
 - 代码：`/var/www/blog-app`（`npm ci` + `npm run build:dynamic`）
-- 数据：`/var/www/blog-data-staging/blog.db` + `uploads/`
-- 服务：`blog-staging.service`（`blog` 用户，`127.0.0.1:4321`）
-- 环境：`/etc/blog-staging.env`（root 600）
-- 访问：SSH 隧道 `ssh -L 4323:127.0.0.1:4321 root@<server>`，浏览器开 `http://127.0.0.1:4323`
-- 已验证：全部页面 200、`/api/health`、后台登录、FS 列表、创建/删除文章并即时反映到公开页、图片 `/uploads` 200
-- Nginx 仍指向静态 `/var/www/blog`；生产反代配置待切换
+- staging：`/var/www/blog-data-staging`，`blog-staging.service`（127.0.0.1:4321）
+- **生产**：`/var/www/blog-data`，`blog.service`（127.0.0.1:4322）
+- 生产环境：`/etc/blog.env`（root 600）
+- Nginx：已切到动态反代；静态配置备份 `/root/blog-static.conf.bak`
+- 直接访问 `http://150.40.177.193/` 已是动态版；`/admin/` 301 到 `/studio/`
+- 备份：`/usr/local/bin/blog-backup` + `/etc/cron.d/blog-backup`，目录 `/var/www/backups`
+- 已验证：全部页面 200、生产后台登录、FS 写入/删除、公开页即时反映、图片 `/uploads` 200
+- 待办：域名 A 记录切到 `150.40.177.193`，然后 certbot 签 HTTPS
 
 ## 1. 决策（默认按推荐方案）
 
