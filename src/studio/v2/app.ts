@@ -21,7 +21,7 @@ import {
   saveSite,
   saveWall,
 } from '../content';
-import { fetchVault, takeLegacyToken } from '../vault';
+import { ApiGithub } from '../api';
 import {
   clearStaged,
   discardStaged,
@@ -29,13 +29,12 @@ import {
   isStagedGone,
   isStagedNew,
   registerHooks,
-  REPO,
   stagedDeletes,
   state,
   type Collection,
 } from '../state';
 import { $, esc, reportError, setBusy, showConfirm, toast } from '../ui';
-import { enterDemoMode, renderNoVault, renderUnlock } from '../views/login';
+import { enterDemoMode, renderUnlock } from '../views/login';
 import {
   createNewPost,
   foldStagedPostDraft,
@@ -156,7 +155,7 @@ function renderBar(): void {
     <div class="st-bar-right">
       ${state.dirty ? '<span class="st-dirty-badge"><span class="st-dirty-dot"></span>有未保存修改</span>' : ''}
       <span class="st-meta-badge">
-        ${state.demoMode ? '<strong class="telemetry-accent">演示模式</strong>' : `${esc(REPO.branch)}${state.user ? ` · ${esc(state.user)}` : ''}`}
+        ${state.demoMode ? '<strong class="telemetry-accent">演示模式</strong>' : `LOCAL${state.user ? ` · ${esc(state.user)}` : ''}`}
       </span>
       <button type="button" class="st-btn" id="st-theme-btn" title="切换白天 / 夜间模式">
         ${dark ? '昼' : '夜'}
@@ -182,9 +181,9 @@ function renderBar(): void {
 
   $('#st-lock')?.addEventListener('click', async () => {
     if (!(await confirmLeave())) return;
+    void fetch('/api/auth/logout', { method: 'POST' }).catch(() => {});
     forgetSession();
-    if (state.vault) renderUnlock('已锁定会话');
-    else renderNoVault();
+    renderUnlock('已锁定会话');
   });
 
   $('#st-classic')?.addEventListener('click', async () => {
@@ -483,17 +482,26 @@ async function saveCurrent(): Promise<void> {
    启动
    -------------------------------------------------------------------------- */
 async function boot(): Promise<void> {
-  if (takeLegacyToken()) console.info('[studio] 已清除本机残留的明文令牌');
-
   // 支持 URL 带 ?demo=1 直接进入免密 UI 交互工作台
   if (typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('demo') === '1') {
     enterDemoMode();
     return;
   }
 
-  state.vault = await fetchVault();
-  if (state.vault) renderUnlock();
-  else renderNoVault();
+  try {
+    const res = await fetch('/api/auth/me');
+    if (res.ok) {
+      const data = (await res.json()) as { user: { username: string }; csrf: string };
+      state.user = data.user.username;
+      state.csrf = data.csrf;
+      state.gh = new ApiGithub(data.csrf);
+      await loadAll();
+      return;
+    }
+  } catch {
+    // 网络错误也退回登录页
+  }
+  renderUnlock();
 }
 
 registerHooks({ render: renderApp, reload: loadAll, settle: settleLeaving, dirty: renderBar });

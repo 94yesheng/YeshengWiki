@@ -116,5 +116,5 @@ nginx -t && systemctl reload nginx
 - [x] 退役 `/admin/`（301 到 `/studio/`）
 - [ ] DNS 改到 `150.40.177.193`（`www` A，`@` A）
 - [ ] certbot 签 HTTPS
-- [ ] 退役 `vault` / GitHub Actions FTP 流水线
+- [x] 退役 `vault` / GitHub Actions FTP 流水线（已删除 Sveltia/vault，CI 只做检查）
 - [ ] README/CLAUDE 更新为动态架构

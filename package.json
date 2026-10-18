@@ -7,23 +7,19 @@
     "node": ">=22.12.0"
   },
   "scripts": {
-    "predev": "node scripts/copy-cms.mjs",
     "dev": "cross-env BLOG_DYNAMIC=1 astro dev",
     "dev:dynamic": "cross-env BLOG_DYNAMIC=1 astro dev",
     "start": "cross-env BLOG_DYNAMIC=1 astro dev",
-    "prebuild": "node scripts/copy-cms.mjs",
     "build": "cross-env BLOG_DYNAMIC=1 astro build",
     "build:dynamic": "cross-env BLOG_DYNAMIC=1 astro build",
     "preview": "astro preview",
     "check": "astro check",
-    "vault": "node scripts/vault-ui.mjs",
     "astro": "astro",
     "import:artifact": "node scripts/import-artifact.mjs"
   },
   "dependencies": {
     "@astrojs/node": "^11.1.8",
     "@astrojs/rss": "^4.0.19",
-    "@astrojs/sitemap": "^3.7.4",
     "astro": "^7.3.8",
     "better-sqlite3": "^13.0.3",
     "js-yaml": "^5.4.3",
@@ -33,7 +29,6 @@
   },
   "devDependencies": {
     "@astrojs/check": "^0.9.10",
-    "@sveltia/cms": "^0.238.0",
     "@types/better-sqlite3": "^9.6.0",
     "@types/js-yaml": "^4.0.9",
     "@types/markdown-it": "^14.2.0",

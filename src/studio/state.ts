@@ -4,9 +4,6 @@
 import type { Github } from './github';
 import type { EditorHandle } from './editor';
 import type { LinksFile, PostEntry, SiteFile, WallEntry } from './content';
-import type { VaultBlob } from './vault';
-
-export const REPO = { owner: '94yesheng', repo: 'YeshengWiki', branch: 'main' };
 
 export type Collection = 'posts' | 'walls' | 'programs' | 'links' | 'site';
 
@@ -58,7 +55,6 @@ export const state = {
   postAssetFiles: [] as string[],
   draft: {} as Draft,
   staged: { added: [], removed: [] } as Staged,
-  vault: null as VaultBlob | null,
   listCollapsed: new Set<string>(),
   tagFilter: '',
   searchQuery: '',

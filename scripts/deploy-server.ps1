@@ -34,6 +34,7 @@ try {
     Write-Host "==> install, build, restart $Service" -ForegroundColor Cyan
     $remote = @(
         "set -e",
+        "rm -rf $AppDir/src $AppDir/public $AppDir/scripts $AppDir/db $AppDir/docs $AppDir/dist-dynamic",
         "tar -xzf /tmp/blog-src.tar.gz -C $AppDir",
         "cd $AppDir",
         "npm ci --registry=https://registry.npmmirror.com --no-audit --no-fund",

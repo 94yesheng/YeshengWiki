@@ -20,7 +20,6 @@ import {
   saveSite,
   saveWall,
 } from './content';
-import { takeLegacyToken } from './vault';
 import { ApiGithub } from './api';
 import {
   clearStaged,
@@ -541,8 +540,6 @@ async function saveCurrent(): Promise<void> {
    启动
    -------------------------------------------------------------------------- */
 async function boot(): Promise<void> {
-  if (takeLegacyToken()) console.info('[studio] 已清除本机残留的明文令牌');
-
   // 支持 URL 带 ?demo=1 直接进入免密 UI 交互工作台
   if (typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('demo') === '1') {
     enterDemoMode();
