@@ -1,0 +1,142 @@
+  function evalInfinityPoint3D(t, streamOffset, radSpread, a, b, c, time) {
+    var sinT = Math.sin(t);
+    var cosT = Math.cos(t);
+    var denom = 1 + sinT * sinT;
+
+    var bx = (a * cosT) / denom;
+    var by = (b * sinT * cosT) / denom;
+    var bz = c * sinT;
+
+    var ribbonWave = t * 2.0 + streamOffset + time * 0.55;
+    var ox = Math.cos(ribbonWave) * radSpread;
+    var oy = Math.sin(ribbonWave) * radSpread * 0.88;
+    var oz = Math.sin(t * 3.0 + streamOffset) * radSpread * 1.12;
+
+    return { x: bx + ox, y: by + oy, z: bz + oz };
+  }
+
+  /* ----------------------------------------------------------------------
+     需求 2（白天模型）：立体无限环主体线条恢复
+     保留主体 3D 骨架流线与焦点几何，去除粒子间连线与粘连细碎线段
+     ---------------------------------------------------------------------- */
+  function drawInfinity3DModel(ctx, cx, cy, W, H, dt) {
+    var minDim = Math.min(W, H);
+    var a = Math.min(W * 0.44, minDim * 0.52);
+    var b = a * 0.88;
+    var c = a * 0.34;
+    var tubeRadius = a * 0.105;
+    var fov = 680;
+
+    var rotX = 0.22 * Math.sin(state.time * 0.36) + mouse.sny * 0.15;
+    var rotY = 0.24 * Math.cos(state.time * 0.28) + mouse.snx * 0.17;
+    var rotZ = -0.06 + 0.075 * Math.sin(state.time * 0.22);
+
+    // 1. 左右双叶焦点几何靶标与椭圆轨道参考准星
+    var focusX = a * 0.62;
+    [-focusX, focusX].forEach(function (fx3) {
+      var fp = project3D(fx3, 0, 0, rotX, rotY, rotZ, cx, cy, fov);
+      ctx.save();
+      ctx.strokeStyle = 'rgba(217, 119, 87, 0.32)';
+      ctx.lineWidth = 0.85;
+      ctx.beginPath();
+      ctx.arc(fp.sx, fp.sy, 10, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(fp.sx - 4.5, fp.sy);
+      ctx.lineTo(fp.sx + 4.5, fp.sy);
+      ctx.moveTo(fp.sx, fp.sy - 4.5);
+      ctx.lineTo(fp.sx, fp.sy + 4.5);
+      ctx.stroke();
+      ctx.restore();
+    });
+
+    // 2. 无限流形主体骨架流线（主体三维形态线，不连粒子）
+    var numRibbons = 5;
+    var ribbonSteps = 100;
+    ctx.save();
+    for (var rIdx = 0; rIdx < numRibbons; rIdx++) {
+      var sOff = (rIdx / numRibbons) * Math.PI * 2;
+      var rSpread = (rIdx === 0) ? 0 : tubeRadius * (0.32 + (rIdx % 2) * 0.24);
+      var isCore = (rIdx === 0);
+      ctx.beginPath();
+      for (var s = 0; s <= ribbonSteps; s++) {
+        var tVal = (s / ribbonSteps) * Math.PI * 2;
+        var p3 = evalInfinityPoint3D(tVal, sOff, rSpread, a, b, c, state.time);
+        var pr = project3D(p3.x, p3.y, p3.z, rotX, rotY, rotZ, cx, cy, fov);
+        var mw = computeMouseWaveOffset(pr.sx, pr.sy);
+        var sx = pr.sx + mw.ox * 0.5;
+        var sy = pr.sy + mw.oy * 0.5;
+        if (s === 0) ctx.moveTo(sx, sy);
+        else ctx.lineTo(sx, sy);
+      }
+      ctx.closePath();
+      ctx.strokeStyle = isCore
+        ? 'rgba(217, 119, 87, 0.40)'
+        : 'rgba(232, 146, 110, ' + (0.12 + (rIdx % 2) * 0.06).toFixed(3) + ')';
+      ctx.lineWidth = isCore ? 1.35 : 0.8;
+      ctx.stroke();
+    }
+    ctx.restore();
+
+    var count = Math.min(state.particleCount, MAX_PARTICLES);
+    var renderList = [];
+
+    for (var i = 0; i < count; i++) {
+      var pt = particles[i];
+      var speedMod = 0.78 + 0.42 * Math.sin(pt.u * 2.0 + pt.phaseOffset);
+      pt.u = (pt.u + pt.uSpeed * speedMod * 0.68 * dt * state.speed) % (Math.PI * 2);
+
+      var t = pt.u;
+      var sinT = Math.sin(t);
+      var cosT = Math.cos(t);
+      var denom = 1 + sinT * sinT;
+
+      var bx = (a * cosT) / denom;
+      var by = (b * sinT * cosT) / denom;
+      var bz = c * sinT;
+
+      var streamAngle = (pt.streamId / 7) * Math.PI * 2 + t * 1.5 + state.time * 0.55;
+      var cosTw = Math.cos(streamAngle), sinTw = Math.sin(streamAngle);
+      var rx = pt.cx * cosTw - pt.cy * sinTw;
+      var ry = pt.cx * sinTw + pt.cy * cosTw;
+
+      var localSpread = tubeRadius * (0.72 + 0.38 * Math.sin(t * 2 + pt.phaseOffset));
+      var ox = rx * localSpread;
+      var oy = ry * localSpread * 0.92;
+      var oz = pt.cz * localSpread * 1.08;
+
+      var proj = project3D(bx + ox, by + oy, bz + oz, rotX, rotY, rotZ, cx, cy, fov);
+      updateParticleSpring(pt, proj.sx, proj.sy, dt);
+
+      renderList.push({
+        x: proj.sx + pt.dx,
+        y: proj.sy + pt.dy,
+        z: proj.z,
+        size: pt.size,
+        colorRGB: pt.colorRGB,
+        glow: pt.glow
+      });
+    }
+
+    renderList.sort(function (p1, p2) { return p2.z - p1.z; });
+
+    // 纯粒子渲染（无任何尾部线段、无粒子间连线）
+    for (var j = 0; j < renderList.length; j++) {
+      var r = renderList[j];
+      var depthNorm = Math.max(0.32, Math.min(1.0, 0.74 - r.z / (a * 1.85)));
+      var alpha = Math.min(0.98, 0.44 + 0.50 * depthNorm + r.glow * 0.28);
+      var radius = r.size * (0.88 + 0.26 * depthNorm) + r.glow * 0.5;
+
+      if (r.size > 1.95 || r.glow > 0.12) {
+        ctx.beginPath();
+        ctx.arc(r.x, r.y, radius * 2.25, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(' + r.colorRGB + ', ' + (alpha * 0.18).toFixed(3) + ')';
+        ctx.fill();
+      }
+
+      ctx.beginPath();
+      ctx.arc(r.x, r.y, radius, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(' + r.colorRGB + ', ' + alpha.toFixed(3) + ')';
+      ctx.fill();
+    }
+  }

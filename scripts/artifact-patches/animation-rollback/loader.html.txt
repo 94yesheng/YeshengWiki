@@ -1,0 +1,23 @@
+<!-- 需求 6：全新重构的全屏粒子绽放立体无限流形加载动画 -->
+  <div class="infinity-loader" id="infinity-loader" role="status" aria-live="polite" aria-label="正在加载页面">
+    <canvas class="loader-infinity-canvas" id="loader-infinity-canvas"></canvas>
+    <div class="loader-meta">
+      <div class="loader-brand-emblem">
+        <span class="loader-title-kai">夜笙的小世界</span>
+      </div>
+      <span id="loader-status-text">INFINITY MANIFOLD // 正在展开立体无限流形</span>
+      <div class="loader-progress-row">
+        <div class="loader-bar-track">
+          <div class="loader-bar-fill" id="loader-bar-fill"></div>
+        </div>
+        <span class="loader-pct-readout" id="loader-pct-readout">0%</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- 需求 6：全屏平滑遮盖过渡与奇点/无限流形转换层 -->
+  <div class="theme-transition-stage" id="theme-transition-stage" aria-hidden="true">
+    <div class="theme-transition-veil" id="theme-transition-veil"></div>
+    <canvas class="theme-transition-canvas" id="theme-transition-canvas"></canvas>
+    <div class="theme-transition-badge" id="theme-transition-badge">SINGULARITY TRANSITION // ∞ ↔ BLACK HOLE</div>
+  </div>

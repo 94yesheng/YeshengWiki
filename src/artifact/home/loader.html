@@ -1,27 +1,24 @@
-<!-- 需求 7：结合无限主题与主页无限粒子模型的简洁加载动画 -->
+<noscript><style>.infinity-loader{display:none!important}</style></noscript>
+<!-- 需求 6：全新重构的全屏粒子绽放立体无限流形加载动画 -->
   <div class="infinity-loader" id="infinity-loader" role="status" aria-live="polite" aria-label="正在加载页面">
-    <div class="loader-stage-box">
-      <canvas class="loader-infinity-canvas" id="loader-infinity-canvas"></canvas>
-      <svg class="loader-planar-svg" viewBox="0 0 240 120" aria-hidden="true">
-        <line x1="20" y1="60" x2="220" y2="60" stroke="currentColor" stroke-opacity="0.22" stroke-width="0.75" stroke-dasharray="3 4"/>
-        <line x1="120" y1="14" x2="120" y2="106" stroke="currentColor" stroke-opacity="0.22" stroke-width="0.75" stroke-dasharray="3 4"/>
-        <path d="M64 26C35 26 18 41 18 60C18 79 35 94 64 94C97 94 143 26 176 26C205 26 222 41 222 60C222 79 205 94 176 94C143 94 97 26 64 26Z" fill="none" stroke="currentColor" stroke-opacity="0.22" stroke-width="1.2"/>
-        <path class="loader-loop-trace" d="M64 26C35 26 18 41 18 60C18 79 35 94 64 94C97 94 143 26 176 26C205 26 222 41 222 60C222 79 205 94 176 94C143 94 97 26 64 26Z" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-        <circle cx="64" cy="60" r="2.6" fill="currentColor"/>
-        <circle cx="176" cy="60" r="2.6" fill="currentColor"/>
-      </svg>
-    </div>
+    <canvas class="loader-infinity-canvas" id="loader-infinity-canvas"></canvas>
     <div class="loader-meta">
-      <span class="loader-title-kai">夜笙的小世界</span>
-      <span id="loader-status-text">INFINITY MANIFOLD // 正在展开纯粒子无限流形</span>
-      <div class="loader-bar-track">
-        <div class="loader-bar-fill" id="loader-bar-fill"></div>
+      <div class="loader-brand-emblem">
+        <span class="loader-title-kai">夜笙的小世界</span>
+      </div>
+      <span id="loader-status-text">INFINITY MANIFOLD // 正在展开立体无限流形</span>
+      <div class="loader-progress-row">
+        <div class="loader-bar-track">
+          <div class="loader-bar-fill" id="loader-bar-fill"></div>
+        </div>
+        <span class="loader-pct-readout" id="loader-pct-readout">0%</span>
       </div>
     </div>
   </div>
 
-  <!-- 需求 8：结合无限与黑洞主题的昼夜切换过渡动画层 -->
+  <!-- 需求 6：全屏平滑遮盖过渡与奇点/无限流形转换层 -->
   <div class="theme-transition-stage" id="theme-transition-stage" aria-hidden="true">
+    <div class="theme-transition-veil" id="theme-transition-veil"></div>
     <canvas class="theme-transition-canvas" id="theme-transition-canvas"></canvas>
     <div class="theme-transition-badge" id="theme-transition-badge">SINGULARITY TRANSITION // ∞ ↔ BLACK HOLE</div>
   </div>

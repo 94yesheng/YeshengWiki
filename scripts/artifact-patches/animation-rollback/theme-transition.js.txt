@@ -1,0 +1,182 @@
+  /* ========================================================================
+     需求 6：昼夜切换全屏平滑遮盖与奇点/无限流形转换层
+     ======================================================================== */
+  var transStage = document.getElementById('theme-transition-stage');
+  var transVeil = document.getElementById('theme-transition-veil');
+  var transCanvas = document.getElementById('theme-transition-canvas');
+  var transBadge = document.getElementById('theme-transition-badge');
+  var transAnimId = 0;
+
+  function playThemeTransition(targetTheme, onPeakCoverage) {
+    if (!transStage || !transCanvas) {
+      if (typeof onPeakCoverage === 'function') onPeakCoverage();
+      return;
+    }
+    if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      if (typeof onPeakCoverage === 'function') onPeakCoverage();
+      return;
+    }
+
+    cancelAnimationFrame(transAnimId);
+    var toDark = targetTheme === 'dark';
+    transStage.dataset.active = 'true';
+    if (transBadge) {
+      transBadge.textContent = toDark
+        ? 'SINGULARITY COLLAPSE // 无限流形 ∞ 坍缩至卡冈图雅黑洞'
+        : 'MANIFOLD UNFOLD // 黑洞奇点展开至立体无限环 ∞';
+    }
+
+    var startTs = performance.now();
+    var duration = 860;
+    var themeSwapped = false;
+
+    function stepTransition(now) {
+      var elapsed = now - startTs;
+      var p = Math.min(1, elapsed / duration);
+      var ease = 1 - Math.pow(1 - p, 3);
+
+      // 计算全屏遮盖层的柔和透明度曲线：在 p ~ 0.42 达到峰值 0.94，然后平滑褪去
+      var veilAlpha = 0;
+      if (p < 0.42) {
+        veilAlpha = Math.sin((p / 0.42) * (Math.PI / 2)) * 0.94;
+      } else {
+        veilAlpha = Math.cos(((p - 0.42) / 0.58) * (Math.PI / 2)) * 0.94;
+      }
+      veilAlpha = Math.max(0, Math.min(0.96, veilAlpha));
+
+      if (transVeil) {
+        transVeil.style.opacity = veilAlpha.toFixed(3);
+      }
+
+      // 当全屏遮盖达到最高点时，无缝切换 DOM 主题，用户完全察觉不到生硬的闪烁
+      if (p >= 0.42 && !themeSwapped) {
+        themeSwapped = true;
+        if (typeof onPeakCoverage === 'function') {
+          onPeakCoverage();
+        }
+      }
+
+      var dpr = Math.min(window.devicePixelRatio || 1, 2);
+      var w = Math.round(window.innerWidth * dpr);
+      var h = Math.round(window.innerHeight * dpr);
+      if (transCanvas.width !== w || transCanvas.height !== h) {
+        transCanvas.width = w;
+        transCanvas.height = h;
+      }
+
+      var ctx = transCanvas.getContext('2d');
+      var W = w / dpr;
+      var H = h / dpr;
+      var cx = W * 0.5;
+      var cy = H * 0.5;
+      var minDim = Math.min(W, H);
+
+      ctx.save();
+      ctx.scale(dpr, dpr);
+      ctx.clearRect(0, 0, W, H);
+
+      // 全屏平滑遮盖底色渐变，衬托过渡氛围
+      var coverGrad = ctx.createRadialGradient(cx, cy, 0, cx, cy, Math.hypot(W, H) * 0.65);
+      if (toDark) {
+        coverGrad.addColorStop(0, 'rgba(18, 18, 17, ' + (veilAlpha * 0.92).toFixed(3) + ')');
+        coverGrad.addColorStop(0.7, 'rgba(217, 119, 87, ' + (veilAlpha * 0.22).toFixed(3) + ')');
+        coverGrad.addColorStop(1, 'rgba(18, 18, 17, ' + (veilAlpha * 0.88).toFixed(3) + ')');
+      } else {
+        coverGrad.addColorStop(0, 'rgba(250, 249, 245, ' + (veilAlpha * 0.92).toFixed(3) + ')');
+        coverGrad.addColorStop(0.7, 'rgba(242, 179, 126, ' + (veilAlpha * 0.24).toFixed(3) + ')');
+        coverGrad.addColorStop(1, 'rgba(250, 249, 245, ' + (veilAlpha * 0.88).toFixed(3) + ')');
+      }
+      ctx.fillStyle = coverGrad;
+      ctx.fillRect(0, 0, W, H);
+
+      var morph = toDark ? ease : (1 - ease);
+      var fadeAlpha = Math.sin(p * Math.PI);
+      var infScale = 1 - morph * 0.72;
+      var a = minDim * 0.18 * infScale;
+      var b = a * 0.85;
+      var bhR = minDim * 0.058 * (0.25 + 0.75 * morph);
+
+      // 绘制形变中的平面无限环 ∞
+      if (morph < 0.92) {
+        var infAlpha = (1 - morph) * fadeAlpha * 0.95;
+        ctx.beginPath();
+        for (var s = 0; s <= 96; s++) {
+          var t = (s / 96) * Math.PI * 2;
+          var st = Math.sin(t), ct = Math.cos(t);
+          var den = 1 + st * st;
+          var ix = (a * ct) / den;
+          var iy = (b * st * ct) / den;
+          var rot = morph * 1.15;
+          var rx = ix * Math.cos(rot) - iy * Math.sin(rot);
+          var ry = ix * Math.sin(rot) + iy * Math.cos(rot);
+          if (s === 0) ctx.moveTo(cx + rx, cy + ry);
+          else ctx.lineTo(cx + rx, cy + ry);
+        }
+        ctx.closePath();
+        ctx.strokeStyle = 'rgba(217, 119, 87, ' + infAlpha.toFixed(3) + ')';
+        ctx.lineWidth = 2.2;
+        ctx.stroke();
+      }
+
+      // 绘制形变中的平面黑洞视界与吸积环
+      if (morph > 0.08) {
+        var bhAlpha = morph * fadeAlpha * 0.98;
+        ctx.save();
+        ctx.translate(cx, cy);
+        ctx.rotate(-0.19);
+        ctx.beginPath();
+        ctx.ellipse(0, 0, bhR * 2.65, bhR * 0.55, 0, 0, Math.PI * 2);
+        ctx.strokeStyle = 'rgba(242, 179, 126, ' + bhAlpha.toFixed(3) + ')';
+        ctx.lineWidth = 2.0;
+        ctx.stroke();
+
+        ctx.beginPath();
+        ctx.arc(0, 0, bhR * 1.3, Math.PI * 1.08, Math.PI * 1.92);
+        ctx.strokeStyle = 'rgba(217, 119, 87, ' + (bhAlpha * 0.88).toFixed(3) + ')';
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+        ctx.restore();
+
+        ctx.beginPath();
+        ctx.arc(cx, cy, bhR, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(18, 18, 17, ' + bhAlpha.toFixed(3) + ')';
+        ctx.fill();
+        ctx.strokeStyle = 'rgba(255, 228, 190, ' + bhAlpha.toFixed(3) + ')';
+        ctx.lineWidth = 1.6;
+        ctx.stroke();
+      }
+
+      // 40 颗纯粒子随形变在双焦点与黑洞奇点之间收束/展开
+      for (var k = 0; k < 40; k++) {
+        var ang = (k / 40) * Math.PI * 2 + p * 2.5;
+        var stK = Math.sin(ang), ctK = Math.cos(ang);
+        var denK = 1 + stK * stK;
+        var infPx = (a * 1.15 * ctK) / denK;
+        var infPy = (b * 1.15 * stK * ctK) / denK;
+        var diskR = bhR * (1.25 + (k % 5) * 0.35);
+        var bhPx = diskR * Math.cos(ang * 1.5);
+        var bhPy = diskR * Math.sin(ang * 1.5) * 0.28;
+
+        var px = cx + infPx * (1 - morph) + bhPx * morph;
+        var py = cy + infPy * (1 - morph) + bhPy * morph;
+        ctx.beginPath();
+        ctx.arc(px, py, 1.6 + (k % 3) * 0.6, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(217, 119, 87, ' + (fadeAlpha * 0.9).toFixed(3) + ')';
+        ctx.fill();
+      }
+
+      ctx.restore();
+
+      if (p < 1) {
+        transAnimId = requestAnimationFrame(stepTransition);
+      } else {
+        transStage.dataset.active = 'false';
+        if (transVeil) transVeil.style.opacity = '0';
+        if (!themeSwapped && typeof onPeakCoverage === 'function') {
+          onPeakCoverage();
+        }
+      }
+    }
+
+    transAnimId = requestAnimationFrame(stepTransition);
+  }

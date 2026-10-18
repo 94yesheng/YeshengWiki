@@ -8,5 +8,6 @@
   //            是 2.5MB 的压缩包（还有 chunks/），类型检查去解析它会直接把内存吃到
   //            4GB 然后崩掉 —— 这个坑踩过一次，别再把它加回来
   //   .work/   迁移时的一次性工具和临时产物，自带 node_modules
-  "exclude": ["dist", "public", ".work"]
+  //   demo/    外部导入的设计仓库快照，只作参考，不参与站点构建
+  "exclude": ["dist", "public", ".work", "demo"]
 }

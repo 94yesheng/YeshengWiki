@@ -26,7 +26,7 @@
 | 语言 | TypeScript + CSS + Markdown | 没有 PHP / Java / Python 参与运行 |
 | 图片处理 | Astro 内置图片管线（Sharp） | 构建时自动生成多档尺寸 + WebP |
 | 样式 | 手写 CSS，无框架 | 没有 Tailwind、没有预处理器 |
-| 客户端 JS | 访客页少量 | 文章列表标签筛选、照片灯箱、悬浮球、页脚彩蛋；主页/文章页另有 artifact 自带的一套交互与 canvas 动效 |
+| 客户端 JS | 访客页少量 | 文章列表标签筛选、照片灯箱、悬浮球、页脚彩蛋；主页 / 文章归档 / 文章详细 / 照片四页另有 artifact 自带的一套交互与 canvas 动效 |
 | 数据库 | **无** | 内容就是磁盘上的文件 |
 | 部署 | GitHub Actions → FTP | 只传 `dist/` |
 
@@ -41,7 +41,7 @@ npm run build        # → dist/（要上传的就是它）
 npm run preview      # 用构建产物起本地服务器
 npm run check        # 类型检查（CI 里也会跑）
 npm run vault        # 生成/更换后台解锁密文（见 7.3）
-npm run import:artifact   # 从设计源重新生成 CSS/JS/文章页（主页拆分不会覆盖，见 5.3）
+npm run import:artifact   # 从设计源重新生成 CSS/JS/四个 HUD 页面（见 5.3）
 ```
 
 开发服务器建议用后台模式（`CLAUDE.md` / `AGENTS.md` 里也是这条）：
@@ -62,7 +62,7 @@ D:\blog\
 ├── astro.config.mjs          # 站点地址、输出格式、sitemap
 ├── package.json              # 依赖与命令
 ├── tsconfig.json             # TypeScript 严格模式
-├── .gitignore                # 排除 dist/.astro/.work/mockups/node_modules/code_artifact.html 及本地备份/预览
+├── .gitignore                # 排除 dist/.astro/.work/mockups/node_modules/demo 及本地备份/预览
 ├── .gitattributes            # 仓库内一律 LF
 ├── CLAUDE.md / AGENTS.md     # AI 助手的项目约定（同一份文件）
 ├── README.md                 # 本文档
@@ -72,15 +72,18 @@ D:\blog\
 │   ├── copy-cms.mjs          # 把 Sveltia 从 node_modules 复制到 public/admin（predev/prebuild）
 │   ├── vault.mjs             # 命令行生成后台密文
 │   ├── vault-ui.mjs/.html    # 带图形界面的密文生成器（npm run vault）
-│   └── import-artifact.mjs   # 从 code_artifact.html 生成主页/文章页模板
+│   └── import-artifact.mjs   # 从 demo/code_artifact (1).html 生成 HUD 页面模板
 │
 ├── src/
 │   ├── pages/                # ★文件名 = 网址★
 │   ├── layouts/
 │   │   ├── BaseLayout.astro       # 纸墨体系的壳（子页用）
-│   │   └── ArtifactLayout.astro   # HUD 体系的独立壳（主页/文章页用）
+│   │   └── ArtifactLayout.astro   # HUD 体系的独立壳（主页/文章/照片用）
 │   ├── components/           # 13 个单文件组件 + divergence-meter/
-│   ├── artifact/             # 生成器产出的 CSS/JS + 拆分后的主页 partial（入库）
+│   ├── artifact/             # 生成器产出的 CSS/JS/整页模板 + 拆分后的主页 partial（入库）
+│   │   ├── posts.html        # /posts/ 归档子页
+│   │   ├── photos.html       # /photos/ 照片子页
+│   │   ├── article.html      # /posts/<slug>/ 文章详细页（@@TOKEN@@）
 │   │   └── home/             # 主页八段：loader/header/hero/posts/photos/programs/links/tail
 │   ├── styles/               # tokens / base / prose / gallery / fab / studio / artifact-prose
 │   ├── studio/               # 自建后台的逻辑（打包进 /studio/）
@@ -102,7 +105,7 @@ D:\blog\
 ├── node_modules/ .astro/     # 自动生成，别动
 ├── .work/                    # 迁移与验证工具（不进仓库）
 ├── mockups/                  # 设计阶段的样板（不进仓库）
-└── code_artifact.html        # 外部导入的设计源（2 MB，不进仓库）
+└── demo/code_artifact (1).html  # 外部设计源（4.5 MB，不进仓库）
 ```
 
 ---
@@ -112,9 +115,9 @@ D:\blog\
 | 网址 | 文件 | 布局/视觉 | 说明 |
 |---|---|---|---|
 | `/` | `src/pages/index.astro` | **ArtifactLayout（HUD）** | 五屏：hero / 文章 / 照片 / 程序 / 友链；滚动吸附 |
-| `/posts/` | `src/pages/posts/index.astro` | BaseLayout（纸墨） | 年 → 月 → 条目的时间线 + 标签筛选 |
+| `/posts/` | `src/pages/posts/index.astro` | **ArtifactLayout（HUD）** | 年 → 月 → 日时间轴归档 + 标签/关键词筛选 + 随机漫游 |
 | `/posts/<slug>/` | `src/pages/posts/[...slug].astro` | **ArtifactLayout（HUD）** | 顶栏 + 双象限 hero + 三栏工作区 + 上下篇 |
-| `/photos/` | `src/pages/photos.astro` | BaseLayout（纸墨） | 时间线分组 + 照片墙 + 点击放大 |
+| `/photos/` | `src/pages/photos.astro` | **ArtifactLayout（HUD）** | 一屏光学检视台（横/竖画框）+ 完整影集网格 + 深链 `#frame-N` |
 | `/links/` | `src/pages/links.astro` | BaseLayout（纸墨） | 友链卡片 |
 | `/programs/` | `src/pages/programs.astro` | BaseLayout（纸墨） | 占位页 |
 | `/studio/` | `src/pages/studio.astro` | 独立页面 | 自建后台（三栏 JS 应用） |
@@ -122,7 +125,7 @@ D:\blog\
 | `/rss.xml` | `src/pages/rss.xml.js` | — | RSS |
 | `/sitemap-*.xml` | 构建生成 | — | 自动排除 `/studio` `/admin` |
 
-> **当前视觉是两套并存的**：主页和文章页是外部导入的 HUD / 蓝图画布风格；照片、友链、程序、文章列表仍是原来的纸墨风格。这是 2026-10-18 导入 artifact 时明确选择的覆盖范围。
+> **当前视觉是两套并存的**：主页、文章归档、文章详细、照片四页是外部导入的 HUD / 蓝图画布风格；友链、程序、后台仍是纸墨风格。这是 2026-10-18 导入 artifact 时明确选择的覆盖范围。
 
 ---
 
@@ -132,7 +135,7 @@ D:\blog\
 
 | | 纸墨体系 | HUD / 蓝图画布体系 |
 |---|---|---|
-| 用在哪 | `/photos/` `/links/` `/programs/` `/posts/`（列表）`/studio/` | `/` 和 `/posts/<slug>/` |
+| 用在哪 | `/links/` `/programs/` `/studio/` | `/`、`/posts/`、`/posts/<slug>/`、`/photos/` |
 | 比喻 | 中文书籍：纸 + 墨 + 一枚印 | 航天器的蓝图纸 + 遥测面板 |
 | 底色 | 暖奶油纸 `#faf9f5` | 同一个纸色，但铺满网格、准星、编号 |
 | 强调色 | Claude 橙 `#d97757`，克制地只给"时间/当前态" | 同一个橙，承担界面识别与 canvas 动效 |
@@ -188,29 +191,37 @@ D:\blog\
 
 ### 5.3 HUD / 蓝图画布体系（主页 + 文章页）
 
-来源是外部设计文件 `code_artifact.html`（2 MB，单页、自包含、17 张内联 base64 图片）。它被 `scripts/import-artifact.mjs` 机械切分后放进 `src/artifact/`：
+来源是外部设计文件 `demo/code_artifact (1).html`（4.5 MB 单页，含主页五屏 / 文章归档 / 文章详细 / 照片四个视图，42 处内联 base64 出现、去重后 11 张图）。`scripts/import-artifact.mjs` 会：
+
+1. 按 SHA-1 把 base64 换回 `public/artifact/home/images/` 里已提取的文件；
+2. 把 artifact 的「页内视图切换」改造成本站的真实多页路由；
+3. 切出 CSS / JS / 各页面模板，并给文章模板打 `@@TOKEN@@` 占位符。
 
 ```
-artifact.css       2317 行，原样
-artifact.js        1539 行，原样 + 9 条最小补丁
-home/              主页按屏拆分（8 个 partial，单个 ≤13 KB）
+artifact.css       ~4000 行，原样 + 动画回滚补丁（旧 loader / veil 切换层）
+artifact.js        ~3050 行，原样 + 本站补丁（路由、主题、复制链接、照片深链）
+home/              主页按屏拆分（8 个 partial）
   loader.html        加载层 + 昼夜过渡层
-  header.html        粘顶导航
+  header.html        粘顶导航 + 右侧刻度尺
   hero.html          00 · HERO
   posts.html         01 · POSTS
   photos.html        02 · PHOTOS
   programs.html      03 · PROGRAMS
   links.html         04 · LINKS
   tail.html          页脚 + 悬浮球 + 实验台 + toast
-article.html       文章页骨架（@@TOKEN@@ 占位）
+posts.html         /posts/ 归档子页整页（时间轴 + 筛选 + 右栏）
+photos.html        /photos/ 照片子页整页（检视台 + 影集网格）
+article.html       文章详细页骨架（@@TOKEN@@ 占位）
 rail-*.html        Mc 文章专属的右栏卡
 home-snap.js       主页滚动吸附（站点自己的行为，不进生成器）
 ```
 
-主页图片已从 base64 抽到 `public/artifact/home/images/`（11 个文件），由 `HomeArtifact.astro` 按顺序拼接。`import-artifact.mjs` 不再输出单体 `home.html`，避免重新生成 1.7 MB 文件。
+主页图片放在 `public/artifact/home/images/`（11 个文件），由 `HomeArtifact.astro` 按顺序拼接。页面不再内联 base64，构建后的首页约 305 KB，文章 / 归档 / 照片页约 270 KB。
 
-**改版流程**：把新的 `code_artifact.html` 放回根目录 → `npm run import:artifact` → 检查生成物 → 构建。
-源文件本身被 `.gitignore` 排除，仓库里只存生成物；构建不依赖它。主页结构现在以 `src/artifact/home/*.html` 为准，重跑生成器只会更新 CSS/JS 和文章页，不会覆盖主页拆分。
+**改版流程**：把新设计放到 `demo/code_artifact (1).html` → `npm run import:artifact` → `npm run build`。
+源文件被 `.gitignore` 排除，仓库里只存生成物，构建不依赖它。生成器会重写 `home/*.html`、`posts.html`、`photos.html`、`article.html`、CSS 与 JS；**直接改生成物会被下一次导入覆盖**，站点行为请写进生成器补丁。
+
+动画回滚（2026-10-18）：开屏 loader、昼夜切换层、白天无限环模型保留的是上一版本地实现，补丁块在 `scripts/artifact-patches/animation-rollback/`，由生成器整段替换进去。想再换回新版，删掉生成器里的 `rollback(...)` 应用到对应片段即可。
 
 #### 视觉语言
 
@@ -219,7 +230,7 @@ home-snap.js       主页滚动吸附（站点自己的行为，不进生成器�
 - **字体**：楷体用于标题，等宽字（`--mono`）用于编号、坐标、按钮说明；数字仍然走黑体。
 - **颜色**：与纸墨体系同一组变量（`--paper` / `--ink` / `--rule` / `--accent`），但使用密度高得多。
 - **两种主题**：
-  - 白天 `DAY // 纯粒子无限环`：伯努利双纽线上的粒子云；没有丝带、拓扑连线、切向尾迹
+  - 白天 `DAY // 纯粒子无限环`：5 条主体骨架流线 + 焦点几何，叠加无粘连的纯粒子星团（2026-10-18 按要求回滚到上一版模型）
   - 夜间 `NIGHT // 卡冈图雅黑洞`：连续薄吸积盘、光子环、平滑透镜拱；按投影深度分前后两遍绘制
 - 主题按钮写在右上角，状态记在同一个 `localStorage['theme']`。
 
@@ -234,7 +245,7 @@ home-snap.js       主页滚动吸附（站点自己的行为，不进生成器�
 #### 文章页结构
 
 - 顶栏：`DOC // 编号`、`/posts/<slug>/ · 标题`、阅读进度。
-- 双象限 hero：左标题 + lead + 四项遥测（发布日 / 分类 / 字数 / 阅读时长），右侧**混沌三体** canvas（Pythagorean 构型、velocity Verlet、短尾迹；逃逸/能量漂移会复位）。
+- 双象限 hero：左标题 + lead + 四项遥测（发布日 / 分类 / 字数 / 阅读时长），右侧**立体三体** canvas（Pythagorean 构型、velocity Verlet、三个体积感球体；逃逸/能量漂移会复位）。
 - 三栏工作区：左章节导览 + 阅读进度 + 快捷操作；中正文；右伴读栏（Mc 文章显示 FRP 拓扑与 JDK 速查，其它文章显示通用「DOC SPEC」卡 + 相关文章）。
 - 底部：上一篇 / 下一篇 + `q-footbar`。
 - 正文由 Astro `<Content />` 渲染，样式由 `src/styles/artifact-prose.css` 补齐（列表、引用、代码块、表格、图片等）。
@@ -242,16 +253,19 @@ home-snap.js       主页滚动吸附（站点自己的行为，不进生成器�
 
 #### 动效与性能
 
-- 三张 canvas：主页纯粒子无限环、主页卡冈图雅、文章页混沌三体。DPR 封顶 2；尺寸只在窗口变化时重算（不逐帧 resize）。
+- 三张 canvas：主页立体无限流形、主页卡冈图雅、文章页立体三体。DPR 封顶 2；尺寸只在窗口变化时重算（不逐帧 resize）。
 - 三套模型都在 `renderFrame` 里按 `dt===0` 约定支持 `prefers-reduced-motion`（冻结/静态帧）；主页吸附也单独做了降级。
-- **加载 / 切换 / 平面元素**：全站加载遮罩（∞ 描边，`window.load` 后淡出）；昼夜切换的圆形展开覆盖层（黑洞/无限环）；页脚和角落的平面 ∞ / 黑洞 motif。两套布局共用 `src/styles/theme-extras.css` 与 `src/scripts/theme-runtime.js`。
-- 主页 2 MB（17 张 base64 图片），gzip 后约 1.5 MB；文章页 144–152 KB。建议服务器开 brotli/gzip。
+- **加载 / 切换 / 平面元素**：
+  - HUD 页面：回滚后的本地 loader（80 颗粒子从奇点绽放并收束到无限流形，约 1.05 s）；昼夜切换是本地 veil 遮盖 + ∞ ↔ 黑洞形变（约 0.86 s）。
+  - 纸墨页面：`BaseLayout` 内联的 ∞ 描边 loader 与切换遮罩。
+  - 页脚和角落的平面 ∞ / 黑洞 motif 靠 `:root[data-theme]` 切换。
+- 构建后首页约 305 KB、其余 HUD 页约 268–272 KB（图片已外置）。建议服务器开 brotli/gzip。
 
 ---
 
 ### 5.4 两套体系怎么共存
 
-- 主页/文章页用 `ArtifactLayout`：自己写 `<html><head><body>`，CSS/JS 用 `?raw` + `is:inline` 原样内联，**不 import `tokens.css` / `base.css`**。
+- 主页 / 文章归档 / 文章详细 / 照片四页用 `ArtifactLayout`：自己写 `<html><head><body>`，CSS/JS 用 `?raw` + `is:inline` 原样内联，**不 import `tokens.css` / `base.css`**。
 - 其它页面用 `BaseLayout`：`tokens.css` + `base.css` + `SiteHeader` / `SiteFooter` / `FloatingMenu`。
 - 两边不共享组件、不共享样式、不共享 FAB。已验证 artifact 的 CSS 不会出现在其它页面的 HTML 里。
 - **新增页面时先选体系**：内容型子页用 `BaseLayout`；如果要做成 HUD 风格，就复用 `ArtifactLayout` 并在 `src/artifact/` 里加模板。
@@ -443,6 +457,7 @@ npm run build
 |---|---|
 | `mock-github.mjs` | 假 GitHub API + 静态托管（4322），后台端到端验收都靠它 |
 | `page-shot.mjs` | 逐屏截图（主页是一栏一屏，整页拉长会失真）；第 5 参传 `dark` 出夜间版 |
+| `import-v2-verify.mjs` | 四页验收：loader、视图可见性、图片、导航高亮、归档筛选、照片深链、控制台报错 |
 | `artifact-check.mjs` | 主页/文章页验收：控制台报错、canvas 尺寸、标题/日期/字数、链接 |
 | `artifact-interact.mjs` | 交互验收：主题、队列预览、RESET、照片灯箱 |
 | `artifact-nav-snap.mjs` | 导航点击 + 滚动吸附 |
@@ -467,15 +482,15 @@ npm run build
 3. **裸域 DNS**：`yesheng.wiki` 还没有记录，目前只有 `www`。
 4. **程序页**：还是占位页。
 5. **统计 / 评论**：未做；涉及"往服务器写数据"，与纯静态架构冲突，需另选方案。
-6. **旧主页组件**：`SectionEntry` / `SectionPosts` / `SectionPhotos` / `SectionHead` 在导入 artifact 后已不再被引用（`PhotoWall` 仍被照片页使用）。可以留着备查，也可以清理。
+6. **旧内容组件**：`SectionEntry` / `SectionPosts` / `SectionPhotos` / `SectionHead` / `PhotoWall` / `Timeline` / `TimelineWall` / `TimelinePost` / `TagChips` 在四个 HUD 页面接管后都已不再被引用。可以留着备查，也可以清理。
 
 **注意事项**
 
 - **只改 `src/`**；`dist/`、`.astro/` 是生成物。
 - **只传 `dist/`**，别把源码传上服务器。
-- `code_artifact.html` 是本地设计源，已被 `.gitignore` 排除；生成器需要它，构建不需要。
-- **主页是冻结快照**：队列、照片墙、程序/友链都是 artifact 写死的内容，新增文章不会自动出现。
-- **主页约 2 MB**：17 张 base64 内联图，建议开 brotli/gzip。
+- `demo/code_artifact (1).html` 是本地设计源，`demo/` 已被 `.gitignore` 排除；生成器需要它，构建不需要。
+- **HUD 页面是冻结快照**：主页队列、归档时间轴、照片档案都是 artifact 写死的内容，新增文章 / 照片不会自动出现；内容更新后需要同步设计源并重跑生成器。
+- **构建后 HUD 页约 270–305 KB**（图片已外置），建议开 brotli/gzip。
 - `mockups/assets/` 里有几张损坏的图片，别用图片工具打开。
 
 ---

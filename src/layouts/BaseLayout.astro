@@ -55,6 +55,7 @@ const canonical = new URL(Astro.url.pathname, Astro.site);
   </head>
 
   <body class={bodyClass}>
+  <noscript><style>.infinity-loader{display:none!important}</style></noscript>
     <!-- 需求 7：结合无限主题与主页无限粒子模型的简洁加载动画 -->
     <div class="infinity-loader" id="infinity-loader" role="status" aria-live="polite" aria-label="正在加载页面">
       <div class="loader-stage-box">
@@ -88,7 +89,7 @@ const canonical = new URL(Astro.url.pathname, Astro.site);
       <svg class="planar-icon planar-icon--infinity" viewBox="0 0 240 120">
         <circle cx="64" cy="60" r="42" fill="none" stroke="currentColor" stroke-width="0.75" stroke-dasharray="3 4"/>
         <circle cx="176" cy="60" r="42" fill="none" stroke="currentColor" stroke-width="0.75" stroke-dasharray="3 4"/>
-        <path d="M64 24C34 24 16 40 16 60C16 80 34 96 64 96C98 96 142 24 176 24C206 24 224 40 224 60C224 80 206 96 176 96C142 96 98 24 64 24Z" fill="none" stroke="currentColor" stroke-width="1.6"/>
+        <path d="M70 16C45.7 16 26 35.7 26 60C26 84.3 45.7 104 70 104C100 104 140 16 170 16C194.3 16 214 35.7 214 60C214 84.3 194.3 104 170 104C140 104 100 16 70 16Z" fill="none" stroke="currentColor" stroke-width="1.6"/>
         <circle cx="64" cy="60" r="3" fill="currentColor"/>
         <circle cx="176" cy="60" r="3" fill="currentColor"/>
       </svg>

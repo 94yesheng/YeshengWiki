@@ -1,3 +1,40 @@
 {
-  "links": []
+  "links": [
+    {
+      "id": "linjian",
+      "name": "林间拾遗",
+      "url": "https://linjian.dev",
+      "description": "独立开发者木林的个人笔记，记录 WebGL 着色器实验、光线追踪渲染笔记与山野徒步胶片摄影。"
+    },
+    {
+      "id": "starsea",
+      "name": "星海观测站",
+      "url": "https://starsea.blog",
+      "description": "业余深空摄影与计算物理爱好者，用代码复现多体引力演化、星云流体模拟与夜空星图手记。"
+    },
+    {
+      "id": "mosslab",
+      "name": "青苔造物局",
+      "url": "https://mosslab.io",
+      "description": "热衷家庭实验室（HomeLab）、内网穿透自托管服务、树莓派集群与电子墨水屏桌面小工具改造。"
+    },
+    {
+      "id": "lat30",
+      "name": "北纬三十度",
+      "url": "https://lat30.org",
+      "description": "沿着北纬三十度记录西南山城与江南街巷的空间肌理、独立旧书店地图与地方饮食风物志。"
+    },
+    {
+      "id": "papercompile",
+      "name": "纸上编译",
+      "url": "https://papercompile.net",
+      "description": "专注中文书籍网格排版、古籍汉字字形考据与纯静态博客构建工具链的极简技术小站。"
+    },
+    {
+      "id": "lightframe",
+      "name": "浮光掠影志",
+      "url": "https://lightframe.me",
+      "description": "35mm 定焦镜头下的日常光影切片，分享街头纪实摄影、暗房胶片调色配方与阅读随感。"
+    }
+  ]
 }

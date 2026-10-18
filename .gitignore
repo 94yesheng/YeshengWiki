@@ -41,10 +41,15 @@ pnpm-debug.log*
 .backup/
 .preview-compare/
 YeshengWiki-optimized/
+# 外部导入的设计仓库（本次融合的来源，约 12 MB，只留在本机）
+demo/
 
 # 合并前未采用的本地实验文件：保留在磁盘作回滚参考，不参与构建
 src/components/ThemeVeil.astro
 src/scripts/theme-runtime.js
 src/styles/theme-extras.css
-scripts/artifact-patches/
+# 旧的模型补丁只留本机参考；生成器实际依赖的动画回滚块必须入库
+scripts/artifact-patches/*
+!scripts/artifact-patches/animation-rollback/
+!scripts/artifact-patches/animation-rollback/**
 divergence-meter (4).html

@@ -1,0 +1,96 @@
+    /* ========================================================================
+       需求 7：简洁页面加载动画（结合无限主题与主页无限粒子模型）
+       ======================================================================== */
+    /* ========================================================================
+       需求 6：全新重构全屏沉浸式粒子立体无限流形加载器
+       ======================================================================== */
+    .infinity-loader {
+      position: fixed;
+      inset: 0;
+      z-index: 120;
+      background: var(--paper);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+      transition: opacity 640ms cubic-bezier(0.16, 1, 0.3, 1), transform 640ms cubic-bezier(0.16, 1, 0.3, 1), filter 640ms cubic-bezier(0.16, 1, 0.3, 1), visibility 0s linear 640ms;
+    }
+    .infinity-loader[data-loaded="true"] {
+      opacity: 0;
+      visibility: hidden;
+      pointer-events: none;
+      transform: scale(1.035);
+      filter: blur(8px);
+    }
+    .loader-infinity-canvas {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      display: block;
+      pointer-events: none;
+      z-index: 1;
+    }
+    .loader-meta {
+      position: relative;
+      z-index: 3;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0.75rem;
+      font-family: var(--mono);
+      font-size: 0.76rem;
+      letter-spacing: 0.14em;
+      color: var(--muted);
+      pointer-events: none;
+      text-align: center;
+    }
+    .loader-brand-emblem {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0.35rem;
+    }
+    .loader-title-kai {
+      font-family: var(--kai);
+      font-size: clamp(1.8rem, 4vw, 2.4rem);
+      letter-spacing: 0.22em;
+      color: var(--ink);
+      font-weight: normal;
+      text-shadow: 0 0 28px rgba(217, 119, 87, 0.18);
+    }
+    #loader-status-text {
+      color: var(--accent);
+      font-size: 0.72rem;
+      letter-spacing: 0.16em;
+      font-weight: 500;
+    }
+    .loader-progress-row {
+      display: flex;
+      align-items: center;
+      gap: 0.85rem;
+      margin-top: 0.25rem;
+    }
+    .loader-bar-track {
+      width: 16rem;
+      height: 2px;
+      background: color-mix(in srgb, var(--accent) 18%, var(--rule));
+      overflow: hidden;
+      border-radius: 2px;
+      box-shadow: inset 0 0 3px rgba(0, 0, 0, 0.05);
+    }
+    .loader-bar-fill {
+      height: 100%;
+      width: 0%;
+      background: linear-gradient(90deg, rgba(232, 146, 110, 0.6), var(--accent));
+      box-shadow: 0 0 8px var(--accent);
+      transition: width 120ms cubic-bezier(0.1, 0.9, 0.2, 1);
+    }
+    .loader-pct-readout {
+      font-family: var(--mono);
+      font-size: 0.72rem;
+      color: var(--accent);
+      min-width: 2.4rem;
+      text-align: right;
+    }

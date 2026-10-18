@@ -30,8 +30,8 @@ interface Props {
   description?: string;
   /** body 上的 class（artifact 原文件是 home；文章页用 article） */
   bodyClass?: string;
-  /** 交给脚本读：决定初始 state.view 是 home 还是 article */
-  page?: 'home' | 'article';
+  /** 交给脚本读：决定初始 state.view */
+  page?: 'home' | 'posts' | 'article' | 'photos';
 }
 
 const { title, description, bodyClass = 'home', page = 'home' } = Astro.props;
