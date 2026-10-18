@@ -1,12 +1,256 @@
 ---
 /**
- * 文章归档子页 —— artifact 版（第二层：时间轴归档 + 标签/关键词筛选）。
- *
- * 模板由 scripts/import-artifact.mjs 从 demo/code_artifact (1).html 切出：
- * 原文的页内视图切换已改成真实路由，文章条目直接指向 /posts/<slug>/。
+ * 文章归档子页 —— SSR 版。
+ * 时间轴、标签计数、统计和右栏快跳全部由 SQLite 生成；artifact.js 的筛选逻辑不变。
  */
+export const prerender = false;
+
 import ArtifactLayout from '../../layouts/ArtifactLayout.astro';
 import postsTpl from '../../artifact/posts.html?raw';
+import { listPosts, type Post } from '../../server/repositories/posts';
+import { groupByYearMonth } from '../../utils/timeline';
+import { chineseDay, chineseMonth, chineseYear, readingTime } from '../../utils/date';
+import { cjkSpacing } from '../../utils/typography';
+
+const posts = listPosts();
+const total = posts.length;
+
+const MONTH_EN = [
+  'JANUARY',
+  'FEBRUARY',
+  'MARCH',
+  'APRIL',
+  'MAY',
+  'JUNE',
+  'JULY',
+  'AUGUST',
+  'SEPTEMBER',
+  'OCTOBER',
+  'NOVEMBER',
+  'DECEMBER',
+];
+
+const esc = (s: string) =>
+  s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+const pad2 = (n: number) => String(n).padStart(2, '0');
+
+const DESIGN_COVERS: Record<string, string> = {
+  'mc-server': '/artifact/home/images/spot-default-mc.jpg',
+  'ji-bao': '/artifact/home/images/post-cover-jibao.jpg',
+  maptoposter: '/artifact/home/images/post-cover-maptoposter.jpg',
+  blender: '/artifact/home/images/post-cover-blender.jpg',
+  'deepseek-wechat': '/artifact/home/images/post-cover-deepseek.jpg',
+};
+
+const DESIGN_BADGES: Record<string, string> = {
+  'mc-server': 'LATEST',
+  'ji-bao': 'ESSAY',
+  maptoposter: 'TOOLKIT',
+  blender: '3D MESH',
+  'deepseek-wechat': 'LLM BRIDGE',
+};
+
+function coverFor(post: Post): string {
+  return DESIGN_COVERS[post.slug] ?? post.cover ?? '/artifact/home/images/spot-default-mc.jpg';
+}
+
+function leadFor(post: Post): string {
+  if (post.lead?.trim()) return post.lead.trim();
+  const text = post.bodyMarkdown
+    .replace(/!\[[^\]]*\]\([^)]*\)/g, '')
+    .replace(/<[^>]+>/g, '')
+    .replace(/[*_`#>~-]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (text.length > 110) return `${text.slice(0, 110)}…`;
+  return text || post.description || '';
+}
+
+const entryNo = new Map<string, number>();
+posts.forEach((post, i) => entryNo.set(post.slug, i + 1));
+
+const years = groupByYearMonth(
+  posts.map((post) => ({ date: new Date(`${post.pubDate}T00:00:00`), data: post }))
+);
+
+const totalChars = posts.reduce((sum, post) => sum + readingTime(post.bodyMarkdown).chars, 0);
+const dates = posts.map((p) => p.pubDate).sort();
+const minYear = dates.length ? Number(dates[0]!.slice(0, 4)) : new Date().getFullYear();
+const maxYear = dates.length ? Number(dates[dates.length - 1]!.slice(0, 4)) : minYear;
+
+/* ---------- 标签计数 ---------- */
+const tagCounts = new Map<string, number>();
+for (const post of posts) {
+  for (const tag of post.tags) tagCounts.set(tag, (tagCounts.get(tag) ?? 0) + 1);
+}
+const tags = [...tagCounts.entries()].sort(
+  (a, b) => b[1] - a[1] || a[0].localeCompare(b[0], 'zh-Hans-CN')
+);
+
+const tagChipsHtml = [
+  `<button type="button" class="archive-tag-chip" data-tl-tag="all" aria-pressed="true">全部 (${total})</button>`,
+  ...tags.map(
+    ([tag, count]) =>
+      `<button type="button" class="archive-tag-chip" data-tl-tag="${esc(tag)}" aria-pressed="false">${esc(tag)} (${count})</button>`
+  ),
+].join('\n              ');
+
+/* ---------- 时间轴 ---------- */
+function entryHtml(post: Post, indexInMonth: number): string {
+  const no = entryNo.get(post.slug) ?? 0;
+  const { chars, minutes } = readingTime(post.bodyMarkdown);
+  const date = new Date(`${post.pubDate}T00:00:00`);
+  const badge = post.entryBadge?.trim() || DESIGN_BADGES[post.slug] || post.tags[0] || 'ARCHIVE';
+  const tagText = post.tags.length ? post.tags.join(' · ') : '未分类';
+  const lead = leadFor(post);
+  const cover = coverFor(post);
+  return `<article class="tl-item tl-post-card" style="--i:${indexInMonth}" data-tl-entry data-article-key="${esc(
+    post.slug
+  )}" data-tags="${esc(post.tags.join(','))}" data-search="${esc(
+    `${post.title} ${post.tags.join(' ')} ${lead}`
+  )}">
+  <div class="tl-item-date-col">
+    <time class="tl-day-kai" datetime="${esc(post.pubDate)}">${chineseDay(date.getDate())}日</time>
+    <span class="tl-day-mono">${pad2(date.getMonth() + 1)}.${pad2(date.getDate())} · #${pad2(no)}</span>
+  </div>
+  <div class="tl-item-content-col">
+    <div class="tl-card-meta-row">
+      <span class="tl-entry-badge">ENTRY #${pad2(no)} // ${esc(badge)}</span>
+      <span class="tl-tag-Inline">${esc(tagText)}</span>
+      <span class="tl-word-meta">约 ${chars.toLocaleString('zh-CN')} 字 · ${minutes} 分钟</span>
+    </div>
+    <h3 class="tl-card-title">
+      <a href="/posts/${post.slug}/">${esc(cjkSpacing(post.title))}</a>
+    </h3>
+    <p class="tl-card-excerpt">${esc(lead)}</p>
+    <div class="tl-card-foot">
+      <span class="tl-slug-code">/posts/${post.slug}/</span>
+      <a class="q-read-btn tl-read-btn" href="/posts/${post.slug}/">
+        <span>进入详细页阅读</span>
+        <span aria-hidden="true">-&gt;</span>
+      </a>
+    </div>
+  </div>
+  <a class="tl-card-thumb" aria-label="阅读《${esc(post.title)}》" href="/posts/${post.slug}/">
+    <img src="${esc(cover)}" alt="${esc(post.title)}" loading="lazy" />
+    <span class="photo-ratio-badge">16:9</span>
+  </a>
+</article>`;
+}
+
+const timelineHtml = years
+  .map((year) => {
+    if (year.year === null) return '';
+    const yearCount = year.months.reduce((n, m) => n + m.items.length, 0);
+    const monthsHtml = year.months
+      .map((month, mi) => {
+        if (month.month === null) return '';
+        const id = `tl-month-${year.year}-${pad2(month.month)}`;
+        const items = month.items
+          .map((item, i) => entryHtml(item.data, i))
+          .join('\n');
+        return `<div class="tl-month" id="${id}" data-month-section="${year.year}-${pad2(
+          month.month
+        )}" style="--i:${mi}">
+  <button type="button" class="tl-month-head" aria-expanded="true">
+    <span class="tl-month-label">${chineseMonth(month.month)}月</span>
+    <span class="tl-month-code">${year.year}.${pad2(month.month)} // ${MONTH_EN[month.month - 1]}</span>
+    <span class="tl-count" data-month-count>${month.items.length} 篇</span>
+    <span class="tl-chevron" aria-hidden="true">▾</span>
+  </button>
+  <div class="tl-panel" data-open>
+    <div class="tl-items" style="--n:${month.items.length}">
+${items}
+    </div>
+  </div>
+</div>`;
+      })
+      .join('\n');
+
+    return `<section class="tl-year" id="tl-year-${year.year}" data-year-section="${year.year}">
+  <button type="button" class="tl-year-head" aria-expanded="true">
+    <span class="tl-year-label">${chineseYear(year.year)}</span>
+    <span class="tl-year-code">${year.year} CHRONICLE</span>
+    <span class="tl-count" data-year-count>${yearCount} 篇</span>
+    <span class="tl-chevron" aria-hidden="true">▾</span>
+  </button>
+  <div class="tl-panel" data-open>
+    <div class="tl-body" style="--n:${year.months.length}">
+${monthsHtml}
+    </div>
+  </div>
+</section>`;
+  })
+  .join('\n');
+
+const oldest = posts[posts.length - 1];
+const originHtml = oldest
+  ? `<div class="tl-start" aria-hidden="true">
+  <span class="tl-origin-caption">ORIGIN (0, 0) // 时间从这里开始 · FIRST COMMIT ${esc(oldest.pubDate)}</span>
+</div>`
+  : '';
+
+const finalTimelineHtml = total
+  ? `<div class="tl-now-cap">
+  <span class="tl-now-dot" aria-hidden="true"></span>
+  <span class="tl-now-text">NOW // PRESENT HORIZON · 时间轴顶端（由近及远）</span>
+</div>
+${timelineHtml}
+${originHtml}`
+  : `<p class="tl-empty-state" style="display:block">还没有文章。去 /studio/ 写第一篇。</p>`;
+
+/* ---------- 右栏 ---------- */
+const railJumpsHtml = years
+  .flatMap((year) =>
+    year.year === null
+      ? []
+      : year.months
+          .filter((m): m is typeof m & { month: number } => m.month !== null)
+          .map(
+            (month) => `<li>
+  <button type="button" data-tl-scroll="tl-month-${year.year}-${pad2(month.month)}">
+    <span class="r-idx">${year.year} // ${MONTH_EN[month.month - 1]} · ${pad2(month.month)}</span>
+    <span class="r-tit">${chineseYear(year.year!)}${chineseMonth(month.month)}月（${month.items.length} 篇）</span>
+  </button>
+</li>`
+          )
+  )
+  .join('\n');
+
+const railDensityHtml = years
+  .flatMap((year) =>
+    year.year === null
+      ? []
+      : year.months
+          .filter((m): m is typeof m & { month: number } => m.month !== null)
+          .map((month) => {
+            const pct = total ? Math.round((month.items.length / total) * 100) : 0;
+            const filled = Math.max(1, Math.round((month.items.length / Math.max(1, total)) * 3));
+            const bars = '█'.repeat(filled) + '░'.repeat(Math.max(0, 3 - filled));
+            return `<li><span>${year.year}.${pad2(month.month)}</span><strong>${bars} ${pct}% (${month.items.length} 篇)</strong></li>`;
+          })
+  )
+  .join('\n');
+
+const slots: Record<string, string> = {
+  AXIS_YEARS: `${maxYear} — ${minYear}`,
+  AXIS_COUNT: String(total),
+  STAT_TOTAL: `${total} 篇长短文`,
+  STAT_SPAN: `${chineseYear(minYear)} — ${chineseYear(maxYear)}`,
+  STAT_VISIBLE: `${total} / ${total} 篇可见`,
+  STAT_WORDS: `约 ${totalChars.toLocaleString('zh-CN')} 字`,
+  TAG_CHIPS: tagChipsHtml,
+  TIMELINE: finalTimelineHtml,
+  RAIL_JUMPS: railJumpsHtml,
+  RAIL_DENSITY: railDensityHtml,
+};
+
+let html = postsTpl;
+for (const [key, value] of Object.entries(slots)) {
+  const token = `@@${key}@@`;
+  if (!html.includes(token)) console.warn('[posts] 缺占位符', token);
+  html = html.split(token).join(value);
+}
 ---
 
 <ArtifactLayout
@@ -15,5 +259,5 @@ import postsTpl from '../../artifact/posts.html?raw';
   title="文章"
   description="按时间从近及远排列的全部文章，支持标签筛选与关键词检索。"
 >
-  <Fragment set:html={postsTpl} />
+  <Fragment set:html={html} />
 </ArtifactLayout>

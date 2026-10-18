@@ -1,14 +1,17 @@
 ---
-import { getCollection } from 'astro:content';
+export const prerender = false;
+
 import BaseLayout from '../layouts/BaseLayout.astro';
 import LinkCard from '../components/LinkCard.astro';
-import { site } from '../site.config';
+import { site as staticSite, type SiteConfig } from '../site.config';
+import { getSetting } from '../server/repositories/settings';
+import { listLinks } from '../server/repositories/links';
 
-const rawLinks = await getCollection('links');
+const site = getSetting<SiteConfig>('site', staticSite);
 // 需求 5：过滤掉未实现的纯示例占位项（如 example.com），只展示真实友链
-const links = rawLinks
-  .filter((item) => item.data.id !== 'example' && !item.data.url.includes('example.com'))
-  .sort((a, b) => a.data.name.localeCompare(b.data.name, 'zh-Hans-CN'));
+const links = listLinks()
+  .filter((item) => item.id !== 'example' && !item.url.includes('example.com'))
+  .sort((a, b) => a.name.localeCompare(b.name, 'zh-Hans-CN'));
 ---
 
 <BaseLayout masthead={false} title="友链" description="常看的独立博客友链，以及关于「夜笙的小世界」的站点架构与排版说明。">
@@ -44,12 +47,12 @@ const links = rawLinks
           <div class="link-grid">
             {links.map((link) => (
               <LinkCard
-                name={link.data.name}
-                url={link.data.url}
-                description={link.data.description}
-                avatar={link.data.avatar}
-                tag={link.data.tag}
-                owner={link.data.owner}
+                name={link.name}
+                url={link.url}
+                description={link.description}
+                avatar={link.avatar ?? undefined}
+                tag={link.tag ?? undefined}
+                owner={link.owner ?? undefined}
               />
             ))}
           </div>
@@ -63,7 +66,7 @@ const links = rawLinks
             <span class="site-card-badge">YESHENG.WIKI</span>
           </div>
           <p class="site-card-desc">
-            如果你也在维护一个认真写字、记录技术笔记或生活广度的独立博客，欢迎通过下方规格互换友链。友链数据存储于仓库内 <code>src/content/links.json</code>，可通过本地或 <code>/studio/</code> 后台直接维护。
+            如果你也在维护一个认真写字、记录技术笔记或生活广度的独立博客，欢迎通过下方规格互换友链。友链数据存储在服务器的 SQLite 数据库中，可通过 <code>/studio/</code> 后台即时维护。
           </p>
           <dl class="site-spec-dl">
             <div><dt>站点名称</dt><dd>{site.title}</dd></div>
@@ -83,7 +86,7 @@ const links = rawLinks
     <section class="links-block" aria-labelledby="heading-colophon">
       <div class="sub-head">
         <h2 id="heading-colophon">二、站点说明（Site Colophon）</h2>
-        <span class="sub-note">建站初衷 · 纯静态架构 · 中文排版 · 昼夜双模态</span>
+        <span class="sub-note">建站初衷 · 服务端渲染 · SQLite · 昼夜双模态</span>
       </div>
 
       <div class="colophon-grid">
@@ -97,9 +100,9 @@ const links = rawLinks
 
         <article class="colophon-card">
           <div class="colophon-kicker">02 // ARCHITECTURE</div>
-          <h3>纯静态生成 · 零后端与零追踪</h3>
+          <h3>服务端渲染 · SQLite 数据库 · 零追踪</h3>
           <p>
-            本站基于 Astro 构建：文章与照片墙均以本地 Markdown 和 JSON 文件维护，在构建期编译为静态 HTML 与多尺寸 WebP 图片。服务器上不运行任何数据库或后端程序，不挂载任何第三方统计或追踪脚本。
+            本站基于 Astro SSR 构建：文章、照片与站点设置在请求时从服务器 SQLite 读取，后台保存后即时生效，不再需要重新构建。页面仍保持纯文本传输，不挂载任何第三方统计或追踪脚本。
           </p>
         </article>
 

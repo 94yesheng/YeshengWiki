@@ -13,12 +13,17 @@
 - `/api/*` middleware router：health、login/logout/me、posts CRUD、links/settings 读写
 - `scripts/migrate-to-db.mjs`：6 篇文章（含 1 草稿）、1 面照片墙 6 张、6 个设置块、38 张文章图 + 11 张照片
 - `src/pages/posts/[...slug].astro` 改为 SSR 读库 + markdown-it 渲染
+- `/` 首页队列/焦点文章/最新照片墙由 SQLite 生成（`HomeArtifact.astro`）
+- `/posts/` 时间轴、标签计数、统计、右栏快跳由 SQLite 生成
+- `/photos/` 检视台数据、胶片条、筛选和档案网格由 SQLite 生成（`window.__PHOTO_DB`）
+- `/links/`、`/programs/`、`/rss.xml` 已改为读库
+- `artifact.js` 的焦点文章/照片数据改为优先读服务端注入，保留静态兜底
 
 注意：
 
-- **文章页已改为动态；此分支的 `npm run build`（静态）不再保证通过。**
+- **所有公开页面已改为动态；此分支的 `npm run build`（静态）不再保证通过。**
 - 线上回滚点：`feat/studio-v2-desktop` 分支 + 服务器 `/var/www/blog` 的静态文件。
-- 下一步：`/posts/` 列表、首页、照片页、links/programs、studio 传输层、上传、staging。
+- 下一步：studio 传输层（GitHub → `/api`）、上传 API/EXIF、staging 部署。
 
 ## 1. 决策（默认按推荐方案）
 

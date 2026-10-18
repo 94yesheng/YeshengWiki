@@ -1,6 +1,9 @@
 ---
+export const prerender = false;
+
 import BaseLayout from '../layouts/BaseLayout.astro';
-import { programsConfig } from '../site.config';
+import { programsConfig as staticPrograms } from '../site.config';
+import { getSetting } from '../server/repositories/settings';
 
 interface ProgModule {
   code?: string;
@@ -21,6 +24,7 @@ interface ProgConsole {
   terminalLines?: Array<{ cmd?: string; out?: string }>;
 }
 
+const programsConfig = getSetting<typeof staticPrograms>('programs', staticPrograms);
 const prog = programsConfig as { console?: ProgConsole; modules?: ProgModule[] };
 const consoleData: ProgConsole = prog.console ?? {
   kicker: 'CORE ENGINE // ACTIVE MODULE',

@@ -116,7 +116,7 @@
             /posts/ · 主页 → 文章子页面（时间轴归档） → 文章详细页 三层架构
           </div>
           <div class="q-topbar-cell q-topbar-cell--right">
-            <span>TIMELINE AXIS: <strong class="telemetry-accent">2026 — 2025</strong> · 5 ENTRIES</span>
+            <span>TIMELINE AXIS: <strong class="telemetry-accent">@@AXIS_YEARS@@</strong> · @@AXIS_COUNT@@ ENTRIES</span>
           </div>
         </div>
 
@@ -133,19 +133,19 @@
           <div class="posts-subpage-hero-right">
             <div class="posts-stat-card">
               <span>TOTAL ARCHIVED // 归档文章总数</span>
-              <strong>5 篇长短文</strong>
+              <strong>@@STAT_TOTAL@@</strong>
             </div>
             <div class="posts-stat-card">
               <span>CHRONICLE SPAN // 时间轴跨度</span>
-              <strong>二〇二五 — 二〇二六</strong>
+              <strong>@@STAT_SPAN@@</strong>
             </div>
             <div class="posts-stat-card">
               <span>FILTER STATUS // 当前时间轴显示</span>
-              <strong id="tl-active-count">5 / 5 篇可见</strong>
+              <strong id="tl-active-count">@@STAT_VISIBLE@@</strong>
             </div>
             <div class="posts-stat-card">
               <span>TOTAL WORDS // 累计字数规模</span>
-              <strong>约 9,500 字</strong>
+              <strong>@@STAT_WORDS@@</strong>
             </div>
           </div>
         </div>
@@ -153,16 +153,8 @@
         <!-- 文章子页：标签筛选与时间轴折叠控制栏 -->
         <div class="detail-archive-bar" id="posts-timeline-toolbar">
           <div class="detail-archive-tags" role="group" aria-label="按标签筛选时间轴文章">
-            <span class="archive-bar-label">TAG FILTER // 标签筛选：</span>
-            <button type="button" class="archive-tag-chip" data-tl-tag="all" aria-pressed="true">全部 (5)</button>
-            <button type="button" class="archive-tag-chip" data-tl-tag="技术" aria-pressed="false">技术 (4)</button>
-            <button type="button" class="archive-tag-chip" data-tl-tag="随笔" aria-pressed="false">随笔 (1)</button>
-            <button type="button" class="archive-tag-chip" data-tl-tag="服务器" aria-pressed="false">服务器 (1)</button>
-            <button type="button" class="archive-tag-chip" data-tl-tag="工具" aria-pressed="false">工具 (2)</button>
-            <button type="button" class="archive-tag-chip" data-tl-tag="建模" aria-pressed="false">建模 (1)</button>
-            <button type="button" class="archive-tag-chip" data-tl-tag="AI" aria-pressed="false">AI (1)</button>
-            <button type="button" class="archive-tag-chip" data-tl-tag="日常" aria-pressed="false">日常 (1)</button>
-          </div>
+              @@TAG_CHIPS@@
+            </div>
           <div class="posts-tl-controls">
             <input type="search" class="tl-search-input" id="tl-search-input" placeholder="检索标题 / 摘要 / 标签..." aria-label="检索时间轴文章" />
             <button type="button" class="stage-mini-btn" id="tl-expand-all-btn">展开全部</button>
@@ -174,246 +166,7 @@
         <div class="posts-timeline-workspace">
           <div class="posts-timeline-main">
             <div class="tl" id="posts-chronicle-tl" data-timeline>
-              <!-- 时间轴顶端：现在（NOW）信标 -->
-              <div class="tl-now-cap">
-                <span class="tl-now-dot" aria-hidden="true"></span>
-                <span class="tl-now-text">NOW // PRESENT HORIZON · 时间轴顶端（由近及远）</span>
-              </div>
-
-              <!-- 2026 年时间轴分节 -->
-              <section class="tl-year" id="tl-year-2026" data-year-section="2026">
-                <button type="button" class="tl-year-head" aria-expanded="true">
-                  <span class="tl-year-label">二〇二六年</span>
-                  <span class="tl-year-code">2026 CHRONICLE</span>
-                  <span class="tl-count" data-year-count>4 篇</span>
-                  <span class="tl-chevron" aria-hidden="true">▾</span>
-                </button>
-
-                <div class="tl-panel" data-open>
-                  <div class="tl-body" style="--n:2">
-                    <!-- 2026 年 3 月 -->
-                    <div class="tl-month" id="tl-month-2026-03" data-month-section="2026-03" style="--i:0">
-                      <button type="button" class="tl-month-head" aria-expanded="true">
-                        <span class="tl-month-label">三月</span>
-                        <span class="tl-month-code">2026.03 // MARCH</span>
-                        <span class="tl-count" data-month-count>3 篇</span>
-                        <span class="tl-chevron" aria-hidden="true">▾</span>
-                      </button>
-
-                      <div class="tl-panel" data-open>
-                        <div class="tl-items" style="--n:3">
-                          <!-- Entry #01: Mc Server -->
-                          <article class="tl-item tl-post-card" style="--i:0" data-tl-entry data-article-key="mc" data-tags="技术,服务器" data-search="如何快速零成本搭建一个 Mc 小型服务器 技术 服务器 frp 内网穿透 java papermc">
-                            <div class="tl-item-date-col">
-                              <time class="tl-day-kai" datetime="2026-03-13">十三日</time>
-                              <span class="tl-day-mono">03.13 · #01</span>
-                            </div>
-                            <div class="tl-item-content-col">
-                              <div class="tl-card-meta-row">
-                                <span class="tl-entry-badge">ENTRY #01 // LATEST</span>
-                                <span class="tl-tag-Inline">技术 · 服务器</span>
-                                <span class="tl-word-meta">约 2,400 字 · 6 分钟</span>
-                              </div>
-                              <h3 class="tl-card-title">
-                                <a href="/posts/mc-server/">如何快速零成本搭建一个 Mc 小型服务器</a>
-                              </h3>
-                              <p class="tl-card-excerpt">
-                                用尽量简单且低成本的方法让 Minecraft 服务器迅速跑起来。针对无公网 IP 场景，通过 frp 内网穿透结合本地闲置算力，三步完成多人联机部署。
-                              </p>
-                              <div class="tl-card-foot">
-                                <span class="tl-slug-code">/posts/mc-server/</span>
-                                <a class="q-read-btn tl-read-btn" href="/posts/mc-server/">
-                                  <span>进入详细页阅读</span>
-                                  <span aria-hidden="true">-&gt;</span>
-                                </a>
-                              </div>
-                            </div>
-                            <a class="tl-card-thumb" aria-label="阅读《如何快速零成本搭建一个 Mc 小型服务器》" href="/posts/mc-server/">
-                              <img src="/artifact/home/images/spot-default-mc.jpg" alt="如何快速零成本搭建一个 Mc 小型服务器" loading="lazy" />
-                              <span class="photo-ratio-badge">16:9</span>
-                            </a>
-                          </article>
-
-                          <!-- Entry #02: 鸡煲 -->
-                          <article class="tl-item tl-post-card" style="--i:1" data-tl-entry data-article-key="jibao" data-tags="随笔,日常" data-search="3月9号，想吃鸡煲 随笔 日常 重庆鸡公煲 生活切片">
-                            <div class="tl-item-date-col">
-                              <time class="tl-day-kai" datetime="2026-03-09">九日</time>
-                              <span class="tl-day-mono">03.09 · #02</span>
-                            </div>
-                            <div class="tl-item-content-col">
-                              <div class="tl-card-meta-row">
-                                <span class="tl-entry-badge">ENTRY #02 // ESSAY</span>
-                                <span class="tl-tag-Inline">随笔 · 日常</span>
-                                <span class="tl-word-meta">约 1,350 字 · 4 分钟</span>
-                              </div>
-                              <h3 class="tl-card-title">
-                                <a href="/posts/ji-bao/">3月9号，想吃鸡煲</a>
-                              </h3>
-                              <p class="tl-card-excerpt">
-                                校外那间普通的重庆鸡公煲贴上了旺铺出租。记下这些微不足道却真实存在的生活切片，大概也是探索世界广度的一种方式。
-                              </p>
-                              <div class="tl-card-foot">
-                                <span class="tl-slug-code">/posts/ji-bao/</span>
-                                <a class="q-read-btn tl-read-btn" href="/posts/ji-bao/">
-                                  <span>进入详细页阅读</span>
-                                  <span aria-hidden="true">-&gt;</span>
-                                </a>
-                              </div>
-                            </div>
-                            <a class="tl-card-thumb" aria-label="阅读《3月9号，想吃鸡煲》" href="/posts/ji-bao/">
-                              <img src="/artifact/home/images/post-cover-jibao.jpg" alt="3月9号，想吃鸡煲" loading="lazy" />
-                              <span class="photo-ratio-badge">16:9</span>
-                            </a>
-                          </article>
-
-                          <!-- Entry #03: MapToPoster -->
-                          <article class="tl-item tl-post-card" style="--i:2" data-tl-entry data-article-key="maptoposter" data-tags="技术,工具" data-search="一键生成城市地图壁纸 MapToPoster 技术 工具 OpenStreetMap Python 矢量海报">
-                            <div class="tl-item-date-col">
-                              <time class="tl-day-kai" datetime="2026-03-09">九日</time>
-                              <span class="tl-day-mono">03.09 · #03</span>
-                            </div>
-                            <div class="tl-item-content-col">
-                              <div class="tl-card-meta-row">
-                                <span class="tl-entry-badge">ENTRY #03 // TOOLKIT</span>
-                                <span class="tl-tag-Inline">技术 · 工具</span>
-                                <span class="tl-word-meta">约 1,680 字 · 5 分钟</span>
-                              </div>
-                              <h3 class="tl-card-title">
-                                <a href="/posts/maptoposter/">一键生成城市地图壁纸 —— MapToPoster</a>
-                              </h3>
-                              <p class="tl-card-excerpt">
-                                利用 OpenStreetMap 的道路拓扑矢量与经纬度网格数据，通过 Python 脚本将任意城市的街道肌理渲染成极简理性的几何海报壁纸。
-                              </p>
-                              <div class="tl-card-foot">
-                                <span class="tl-slug-code">/posts/maptoposter/</span>
-                                <a class="q-read-btn tl-read-btn" href="/posts/maptoposter/">
-                                  <span>进入详细页阅读</span>
-                                  <span aria-hidden="true">-&gt;</span>
-                                </a>
-                              </div>
-                            </div>
-                            <a class="tl-card-thumb" aria-label="阅读《一键生成城市地图壁纸 —— MapToPoster》" href="/posts/maptoposter/">
-                              <img src="/artifact/home/images/post-cover-maptoposter.jpg" alt="一键生成城市地图壁纸 —— MapToPoster" loading="lazy" />
-                              <span class="photo-ratio-badge">16:9</span>
-                            </a>
-                          </article>
-                        </div>
-                      </div>
-                    </div>
-
-                    <!-- 2026 年 2 月 -->
-                    <div class="tl-month" id="tl-month-2026-02" data-month-section="2026-02" style="--i:1">
-                      <button type="button" class="tl-month-head" aria-expanded="true">
-                        <span class="tl-month-label">二月</span>
-                        <span class="tl-month-code">2026.02 // FEBRUARY</span>
-                        <span class="tl-count" data-month-count>1 篇</span>
-                        <span class="tl-chevron" aria-hidden="true">▾</span>
-                      </button>
-
-                      <div class="tl-panel" data-open>
-                        <div class="tl-items" style="--n:1">
-                          <!-- Entry #04: Blender -->
-                          <article class="tl-item tl-post-card" style="--i:0" data-tl-entry data-article-key="blender" data-tags="技术,建模,工具" data-search="七天了解一件事 Blender 技术 建模 工具 三维网格 Cycles 渲染">
-                            <div class="tl-item-date-col">
-                              <time class="tl-day-kai" datetime="2026-02-24">二十四日</time>
-                              <span class="tl-day-mono">02.24 · #04</span>
-                            </div>
-                            <div class="tl-item-content-col">
-                              <div class="tl-card-meta-row">
-                                <span class="tl-entry-badge">ENTRY #04 // 3D MESH</span>
-                                <span class="tl-tag-Inline">技术 · 建模 · 工具</span>
-                                <span class="tl-word-meta">约 1,920 字 · 5 分钟</span>
-                              </div>
-                              <h3 class="tl-card-title">
-                                <a href="/posts/blender/">七天了解一件事 —— Blender</a>
-                              </h3>
-                              <p class="tl-card-excerpt">
-                                给自己设定七天的时间边界，从零开始接触三维网格拓扑、修改器堆栈、着色器节点与 Cycles 光线追踪渲染。不求成为行业专家，只求推开一扇新的认知象限之门。
-                              </p>
-                              <div class="tl-card-foot">
-                                <span class="tl-slug-code">/posts/blender/</span>
-                                <a class="q-read-btn tl-read-btn" href="/posts/blender/">
-                                  <span>进入详细页阅读</span>
-                                  <span aria-hidden="true">-&gt;</span>
-                                </a>
-                              </div>
-                            </div>
-                            <a class="tl-card-thumb" aria-label="阅读《七天了解一件事 —— Blender》" href="/posts/blender/">
-                              <img src="/artifact/home/images/post-cover-blender.jpg" alt="七天了解一件事 —— Blender" loading="lazy" />
-                              <span class="photo-ratio-badge">16:9</span>
-                            </a>
-                          </article>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </section>
-
-              <!-- 2025 年时间轴分节 -->
-              <section class="tl-year" id="tl-year-2025" data-year-section="2025">
-                <button type="button" class="tl-year-head" aria-expanded="true">
-                  <span class="tl-year-label">二〇二五年</span>
-                  <span class="tl-year-code">2025 CHRONICLE</span>
-                  <span class="tl-count" data-year-count>1 篇</span>
-                  <span class="tl-chevron" aria-hidden="true">▾</span>
-                </button>
-
-                <div class="tl-panel" data-open>
-                  <div class="tl-body" style="--n:1">
-                    <!-- 2025 年 3 月 -->
-                    <div class="tl-month" id="tl-month-2025-03" data-month-section="2025-03" style="--i:0">
-                      <button type="button" class="tl-month-head" aria-expanded="true">
-                        <span class="tl-month-label">三月</span>
-                        <span class="tl-month-code">2025.03 // MARCH</span>
-                        <span class="tl-count" data-month-count>1 篇</span>
-                        <span class="tl-chevron" aria-hidden="true">▾</span>
-                      </button>
-
-                      <div class="tl-panel" data-open>
-                        <div class="tl-items" style="--n:1">
-                          <!-- Entry #05: DeepSeek -->
-                          <article class="tl-item tl-post-card" style="--i:0" data-tl-entry data-article-key="deepseek" data-tags="技术,AI" data-search="关于将 Deepseek 接入微信 技术 AI 硅基流动 WeChatBot 大语言模型">
-                            <div class="tl-item-date-col">
-                              <time class="tl-day-kai" datetime="2025-03-07">七日</time>
-                              <span class="tl-day-mono">03.07 · #05</span>
-                            </div>
-                            <div class="tl-item-content-col">
-                              <div class="tl-card-meta-row">
-                                <span class="tl-entry-badge">ENTRY #05 // LLM BRIDGE</span>
-                                <span class="tl-tag-Inline">技术 · AI</span>
-                                <span class="tl-word-meta">约 2,150 字 · 6 分钟</span>
-                              </div>
-                              <h3 class="tl-card-title">
-                                <a href="/posts/deepseek-wechat/">关于将 Deepseek 接入微信</a>
-                              </h3>
-                              <p class="tl-card-excerpt">
-                                记录如何通过轻量级服务容器将 DeepSeek API 接入日常即时通讯工作流，配置上下文记忆窗口、提示词边界与异常重试机制，让大语言模型成为顺手的理性协作者。
-                              </p>
-                              <div class="tl-card-foot">
-                                <span class="tl-slug-code">/posts/deepseek-wechat/</span>
-                                <a class="q-read-btn tl-read-btn" href="/posts/deepseek-wechat/">
-                                  <span>进入详细页阅读</span>
-                                  <span aria-hidden="true">-&gt;</span>
-                                </a>
-                              </div>
-                            </div>
-                            <a class="tl-card-thumb" aria-label="阅读《关于将 Deepseek 接入微信》" href="/posts/deepseek-wechat/">
-                              <img src="/artifact/home/images/post-cover-deepseek.jpg" alt="关于将 Deepseek 接入微信" loading="lazy" />
-                              <span class="photo-ratio-badge">16:9</span>
-                            </a>
-                          </article>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </section>
-
-              <!-- 时间轴底端：起点圆环（ORIGIN） -->
-              <div class="tl-start" aria-hidden="true">
-                <span class="tl-origin-caption">ORIGIN (0, 0) // 时间从这里开始 · FIRST COMMIT 2025.03.07</span>
-              </div>
+@@TIMELINE@@
             </div>
 
             <div class="tl-empty-state" id="tl-empty-state" hidden>
@@ -431,24 +184,7 @@
                   <span>YEAR / MONTH</span>
                 </div>
                 <ul class="rail-related-list">
-                  <li>
-                    <button type="button" data-tl-scroll="tl-month-2026-03">
-                      <span class="r-idx">2026 // MARCH · 03</span>
-                      <span class="r-tit">二〇二六年三月（3 篇）</span>
-                    </button>
-                  </li>
-                  <li>
-                    <button type="button" data-tl-scroll="tl-month-2026-02">
-                      <span class="r-idx">2026 // FEBRUARY · 02</span>
-                      <span class="r-tit">二〇二六年二月（1 篇）</span>
-                    </button>
-                  </li>
-                  <li>
-                    <button type="button" data-tl-scroll="tl-month-2025-03">
-                      <span class="r-idx">2025 // MARCH · 03</span>
-                      <span class="r-tit">二〇二五年三月（1 篇）</span>
-                    </button>
-                  </li>
+@@RAIL_JUMPS@@
                 </ul>
               </div>
 
@@ -458,9 +194,7 @@
                   <span>3 ACTIVE MONTHS</span>
                 </div>
                 <ul class="rail-kv-list">
-                  <li><span>2026.03</span><strong>███ 60% (3 篇)</strong></li>
-                  <li><span>2026.02</span><strong>█░░ 20% (1 篇)</strong></li>
-                  <li><span>2025.03</span><strong>█░░ 20% (1 篇)</strong></li>
+@@RAIL_DENSITY@@
                 </ul>
               </div>
 

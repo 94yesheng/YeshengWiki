@@ -1,20 +1,24 @@
+export const prerender = false;
+
 import rss from '@astrojs/rss';
-import { getPublishedPosts } from '../utils/posts';
-import { site } from '../site.config';
+import { listPosts } from '../server/repositories/posts';
+import { getSetting } from '../server/repositories/settings';
+import { site as staticSite } from '../site.config';
 
 export async function GET(context) {
-  const posts = await getPublishedPosts();
+  const site = getSetting('site', staticSite);
+  const posts = listPosts();
 
   return rss({
     title: site.title,
     description: site.description,
     site: context.site,
     items: posts.map((post) => ({
-      title: post.data.title,
-      pubDate: post.data.pubDate,
-      description: post.data.description ?? '',
-      link: `/posts/${post.id}/`,
-      categories: post.data.tags,
+      title: post.title,
+      pubDate: new Date(`${post.pubDate}T00:00:00`),
+      description: post.description ?? '',
+      link: `/posts/${post.slug}/`,
+      categories: post.tags,
     })),
     customData: '<language>zh-cn</language>',
   });

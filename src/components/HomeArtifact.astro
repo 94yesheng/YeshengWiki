@@ -1,39 +1,160 @@
 ---
 /**
- * 主页 artifact 的 HTML 组装层。
+ * 主页 artifact 的 HTML 组装层（SSR 版）。
  *
- * 原先是一份 1.7MB 的 src/artifact/home.html（17 张 base64 图片内联在属性里）。
- * 现在按屏拆到 src/artifact/home/，图片放在 public/artifact/home/images/：
- *
- *   loader.html    加载层 + 昼夜过渡层
- *   header.html    粘顶导航
- *   hero.html      00 · HERO
- *   posts.html     01 · POSTS
- *   photos.html    02 · PHOTOS
- *   programs.html  03 · PROGRAMS
- *   links.html     04 · LINKS
- *   tail.html      页脚 + 悬浮球 + 实验台 + toast
- *
- * 这里只负责按原顺序拼接；样式和行为仍由 ArtifactLayout 内联的
- * artifact.css / artifact.js 提供。拆分的目的是让单文件足够小，
- * 网页端 agent 读取 GitHub 仓库时不会因为一个 1.7MB 的 HTML 撑爆上下文。
+ * 文章队列 / 焦点文章 / 最新照片墙由 SQLite 生成，其余屏仍是原始 partial。
  */
 import loader from '../artifact/home/loader.html?raw';
 import header from '../artifact/home/header.html?raw';
 import hero from '../artifact/home/hero.html?raw';
-import posts from '../artifact/home/posts.html?raw';
-import photos from '../artifact/home/photos.html?raw';
+import postsTpl from '../artifact/home/posts.html?raw';
+import photosTpl from '../artifact/home/photos.html?raw';
 import programs from '../artifact/home/programs.html?raw';
 import links from '../artifact/home/links.html?raw';
 import tail from '../artifact/home/tail.html?raw';
+import { listPosts, type Post } from '../server/repositories/posts';
+import { listWalls } from '../server/repositories/photos';
+import { chineseMonthDay } from '../utils/date';
+import { cjkSpacing } from '../utils/typography';
+
+const esc = (s: string) =>
+  s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+const pad2 = (n: number) => String(n).padStart(2, '0');
+
+const posts = listPosts();
+const featured = posts[0] ?? null;
+const queue = posts.slice(1, 5);
+
+const DESIGN_COVERS: Record<string, string> = {
+  'mc-server': '/artifact/home/images/spot-default-mc.jpg',
+  'ji-bao': '/artifact/home/images/post-cover-jibao.jpg',
+  maptoposter: '/artifact/home/images/post-cover-maptoposter.jpg',
+  blender: '/artifact/home/images/post-cover-blender.jpg',
+  'deepseek-wechat': '/artifact/home/images/post-cover-deepseek.jpg',
+};
+
+function coverFor(post: Post): string {
+  return DESIGN_COVERS[post.slug] ?? post.cover ?? '/artifact/home/images/spot-default-mc.jpg';
+}
+
+function leadFor(post: Post): string {
+  if (post.lead?.trim()) return post.lead.trim();
+  const text = post.bodyMarkdown
+    .replace(/!\[[^\]]*\]\([^)]*\)/g, '')
+    .replace(/<[^>]+>/g, '')
+    .replace(/[*_`#>~-]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return text.length > 110 ? `${text.slice(0, 110)}…` : text;
+}
+
+const queueHtml = queue
+  .map((post, i) => {
+    const no = i + 2;
+    const dateText = chineseMonthDay(new Date(`${post.pubDate}T00:00:00`));
+    const lead = leadFor(post);
+    const cover = coverFor(post);
+    const tags = post.tags.join(' · ');
+    const firstTag = post.tags[0] ?? 'ARCHIVE';
+    return `<li>
+  <a data-post-id="${esc(post.slug)}" data-post-title="${esc(
+    cjkSpacing(post.title)
+  )}" data-post-date="${esc(dateText)}" data-post-tags="${esc(tags)}" data-post-coord="ENTRY #${pad2(
+    no
+  )} · ${post.pubDate.replaceAll('-', '.')}" data-post-cover="${esc(
+    cover
+  )}" data-post-excerpt="${esc(lead)}" href="/posts/${post.slug}/">
+    <span class="post-q-item-coord"><span class="idx">${pad2(no)} // ARCHIVE</span><span>${post.pubDate.slice(
+      5
+    )} · ${esc(firstTag)}</span></span>
+    <span class="post-q-item-title">${esc(cjkSpacing(post.title))}</span>
+  </a>
+</li>`;
+  })
+  .join('\n');
+
+const spotTitle = featured ? cjkSpacing(featured.title) : '暂无文章';
+const spotUrl = featured ? `/posts/${featured.slug}/` : '/posts/';
+const spotDate = featured ? chineseMonthDay(new Date(`${featured.pubDate}T00:00:00`)) : '';
+const spotTags = featured ? featured.tags.join(' · ') : '';
+const spotCover = featured ? coverFor(featured) : '/artifact/home/images/spot-default-mc.jpg';
+const spotExcerpt = featured ? leadFor(featured) : '去 /studio/ 写第一篇文章。';
+const spotCoverCaption = featured?.coverCaption?.trim() || '16:9 FEATURED';
+
+const postSlots: Record<string, string> = {
+  POST_QUEUE: queueHtml,
+  SPOT_COORD: 'ENTRY #01 · LATEST SPOTLIGHT // FEATURED',
+  SPOT_URL: spotUrl,
+  SPOT_TITLE: esc(spotTitle),
+  SPOT_DATE: esc(spotDate),
+  SPOT_TAGS: esc(spotTags),
+  SPOT_COVER: esc(spotCover),
+  SPOT_COVER_CAPTION: esc(spotCoverCaption),
+  SPOT_EXCERPT: esc(spotExcerpt),
+  POST_COUNT: String(posts.length),
+};
+
+let postsHtml = postsTpl;
+for (const [key, value] of Object.entries(postSlots)) {
+  const token = `@@${key}@@`;
+  if (!postsHtml.includes(token)) console.warn('[home] 缺文章占位符', token);
+  postsHtml = postsHtml.split(token).join(value);
+}
+
+/* ---------- 最新照片墙 ---------- */
+const wall = listWalls()[0] ?? null;
+const wallPhotos = wall?.photos ?? [];
+
+const photoItemsHtml = wallPhotos
+  .map((photo, i) => {
+    const ar = photo.ar && photo.ar > 0 ? photo.ar : 1.5;
+    const orient = ar < 0.95 ? 'portrait-3-4' : ar > 1.6 ? 'landscape-16-9' : 'landscape-4-3';
+    const ratioLabel = photo.ratioPill ?? (ar < 0.95 ? '3:4' : ar > 1.6 ? '16:9' : '4:3');
+    const direction = ar < 0.95 ? '纵向' : '横向';
+    const titleShort = photo.title?.split(' · ')[0] ?? photo.caption ?? `照片 #${i + 1}`;
+    const caption = [photo.date, photo.caption].filter(Boolean).join(' · ');
+    const width = 840;
+    const height = Math.max(1, Math.round(width / ar));
+    return `<figure class="wf-item" data-photo-idx="${i}" data-orient="${orient}" data-ar="${ar}" style="--ar: ${ar}">
+  <a class="photo-link" data-lightbox href="${esc(photo.url)}" data-index="#${pad2(
+    i + 1
+  )}" data-caption="${esc(caption)}">
+    <img src="${esc(photo.url)}" alt="PHOTO #${pad2(i + 1)} · ${esc(
+      caption
+    )}" width="${width}" height="${height}" loading="lazy" />
+    <span class="photo-idx-badge">#${pad2(i + 1)}</span>
+    <span class="photo-ratio-badge">${esc(ratioLabel)} · ${direction}</span>
+  </a>
+  <figcaption class="wf-item-bar">
+    <span class="wf-item-title">${esc(titleShort)}</span>
+    <a class="wf-info-trigger" href="/photos/#frame-${i}">参数详情 -&gt;</a>
+  </figcaption>
+</figure>`;
+  })
+  .join('\n');
+
+const photoSlots: Record<string, string> = {
+  WALL_COORD: 'LATEST GROUP // #01',
+  WALL_TITLE: esc(wall?.title ?? '暂无照片'),
+  WALL_NOTE: esc(wall?.note ?? ''),
+  PHOTO_ITEMS: photoItemsHtml,
+  PHOTO_FOOTER: `最新一组共 ${wallPhotos.length} 张照片 · 当前栏宽内完整展示 <strong class="telemetry-accent">4 张</strong>（超出右边界自动不显示）`,
+};
+
+let photosHtml = photosTpl;
+for (const [key, value] of Object.entries(photoSlots)) {
+  const token = `@@${key}@@`;
+  if (!photosHtml.includes(token)) console.warn('[home] 缺照片占位符', token);
+  photosHtml = photosHtml.split(token).join(value);
+}
 ---
 
 <Fragment set:html={loader} />
 <Fragment set:html={header} />
 <main id="home-view">
   <Fragment set:html={hero} />
-  <Fragment set:html={posts} />
-  <Fragment set:html={photos} />
+  <Fragment set:html={postsHtml} />
+  <Fragment set:html={photosHtml} />
   <Fragment set:html={programs} />
   <Fragment set:html={links} />
 </main>

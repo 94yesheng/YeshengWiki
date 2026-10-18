@@ -66,87 +66,36 @@
               </div>
 
               <ul class="posts-recent-q" id="posts-recent-list">
-                <li>
-                  <a
-                     data-post-id="jibao"
-                     data-post-title="3月9号，想吃鸡煲"
-                     data-post-date="三月九日"
-                     data-post-tags="随笔 · 日常"
-                     data-post-coord="ENTRY #02 · 2026.03.09"
-                     data-post-cover="/artifact/home/images/post-cover-jibao.jpg"
-                     data-post-excerpt="有些念头其实没有什么严密的逻辑推导，就像在三月初春的傍晚突然很想吃一锅热气腾腾的炭火鸡煲。记下这些微不足道却真实存在的生活切片，大概也是探索世界广度的一种方式。" href="/posts/ji-bao/">
-                    <span class="post-q-item-coord"><span class="idx">02 // ARCHIVE</span><span>03-09 · 随笔</span></span>
-                    <span class="post-q-item-title">3月9号，想吃鸡煲</span>
-                  </a>
-                </li>
-                <li>
-                  <a
-                     data-post-id="maptoposter"
-                     data-post-title="一键生成城市地图壁纸 —— MapToPoster"
-                     data-post-date="三月九日"
-                     data-post-tags="技术 · 工具"
-                     data-post-coord="ENTRY #03 · 2026.03.09"
-                     data-post-cover="/artifact/home/images/post-cover-maptoposter.jpg"
-                     data-post-excerpt="利用 OpenStreetMap 的道路拓扑矢量与经纬度网格数据，通过 Python 脚本将任意城市的街道肌理渲染成极简理性的几何海报壁纸。支持自定义配色与比例尺排版。" href="/posts/maptoposter/">
-                    <span class="post-q-item-coord"><span class="idx">03 // ARCHIVE</span><span>03-09 · 工具</span></span>
-                    <span class="post-q-item-title">一键生成城市地图壁纸 —— MapToPoster</span>
-                  </a>
-                </li>
-                <li>
-                  <a
-                     data-post-id="blender"
-                     data-post-title="七天了解一件事 —— Blender"
-                     data-post-date="二月二十四日"
-                     data-post-tags="技术 · 建模"
-                     data-post-coord="ENTRY #04 · 2026.02.24"
-                     data-post-cover="/artifact/home/images/post-cover-blender.jpg"
-                     data-post-excerpt="给自己设定七天的时间边界，从零开始接触三维网格拓扑、修改器堆栈、着色器节点与 Cycles 光线追踪渲染。不求成为行业专家，只求推开一扇新的认知象限之门。" href="/posts/blender/">
-                    <span class="post-q-item-coord"><span class="idx">04 // ARCHIVE</span><span>02-24 · 建模</span></span>
-                    <span class="post-q-item-title">七天了解一件事 —— Blender</span>
-                  </a>
-                </li>
-                <li>
-                  <a
-                     data-post-id="deepseek"
-                     data-post-title="关于将 Deepseek 接入微信"
-                     data-post-date="三月七日"
-                     data-post-tags="技术 · AI"
-                     data-post-coord="ENTRY #05 · 2025.03.07"
-                     data-post-cover="/artifact/home/images/post-cover-deepseek.jpg"
-                     data-post-excerpt="记录如何通过轻量级服务容器将 DeepSeek API 接入日常即时通讯工作流，配置上下文记忆窗口、提示词边界与异常重试机制，让大语言模型成为顺手的理性协作者。" href="/posts/deepseek-wechat/">
-                    <span class="post-q-item-coord"><span class="idx">05 // ARCHIVE</span><span>03-07 · AI</span></span>
-                    <span class="post-q-item-title">关于将 Deepseek 接入微信</span>
-                  </a>
-                </li>
+@@POST_QUEUE@@
               </ul>
             </div>
 
             <div class="posts-q-right">
               <div class="posts-q-spot-head">
                 <div>
-                  <div class="spot-kicker" id="spot-coord-badge">ENTRY #01 · LATEST SPOTLIGHT // FEATURED</div>
+                  <div class="spot-kicker" id="spot-coord-badge">@@SPOT_COORD@@</div>
                   <h3 class="posts-spot-title">
-                    <a id="spot-title-link" href="/posts/mc-server/">如何快速零成本搭建一个 Mc 小型服务器</a>
+                    <a id="spot-title-link" href="@@SPOT_URL@@">@@SPOT_TITLE@@</a>
                   </h3>
                 </div>
                 <p class="posts-spot-meta">
-                  <time id="spot-date">三月十三日</time>
+                  <time id="spot-date">@@SPOT_DATE@@</time>
                   <span class="dot">·</span>
-                  <span id="spot-tags">技术 · 服务器</span>
+                  <span id="spot-tags">@@SPOT_TAGS@@</span>
                 </p>
               </div>
 
               <div class="posts-q-spot-main">
                 <div class="posts-q-cover-cell">
                   <div class="posts-spot-cover-frame">
-                    <a class="posts-spot-cover" id="spot-cover-link" aria-label="点击打开文章详细页" href="/posts/mc-server/">
-                      <img id="spot-cover-img" src="/artifact/home/images/spot-default-mc.jpg" alt="如何快速零成本搭建一个 Mc 小型服务器" width="960" height="540" loading="lazy" />
+                    <a class="posts-spot-cover" id="spot-cover-link" aria-label="点击打开文章详细页" href="@@SPOT_URL@@">
+                      <img id="spot-cover-img" src="@@SPOT_COVER@@" alt="@@SPOT_TITLE@@" width="960" height="540" loading="lazy" />
                       <span class="cover-ratio-pill">16:9 HORIZONTAL</span>
                     </a>
                   </div>
                   <div class="cover-caption-bar">
                     <span>FIG 01.1 · 16:9 WIDESCREEN COVER FRAME</span>
-                    <span>FRP / JAVA 21 / PAPERMC</span>
+                    <span>@@SPOT_COVER_CAPTION@@</span>
                   </div>
                 </div>
 
@@ -157,7 +106,7 @@
                       <span>16:9 ADAPTIVE VIEW</span>
                     </div>
                     <p class="posts-spot-text" id="spot-lead-text" style="margin-top:0.75rem;">
-                      本篇文章旨在用尽量简单且低成本的方法让 Mc 服务器迅速的跑起来。考虑到大部分人并没有公网 IP，本文将使用 frp（内网穿透）解决连接问题，只需配齐 Java 环境、服务端内核与内网穿透三要素即可零成本联机。
+                      @@SPOT_EXCERPT@@
                     </p>
                   </div>
 
@@ -170,7 +119,7 @@
 
           <div class="q-footbar">
             <span>SECTION 01 // POSTS QUADRANT</span>
-            <span>INDEXED: <span class="telemetry-accent">5 ARTICLES</span> · 16:9 HORIZONTAL COVER ADAPTED</span>
+            <span>INDEXED: <span class="telemetry-accent">@@POST_COUNT@@ ARTICLES</span> · 16:9 HORIZONTAL COVER ADAPTED</span>
             <span>ROUTE: <a data-nav-view="posts" class="telemetry-accent" href="/posts/">/posts/ 进入文章时间轴归档子页 -&gt;</a></span>
           </div>
         </div>

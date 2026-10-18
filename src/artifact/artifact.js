@@ -756,7 +756,7 @@
   }
 
   /* 照片信息详细页数据库（需求 8） */
-  var PHOTO_DB = [
+  var PHOTO_DB = (window.__PHOTO_DB && window.__PHOTO_DB.length) ? window.__PHOTO_DB : [
     {
       idx: 0,
       coord: 'FRAME #01 // GROUP 01 · LATEST',
@@ -882,12 +882,14 @@
   // 为每张照片补充精确宽高比 ar 与横竖方向标识（#02 idx=2 为 3:4 竖向，其余为 16:9 或 4:3 横向）
   var PHOTO_AR_MAP = { 0: 1.7797, 1: 1.3333, 2: 0.7500, 3: 1.3659, 4: 1.7834, 5: 1.7834 };
   PHOTO_DB.forEach(function (item) {
-    item.ar = PHOTO_AR_MAP[item.idx] || 1.7778;
+    item.ar = item.ar || PHOTO_AR_MAP[item.idx] || 1.7778;
     item.orient = item.ar < 1.0 ? 'portrait' : 'landscape';
   });
 
-  // 按视觉卡片顺序排列的索引序列（#01 横向 -> #02 竖向 -> #03 横向 -> #04 横向 -> #05 4:3 横向 -> #06 4:3 横向）
-  var PHOTO_VISUAL_ORDER = [0, 2, 4, 5, 3, 1];
+  // 按视觉卡片顺序排列的索引序列；有服务端数据时按数据库顺序
+  var PHOTO_VISUAL_ORDER = (window.__PHOTO_DB && window.__PHOTO_DB.length)
+    ? PHOTO_DB.map(function (item) { return item.idx; })
+    : [0, 2, 4, 5, 3, 1];
   var currentPhotoIdx = 0;
 
   /* 根据当前选中照片的宽高比 (ar) 与一屏视口边界，动态计算最大化无越界画框尺寸并驱动横/竖平滑伸缩动画 */
@@ -1735,19 +1737,33 @@
     }
   }
 
-  var currentSpotId = 'mc';
-  var defaultSpot = {
-    id: 'mc',
-    title: '如何快速零成本搭建一个 Mc 小型服务器',
-    date: '三月十三日',
-    tags: '技术 · 服务器',
-    coord: 'ENTRY #01 · LATEST SPOTLIGHT // FEATURED',
-    cover: (function () { var el = document.getElementById('spot-cover-img'); return el ? (el.getAttribute('src') || '') : ''; })(),
-    excerpt: '本篇文章旨在用尽量简单且低成本的方法让 Mc 服务器迅速的跑起来。考虑到大部分人并没有公网 IP，本文将使用 frp（内网穿透）解决连接问题，只需配齐 Java 环境、服务端内核与内网穿透三要素即可零成本联机。'
-  };
+  var currentSpotId = 'latest';
+
+  /* 服务端已经渲染了焦点文章；这里从 DOM 读取快照，避免写死 mc-server。 */
+  function readSpotlightSnapshot() {
+    var titleEl = document.getElementById('spot-title-link');
+    var coverEl = document.getElementById('spot-cover-img');
+    var leadEl = document.getElementById('spot-lead-text');
+    var dateEl = document.getElementById('spot-date');
+    var tagsEl = document.getElementById('spot-tags');
+    var coordEl = document.getElementById('spot-coord-badge');
+    var href = titleEl ? titleEl.getAttribute('href') || '' : '';
+    var idMatch = /\/posts\/([^/]+)\//.exec(href);
+    return {
+      id: idMatch ? idMatch[1] : 'latest',
+      url: href || '/posts/',
+      title: titleEl ? titleEl.textContent.trim() : '',
+      date: dateEl ? dateEl.textContent : '',
+      tags: tagsEl ? tagsEl.textContent : '',
+      coord: coordEl ? coordEl.textContent : '',
+      cover: coverEl ? coverEl.getAttribute('src') || '' : '',
+      excerpt: leadEl ? leadEl.textContent.trim() : ''
+    };
+  }
+
+  var defaultSpot = readSpotlightSnapshot();
 
   function applyPostSpotlight(data, activeLink) {
-    currentSpotId = data.id || 'mc';
     var spotTitle = document.getElementById('spot-title-link');
     var spotDate = document.getElementById('spot-date');
     var spotTags = document.getElementById('spot-tags');
@@ -1755,9 +1771,13 @@
     var spotLead = document.getElementById('spot-lead-text');
     var spotReadBtn = document.getElementById('spot-read-btn');
     var spotCoverImg = document.getElementById('spot-cover-img');
-    var spotPath =
-      (ARTICLE_DB[currentSpotId] && ARTICLE_DB[currentSpotId].path) || '/posts/';
     var spotCoverLink = document.getElementById('spot-cover-link');
+    var spotPath =
+      data.url ||
+      (activeLink && activeLink.getAttribute('href')) ||
+      (ARTICLE_DB[data.id] && ARTICLE_DB[data.id].path) ||
+      '/posts/';
+    currentSpotId = data.id || 'latest';
     if (spotTitle) {
       spotTitle.textContent = data.title;
       spotTitle.href = spotPath;
@@ -1852,10 +1872,11 @@
     if (postLink) {
       e.preventDefault();
       applyPostSpotlight({
-        id: postLink.dataset.postId || 'mc',
+        id: postLink.dataset.postId || 'latest',
+        url: postLink.getAttribute('href') || '',
         title: postLink.dataset.postTitle,
         date: postLink.dataset.postDate || '',
-        tags: postLink.dataset.postTags || '随笔',
+        tags: postLink.dataset.postTags || 'ARCHIVE',
         coord: postLink.dataset.postCoord || 'ARCHIVE ENTRY',
         cover: postLink.dataset.postCover || defaultSpot.cover,
         excerpt: postLink.dataset.postExcerpt || defaultSpot.excerpt

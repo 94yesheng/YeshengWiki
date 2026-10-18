@@ -1,12 +1,151 @@
 ---
 /**
- * 照片子页 —— artifact 版（一屏光学检视台 + 完整影集档案网格）。
- *
- * 模板由 scripts/import-artifact.mjs 从 demo/code_artifact (1).html 切出：
- * 原文的页内视图切换已改成真实路由，首页的「参数详情」会带 #frame-N 深链。
+ * 照片子页 —— SSR 版。
+ * 检视台、胶片条、筛选和档案网格都来自 SQLite；artifact.js 仍负责交互。
  */
+export const prerender = false;
+
 import ArtifactLayout from '../layouts/ArtifactLayout.astro';
 import photosTpl from '../artifact/photos.html?raw';
+import { listWalls, type Photo } from '../server/repositories/photos';
+
+const walls = listWalls();
+const photos = walls.flatMap((wall) => wall.photos);
+
+const esc = (s: string) =>
+  s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+const pad2 = (n: number) => String(n).padStart(2, '0');
+
+function ratioKey(ar: number): '16:9' | '4:3' | '3:4' {
+  if (ar < 0.95) return '3:4';
+  if (ar > 1.6) return '16:9';
+  return '4:3';
+}
+
+const DEFAULT_HIST = [20, 30, 40, 50, 60, 70, 80, 80, 70, 60, 50, 40, 30, 20, 15, 10];
+
+function photoDb(photo: Photo, idx: number) {
+  const ar = photo.ar && photo.ar > 0 ? photo.ar : 1.5;
+  const ratio = ratioKey(ar);
+  return {
+    idx,
+    ar,
+    coord: photo.coord ?? `FRAME #${pad2(idx + 1)} // GROUP ${photo.group === 'earlier' ? '02 · ARCHIVE' : '01 · LATEST'}`,
+    groupBadge: photo.group === 'earlier' ? 'ARCHIVE GROUP #02' : 'LATEST GROUP #01',
+    title: photo.title ?? photo.caption ?? photo.file,
+    story: photo.story ?? photo.caption ?? '',
+    src: photo.url,
+    ratioPill: photo.ratioPill ?? `${ratio} ${ar < 1 ? 'VERTICAL' : 'HORIZONTAL'}`,
+    fileCode: `FILE: ${photo.file}`,
+    date: photo.date ?? '',
+    location: photo.location ?? '',
+    aspect: photo.aspect ?? '',
+    camera: photo.camera ?? '',
+    lens: photo.lens ?? '',
+    exposure: photo.exposure ?? '',
+    color: photo.color ?? '',
+    gps: photo.gps ?? '',
+    ev: photo.ev ?? '',
+    hist: photo.hist ?? DEFAULT_HIST,
+  };
+}
+
+const db = photos.map(photoDb);
+
+const filterChips = (() => {
+  const groups = new Map<string, number>();
+  const ratios = new Map<string, number>();
+  for (const photo of photos) {
+    const group = photo.group ?? 'latest';
+    groups.set(group, (groups.get(group) ?? 0) + 1);
+    const ratio = ratioKey(photo.ar && photo.ar > 0 ? photo.ar : 1.5);
+    ratios.set(ratio, (ratios.get(ratio) ?? 0) + 1);
+  }
+  const items = [
+    `<button type="button" class="archive-tag-chip" data-photo-filter="all" aria-pressed="true">全部影像 (${photos.length})</button>`,
+  ];
+  const groupLabels: Record<string, string> = {
+    latest: '最新一组',
+    earlier: '早期与数字造物',
+  };
+  for (const [group, count] of groups) {
+    items.push(
+      `<button type="button" class="archive-tag-chip" data-photo-filter="${esc(group)}" aria-pressed="false">${esc(groupLabels[group] ?? group)} (${count})</button>`
+    );
+  }
+  for (const [ratio, count] of [...ratios].sort((a, b) => b[0].localeCompare(a[0]))) {
+    const label = ratio === '3:4' ? '3:4 竖幅' : `${ratio} 横幅`;
+    items.push(
+      `<button type="button" class="archive-tag-chip" data-photo-filter="${esc(ratio)}" aria-pressed="false">${esc(label)} (${count})</button>`
+    );
+  }
+  return items.join('\n              ');
+})();
+
+const filmstrip = photos
+  .map((photo, i) => {
+    const ar = photo.ar && photo.ar > 0 ? photo.ar : 1.5;
+    const ratio = ratioKey(ar);
+    const orientation = ar < 1 ? '竖' : '横';
+    return `<button type="button" class="filmstrip-thumb" data-insp-select="${i}"${
+      i === 0 ? ' data-active="true"' : ''
+    } title="#${pad2(i + 1)} ${esc(photo.title ?? photo.caption ?? '')} (${ratio} ${orientation})">
+  <span>#${pad2(i + 1)}</span><small>${ratio} ${orientation}</small>
+</button>`;
+  })
+  .join('\n                  ');
+
+const cards = photos
+  .map((photo, i) => {
+    const ar = photo.ar && photo.ar > 0 ? photo.ar : 1.5;
+    const ratio = ratioKey(ar);
+    const orientation = ar < 1 ? '纵向' : '横向';
+    const group = photo.group ?? 'latest';
+    const title = photo.title ?? photo.caption ?? photo.file;
+    const date = photo.date ?? '';
+    const story = photo.story ?? photo.caption ?? '';
+    const exif = [photo.camera, photo.lens, photo.exposure].filter(Boolean).join(' · ') || 'EXIF PENDING';
+    const caption = [date, photo.caption].filter(Boolean).join(' · ');
+    return `<article class="photo-detail-card" data-photo-card="${i}" data-group="${esc(
+      group
+    )}" data-ratio="${ratio}"${i === 0 ? ' data-active="true"' : ''}>
+  <div class="photo-detail-img-wrap" style="--ar: ${ar}">
+    <img src="${esc(photo.url)}" alt="${esc(title)}" loading="lazy" />
+    <span class="photo-idx-badge">#${pad2(i + 1)} · ${group === 'earlier' ? 'ARCHIVE' : 'LATEST'}</span>
+    <span class="photo-ratio-badge">${ratio} · ${orientation}</span>
+  </div>
+  <div class="photo-detail-card-body">
+    <div class="photo-detail-card-top">
+      <h3>${esc(title)}</h3>
+      <span class="photo-detail-date">${esc(date)}</span>
+    </div>
+    <p>${esc(story)}</p>
+    <div class="photo-detail-exif-line">
+      <span>${esc(exif)}</span>
+      <a href="${esc(photo.url)}" data-lightbox data-caption="${esc(
+        caption
+      )}" class="peer-link-action">放大 ⤢</a>
+    </div>
+  </div>
+</article>`;
+  })
+  .join('\n\n          ');
+
+const slots: Record<string, string> = {
+  PHOTO_FILTERS: filterChips,
+  PHOTO_CARDS: cards,
+  FILMSTRIP: filmstrip,
+  PHOTO_SCROLL_LABEL: `↓ 向下滚动浏览全部影集网格 (${photos.length} 张)`,
+};
+
+let html = photosTpl;
+for (const [key, value] of Object.entries(slots)) {
+  const token = `@@${key}@@`;
+  if (!html.includes(token)) console.warn('[photos] 缺占位符', token);
+  html = html.split(token).join(value);
+}
+
+const photoJson = JSON.stringify(db).replace(/</g, '\\u003c');
 ---
 
 <ArtifactLayout
@@ -15,5 +154,6 @@ import photosTpl from '../artifact/photos.html?raw';
   title="照片"
   description="保持原始比例的照片档案，可检视拍摄参数与完整影集。"
 >
-  <Fragment set:html={photosTpl} />
+  <Fragment set:html={html} />
+  <script is:inline set:html={`window.__PHOTO_DB = ${photoJson};`}></script>
 </ArtifactLayout>
