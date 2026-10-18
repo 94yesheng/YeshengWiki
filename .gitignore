@@ -1,7 +1,12 @@
 # build output
 dist/
+dist-dynamic/
 # generated types
 .astro/
+
+# 动态版本地数据库与上传（内容数据不进 Git）
+data/
+uploads/
 
 # 开发过程中的临时产物与设计样板，不进仓库
 .work/

@@ -1,0 +1,275 @@
+/**
+ * `/api/*` 路由：由 middleware 调用，而不是 Astro 的 pages/api。
+ *
+ * 这样静态构建（`npm run build`）不会因为 API 端点缺少 adapter 而失败；
+ * 动态构建时 middleware 每个请求都会经过这里。
+ */
+import type { APIContext } from 'astro';
+import {
+  clearFailures,
+  clearSessionCookie,
+  createSession,
+  destroySession,
+  getAuth,
+  hasValidCsrf,
+  isRateLimited,
+  recordFailure,
+  SESSION_COOKIE,
+  setSessionCookie,
+  verifyPassword,
+  type AuthContext,
+} from '../auth';
+import { getDb } from '../db';
+import {
+  countPosts,
+  createPost,
+  deletePost,
+  getPostBySlug,
+  listPosts,
+  updatePost,
+  type PostInput,
+} from '../repositories/posts';
+import { listWalls } from '../repositories/photos';
+import { listLinks, replaceLinks } from '../repositories/links';
+import { getSettings, SETTING_KEYS, setSetting, type SettingKey } from '../repositories/settings';
+import { fail, json, readJson } from './http';
+
+interface LoginBody {
+  username?: string;
+  password?: string;
+}
+
+const SLUG_RE = /^[a-z0-9][a-z0-9-_]*$/;
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+export async function handleApi(context: APIContext): Promise<Response | null> {
+  const { pathname } = context.url;
+  if (!pathname.startsWith('/api/')) return null;
+
+  const method = context.request.method.toUpperCase();
+  const parts = pathname
+    .slice('/api/'.length)
+    .replace(/\/+$/, '')
+    .split('/')
+    .filter(Boolean);
+
+  // /api/health
+  if (parts.length === 1 && parts[0] === 'health' && method === 'GET') {
+    return health();
+  }
+
+  // /api/auth/*
+  if (parts[0] === 'auth') {
+    if (parts[1] === 'login' && parts.length === 2 && method === 'POST') return login(context);
+    if (parts[1] === 'logout' && parts.length === 2 && method === 'POST') return logout(context);
+    if (parts[1] === 'me' && parts.length === 2 && method === 'GET') return me(context);
+  }
+
+  // /api/posts
+  if (parts[0] === 'posts') {
+    return posts(context, parts.slice(1), method);
+  }
+
+  // /api/walls
+  if (parts[0] === 'walls' && method === 'GET') {
+    return json({ walls: listWalls({ includeEmpty: true }) });
+  }
+
+  // /api/links
+  if (parts[0] === 'links') {
+    if (method === 'GET') return json({ links: listLinks() });
+    if (method === 'PUT') {
+      const denied = requireCsrf(context);
+      if (denied) return denied;
+      const body = await readJson<{ links?: unknown }>(context.request);
+      if (!Array.isArray(body?.links)) return fail('links 必须是数组', 400);
+      try {
+        return json({ links: replaceLinks(body.links as never) });
+      } catch (error) {
+        console.error('[api/links]', error);
+        return fail('保存友链失败', 500);
+      }
+    }
+  }
+
+  // /api/settings[/key]
+  if (parts[0] === 'settings') {
+    if (method === 'GET' && parts.length === 1) return json({ settings: getSettings() });
+    if (method === 'PUT' && parts.length === 2) {
+      const denied = requireCsrf(context);
+      if (denied) return denied;
+      const key = parts[1] as SettingKey;
+      if (!SETTING_KEYS.includes(key)) return fail('未知的设置项', 404);
+      const body = await readJson<{ value?: unknown }>(context.request);
+      const value = body && Object.prototype.hasOwnProperty.call(body, 'value') ? body.value : body;
+      if (value === undefined) return fail('缺少 value', 400);
+      setSetting(key, value);
+      return json({ ok: true, key });
+    }
+  }
+
+  return fail('接口不存在', 404);
+}
+
+/* --------------------------------------------------------------------------
+   health / auth
+   -------------------------------------------------------------------------- */
+
+function health(): Response {
+  try {
+    const db = getDb();
+    const schema = db.prepare('SELECT MAX(version) AS version FROM schema_migrations').get() as {
+      version: number | null;
+    };
+    return json({
+      ok: true,
+      schema: schema.version ?? 0,
+      posts: countPosts(true),
+      time: new Date().toISOString(),
+    });
+  } catch (error) {
+    console.error('[api/health]', error);
+    return json({ ok: false, error: '数据库不可用' }, 503);
+  }
+}
+
+async function login(context: APIContext): Promise<Response> {
+  const body = await readJson<LoginBody>(context.request);
+  const username = body?.username?.trim() ?? '';
+  const password = body?.password ?? '';
+
+  if (!username || !password) return fail('请输入账号和密码', 400);
+
+  const key = `${context.clientAddress || 'unknown'}:${username}`;
+  if (isRateLimited(key)) return fail('尝试次数过多，请 10 分钟后再试', 429);
+
+  const row = getDb()
+    .prepare('SELECT id, username, password_hash FROM users WHERE username = ?')
+    .get(username) as { id: number; username: string; password_hash: string } | undefined;
+
+  if (!row || !verifyPassword(password, row.password_hash)) {
+    recordFailure(key);
+    return fail('账号或密码不对', 401);
+  }
+
+  clearFailures(key);
+  const { token, csrf, expiresAt } = createSession(row.id);
+  setSessionCookie(context, token, expiresAt);
+  return json({ user: { id: row.id, username: row.username }, csrf });
+}
+
+async function logout(context: APIContext): Promise<Response> {
+  const auth = getAuth(context);
+  const token = context.cookies.get(SESSION_COOKIE)?.value;
+  if (token) destroySession(token);
+  clearSessionCookie(context);
+  return json({ ok: true, wasLoggedIn: Boolean(auth) });
+}
+
+async function me(context: APIContext): Promise<Response> {
+  const auth = getAuth(context);
+  if (!auth) return fail('未登录', 401);
+  return json({ user: auth.user, csrf: auth.csrf });
+}
+
+/* --------------------------------------------------------------------------
+   posts
+   -------------------------------------------------------------------------- */
+
+async function posts(context: APIContext, rest: string[], method: string): Promise<Response> {
+  const slug = rest[0];
+
+  if (rest.length === 0 && method === 'GET') {
+    const auth = getAuth(context);
+    return json({ posts: listPosts({ includeDrafts: Boolean(auth) }) });
+  }
+
+  if (rest.length === 1 && method === 'GET') {
+    const auth = getAuth(context);
+    const post = getPostBySlug(slug!, Boolean(auth));
+    if (!post) return fail('文章不存在', 404);
+    return json({ post });
+  }
+
+  if (rest.length === 0 && method === 'POST') {
+    const denied = requireCsrf(context);
+    if (denied) return denied;
+    const body = await readJson<Partial<PostInput>>(context.request);
+    const error = validatePostInput(body, true);
+    if (error) return fail(error, 400);
+    if (getPostBySlug(body!.slug!, true)) return fail('slug 已存在', 409);
+    try {
+      return json({ post: createPost(body as PostInput) }, 201);
+    } catch (e) {
+      console.error('[api/posts] create', e);
+      return fail('创建文章失败', 500);
+    }
+  }
+
+  if (rest.length === 1 && method === 'PUT') {
+    const denied = requireCsrf(context);
+    if (denied) return denied;
+    const current = getPostBySlug(slug!, true);
+    if (!current) return fail('文章不存在', 404);
+    const body = await readJson<Partial<PostInput> & { version?: number }>(context.request);
+    if (!body) return fail('请求体不是合法 JSON', 400);
+    const error = validatePostInput(body, false);
+    if (error) return fail(error, 400);
+    if (body.slug && body.slug !== current.slug && getPostBySlug(body.slug, true)) {
+      return fail('slug 已存在', 409);
+    }
+    const updated = updatePost(current.id, body, body.version);
+    if (!updated) return fail('文章已在别处被修改，请刷新后重试', 409);
+    return json({ post: updated });
+  }
+
+  if (rest.length === 1 && method === 'DELETE') {
+    const denied = requireCsrf(context);
+    if (denied) return denied;
+    const current = getPostBySlug(slug!, true);
+    if (!current) return fail('文章不存在', 404);
+    deletePost(current.id);
+    return json({ ok: true });
+  }
+
+  return fail('接口不存在', 404);
+}
+
+function validatePostInput(body: Partial<PostInput> | null, requireSlug: boolean): string | null {
+  if (!body) return '请求体不是合法 JSON';
+  if (requireSlug || body.slug !== undefined) {
+    if (!body.slug || !SLUG_RE.test(body.slug)) return 'slug 只能用小写字母、数字、-、_';
+  }
+  if (requireSlug || body.title !== undefined) {
+    if (!body.title?.trim()) return '标题不能为空';
+  }
+  if (requireSlug || body.pubDate !== undefined) {
+    if (!body.pubDate || !DATE_RE.test(body.pubDate)) return 'pubDate 必须是 YYYY-MM-DD';
+  }
+  if (requireSlug || body.bodyMarkdown !== undefined) {
+    if (typeof body.bodyMarkdown !== 'string') return 'bodyMarkdown 必须是字符串';
+  }
+  if (body.tags !== undefined && (!Array.isArray(body.tags) || body.tags.some((t) => typeof t !== 'string'))) {
+    return 'tags 必须是字符串数组';
+  }
+  return null;
+}
+
+/* --------------------------------------------------------------------------
+   权限小工具
+   -------------------------------------------------------------------------- */
+
+export function requireAuth(
+  context: APIContext
+): { auth: AuthContext } | { response: Response } {
+  const auth = getAuth(context);
+  if (!auth) return { response: fail('未登录', 401) };
+  return { auth };
+}
+
+export function requireCsrf(context: APIContext): Response | null {
+  const auth = getAuth(context);
+  if (!auth) return fail('未登录', 401);
+  if (!hasValidCsrf(context, auth)) return fail('CSRF 校验失败', 403);
+  return null;
+}

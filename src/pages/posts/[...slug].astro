@@ -1,43 +1,62 @@
 ---
 /**
- * 文章页 —— artifact 版（右侧搭载《三体》三个天体的混沌引力运动模型 + 可通过 /studio/ 自定义的右侧伴读悬浮栏）。
+ * 文章页 —— SSR 版。
+ *
+ * 数据来自 SQLite；Markdown 用 markdown-it 渲染，模板仍是 article.html 的
+ * @@TOKEN@@ 注入。静态版保留在旧分支/线上 dist，这里是动态版专用。
  */
-import { render } from 'astro:content';
+export const prerender = false;
+
 import ArtifactLayout from '../../layouts/ArtifactLayout.astro';
 import articleTpl from '../../artifact/article.html?raw';
-import { getPublishedPosts, getPostLead } from '../../utils/posts';
-import type { Post } from '../../utils/posts';
+import { getPostBySlug, listPosts } from '../../server/repositories/posts';
+import { getSetting } from '../../server/repositories/settings';
+import { renderMarkdown } from '../../server/markdown';
 import { chineseFullDate, readingTime } from '../../utils/date';
 import { cjkSpacing } from '../../utils/typography';
-import { articleRail } from '../../site.config';
+import { articleRail as staticArticleRail, type ArticleRailConfig } from '../../site.config';
 import '../../styles/artifact-prose.css';
 
-export async function getStaticPaths() {
-  const posts = await getPublishedPosts();
-  return posts.map((post) => ({
-    params: { slug: post.id.replace(/\.mdx?$/, '') },
-    props: { post },
-  }));
+const slug = Astro.params.slug;
+if (!slug) return new Response(null, { status: 404 });
+
+const post = getPostBySlug(slug);
+if (!post) return new Response(null, { status: 404 });
+
+const posts = listPosts();
+const index = posts.findIndex((p) => p.slug === post.slug);
+const newer = index > 0 ? posts[index - 1] : null;
+const older = index >= 0 && index < posts.length - 1 ? posts[index + 1] : null;
+
+const rail = getSetting<ArticleRailConfig>('articleRail', staticArticleRail);
+const { html: proseHtml, headings } = renderMarkdown(post.bodyMarkdown);
+const { chars, minutes } = readingTime(post.bodyMarkdown);
+
+const title = cjkSpacing(post.title);
+const tags = post.tags;
+const tagText = tags.length ? tags.join(' · ') : '未分类';
+
+function deriveLead(markdown: string): string {
+  const text = markdown
+    .replace(/!\[[^\]]*\]\([^)]*\)/g, '')
+    .replace(/<[^>]+>/g, '')
+    .replace(/[*_`#>~-]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return text.length > 120 ? `${text.slice(0, 120)}…` : text;
 }
 
-const { post } = Astro.props as { post: Post };
+const lead = post.lead?.trim() || deriveLead(post.bodyMarkdown) || post.description || '';
 
-const posts = await getPublishedPosts();
-const { Content, headings } = await render(post);
-const { chars, minutes } = readingTime(post.body ?? '');
+function chineseDate(iso: string): string {
+  const date = new Date(`${iso}T00:00:00`);
+  return Number.isNaN(date.valueOf()) ? iso : chineseFullDate(date);
+}
 
-const index = posts.findIndex((p) => p.id === post.id);
-const newer = index > 0 ? posts[index - 1] : null;
-const older = index < posts.length - 1 ? posts[index + 1] : null;
-
-const title = cjkSpacing(post.data.title);
-const tags = post.data.tags;
-const tagText = tags.length ? tags.join(' · ') : '未分类';
-const lead = post.data.lead?.trim() ? post.data.lead.trim() : getPostLead(post);
-const dateText = chineseFullDate(post.data.pubDate);
+const dateText = chineseDate(post.pubDate);
 const entryNo = String(index + 1).padStart(2, '0');
-const entryBadge = post.data.entryBadge?.trim()
-  ? `ARCHIVE COORDINATE // ENTRY #${entryNo} · ${post.data.entryBadge.trim()}`
+const entryBadge = post.entryBadge?.trim()
+  ? `ARCHIVE COORDINATE // ENTRY #${entryNo} · ${post.entryBadge.trim()}`
   : `ARCHIVE COORDINATE // ENTRY #${entryNo}`;
 
 const esc = (s: string) =>
@@ -58,50 +77,53 @@ const tocHtml = toc.length
   : `<p class="toc-empty">本文未设置小节标题</p>`;
 
 /* ---------- 相关文章 ---------- */
-const maxRelated = articleRail.related?.maxCount ?? 4;
-const related = posts.filter((p) => p.id !== post.id).slice(0, maxRelated);
+const maxRelated = rail.related?.maxCount ?? 4;
+const related = posts.filter((p) => p.slug !== post.slug).slice(0, maxRelated);
 const relatedHtml = `<ul class="rail-related-list">${related
   .map((p) => {
-    const n = String(posts.findIndex((x) => x.id === p.id) + 1).padStart(2, '0');
-    const cat = p.data.tags[0] ?? 'ARCHIVE';
-    return `<li><a href="/posts/${p.id}/"><span class="r-idx">ENTRY #${n} // ${esc(
+    const n = String(posts.findIndex((x) => x.slug === p.slug) + 1).padStart(2, '0');
+    const cat = p.tags[0] ?? 'ARCHIVE';
+    return `<li><a href="/posts/${p.slug}/"><span class="r-idx">ENTRY #${n} // ${esc(
       cat
-    )}</span><span class="r-tit">${esc(cjkSpacing(p.data.title))}</span></a></li>`;
+    )}</span><span class="r-tit">${esc(cjkSpacing(p.title))}</span></a></li>`;
   })
   .join('')}</ul>`;
 
 /* ---------- 上一篇 / 下一篇 ---------- */
-const pagerCell = (p: Post | null, dir: 'prev' | 'next') => {
+const pagerCell = (p: typeof newer, dir: 'prev' | 'next') => {
   const label = dir === 'prev' ? '&lt;- PREV ENTRY' : 'NEXT ENTRY -&gt;';
-  const href = p ? `/posts/${p.id}/` : '/posts/';
-  const text = p ? esc(cjkSpacing(p.data.title)) : '全部文章';
+  const href = p ? `/posts/${p.slug}/` : '/posts/';
+  const text = p ? esc(cjkSpacing(p.title)) : '全部文章';
   return `<a class="article-pager-cell" href="${href}"><span class="pager-kicker">${label}</span><span class="pager-title">${text}</span></a>`;
 };
-const pagerHtml = `<div class="article-pager-grid">${pagerCell(
-  newer,
-  'prev'
-)}${pagerCell(older, 'next')}</div>`;
+const pagerHtml = `<div class="article-pager-grid">${pagerCell(newer, 'prev')}${pagerCell(
+  older,
+  'next'
+)}</div>`;
 
-/* ---------- 右侧伴读悬浮栏（支持全局配置 + 单篇覆写） ---------- */
-const isMc = post.id === 'mc-server';
+/* ---------- 右侧伴读悬浮栏 ---------- */
+const isMc = post.slug === 'mc-server';
+const pick = (postValue: unknown, fallback: unknown, hard: string): string =>
+  String(postValue ?? fallback ?? hard);
+
 const topoCfg = {
-  kicker: post.data.railTopology?.kicker ?? articleRail.topology?.kicker ?? 'TOPOLOGY // 穿透链路图解',
-  badge: post.data.railTopology?.badge ?? articleRail.topology?.badge ?? 'TCP : 25565',
-  node1Title: post.data.railTopology?.node1Title ?? articleRail.topology?.node1Title ?? 'LOCAL HOST',
-  node1Sub: post.data.railTopology?.node1Sub ?? articleRail.topology?.node1Sub ?? 'Paper :25565',
-  node2Title: post.data.railTopology?.node2Title ?? articleRail.topology?.node2Title ?? 'FRP RELAY',
-  node2Sub: post.data.railTopology?.node2Sub ?? articleRail.topology?.node2Sub ?? 'Public :7000',
-  node3Title: post.data.railTopology?.node3Title ?? articleRail.topology?.node3Title ?? 'PLAYERS',
-  node3Sub: post.data.railTopology?.node3Sub ?? articleRail.topology?.node3Sub ?? 'Clients 1..N',
-  line1: post.data.railTopology?.line1 ?? articleRail.topology?.line1 ?? 'TUNNEL: 127.0.0.1:25565 -> frps:25565',
-  line2: post.data.railTopology?.line2 ?? articleRail.topology?.line2 ?? 'STATUS: NAT BYPASSED · ZERO PUBLIC IP',
+  kicker: pick(post.railTopology?.kicker, rail.topology?.kicker, 'TOPOLOGY // 穿透链路图解'),
+  badge: pick(post.railTopology?.badge, rail.topology?.badge, 'TCP : 25565'),
+  node1Title: pick(post.railTopology?.node1Title, rail.topology?.node1Title, 'LOCAL HOST'),
+  node1Sub: pick(post.railTopology?.node1Sub, rail.topology?.node1Sub, 'Paper :25565'),
+  node2Title: pick(post.railTopology?.node2Title, rail.topology?.node2Title, 'FRP RELAY'),
+  node2Sub: pick(post.railTopology?.node2Sub, rail.topology?.node2Sub, 'Public :7000'),
+  node3Title: pick(post.railTopology?.node3Title, rail.topology?.node3Title, 'PLAYERS'),
+  node3Sub: pick(post.railTopology?.node3Sub, rail.topology?.node3Sub, 'Clients 1..N'),
+  line1: pick(post.railTopology?.line1, rail.topology?.line1, 'TUNNEL: 127.0.0.1:25565 -> frps:25565'),
+  line2: pick(post.railTopology?.line2, rail.topology?.line2, 'STATUS: NAT BYPASSED · ZERO PUBLIC IP'),
 };
 
 const showTopology =
-  post.data.railMode === 'topology' ||
-  post.data.railTopology?.enabled === true ||
-  (post.data.railMode !== 'custom' &&
-    ((isMc && articleRail.topology?.enabledForMc !== false) || articleRail.topology?.globalEnabled === true));
+  post.railMode === 'topology' ||
+  post.railTopology?.enabled === true ||
+  (post.railMode !== 'custom' &&
+    ((isMc && rail.topology?.enabledForMc !== false) || rail.topology?.globalEnabled === true));
 
 const topologyHtml = showTopology
   ? `<div class="rail-blueprint-card" id="rail-topology-card">
@@ -132,8 +154,8 @@ const topologyHtml = showTopology
     </div>`
   : '';
 
-const docSpecCfg = articleRail.docSpec ?? {};
-const hasCustomPostSpecs = Array.isArray(post.data.railSpecs) && post.data.railSpecs.length > 0;
+const docSpecCfg = rail.docSpec ?? {};
+const hasCustomPostSpecs = Array.isArray(post.railSpecs) && post.railSpecs.length > 0;
 const defaultMcSpecs = [
   { label: 'JDK RUNTIME', value: 'Temurin 21 LTS' },
   { label: 'SERVER CORE', value: 'Paper 1.21.x' },
@@ -147,15 +169,17 @@ let specKicker = docSpecCfg.kicker ?? 'DOC SPEC // 文档速查卡';
 let specBadge = docSpecCfg.badge ?? 'BASELINE';
 
 if (hasCustomPostSpecs) {
-  specRows = post.data.railSpecs!;
+  specRows = post.railSpecs!;
   specKicker = 'SPEC SHEET // 专属速查卡';
 } else if (isMc) {
   specRows = defaultMcSpecs;
   specKicker = 'SPEC SHEET // 环境速查卡';
 } else {
   if (docSpecCfg.showPublished !== false) specRows.push({ label: 'PUBLISHED', value: dateText });
-  if (docSpecCfg.showChars !== false) specRows.push({ label: 'CHARS', value: `${chars.toLocaleString('zh-CN')} 字` });
-  if (docSpecCfg.showReading !== false) specRows.push({ label: 'READING', value: `约 ${minutes} 分钟` });
+  if (docSpecCfg.showChars !== false)
+    specRows.push({ label: 'CHARS', value: `${chars.toLocaleString('zh-CN')} 字` });
+  if (docSpecCfg.showReading !== false)
+    specRows.push({ label: 'READING', value: `约 ${minutes} 分钟` });
   if (docSpecCfg.showTags !== false) specRows.push({ label: 'TAGS', value: tagText });
   if (Array.isArray(docSpecCfg.customRows)) {
     for (const r of docSpecCfg.customRows) {
@@ -174,7 +198,7 @@ const specCardHtml =
       </div>`
     : '';
 
-const customCardsHtml = (articleRail.customCards ?? [])
+const customCardsHtml = (rail.customCards ?? [])
   .filter((c) => c.enabled)
   .map((c) => {
     if (c.type === 'kv' && Array.isArray(c.items)) {
@@ -192,15 +216,15 @@ const customCardsHtml = (articleRail.customCards ?? [])
   })
   .join('\n');
 
-const kineticCaption = post.data.kineticCaption?.trim()
-  ? esc(post.data.kineticCaption.trim())
+const kineticCaption = post.kineticCaption?.trim()
+  ? esc(post.kineticCaption.trim())
   : isMc
-  ? 'LOCAL : 25565 &lt;-&gt; FRP'
-  : esc(articleRail.threeBody?.defaultCaption ?? '3-BODY GRAVITY // CHAOTIC ORBIT');
+    ? 'LOCAL : 25565 &lt;-&gt; FRP'
+    : esc(rail.threeBody?.defaultCaption ?? '3-BODY GRAVITY // CHAOTIC ORBIT');
 
 /* ---------- 注入 ---------- */
 const slots: Record<string, string> = {
-  TOPBAR_TITLE: esc(`/posts/${post.id}/ · ${title}`),
+  TOPBAR_TITLE: esc(`/posts/${post.slug}/ · ${title}`),
   ENTRY_NO: entryNo,
   TITLE: esc(title),
   LEAD: esc(lead),
@@ -223,18 +247,15 @@ for (const [key, value] of Object.entries(slots)) {
   if (!html.includes(token)) console.warn('[article] 缺占位符', token);
   html = html.split(token).join(value);
 }
-
-const [before, after] = html.split('@@PROSE@@');
-if (after === undefined) throw new Error('article.html 缺少 @@PROSE@@ 占位符');
+if (!html.includes('@@PROSE@@')) throw new Error('article.html 缺少 @@PROSE@@ 占位符');
+html = html.replace('@@PROSE@@', proseHtml);
 ---
 
 <ArtifactLayout
   page="article"
   bodyClass="article"
-  title={post.data.title}
-  description={post.data.description}
+  title={post.title}
+  description={post.description ?? undefined}
 >
-  <Fragment set:html={before} />
-  <Content />
-  <Fragment set:html={after} />
+  <Fragment set:html={html} />
 </ArtifactLayout>
