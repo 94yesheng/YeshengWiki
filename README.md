@@ -3,17 +3,24 @@
 > 站点：<https://www.yesheng.wiki>
 > 仓库：`94yesheng/YeshengWiki`（私有）
 > 本地路径：`D:\blog`
-> 文档更新：2026-10-18
+> 文档更新：2026-10-19
+
+> **2026-10-19 已切换为动态版**：Astro SSR + SQLite + systemd/Nginx。
+> 后台 `/studio/` 用账号密码登录，保存直接写数据库，公开页即时更新。
+> 本文档中“纯静态 / 构建期生成 / GitHub CMS / FTP”等描述属于静态时代，正在逐步更新；
+> 以 [docs/dynamic-refactor.md](docs/dynamic-refactor.md) 与 [docs/cutover.md](docs/cutover.md) 为准。
 
 ---
 
 ## 0. 一句话说清这个项目
 
-这是一个 **Astro 构建的纯静态博客**：内容写在本地 Markdown / JSON 里，跑一条命令（`npm run build`）生成一堆 HTML，再通过 FTP 传到香港虚拟主机。
+这是一个 **Astro SSR 博客**：文章、照片、友链和站点设置存在服务器 SQLite 里，
+页面在请求时读取数据库并渲染 HTML。后台 `/studio/` 保存后直接写库，不需要重新构建。
 
-**服务器上没有任何程序在运行** —— 没有 PHP、没有数据库、没有后端。它只负责把已经生成好的死文件发给访客，跟发一张图片没有区别。
+代码和数据库都在香港服务器上：Node 进程由 systemd 托管，Nginx 反代，
+图片上传到 `/var/www/blog-data/uploads`。代码仍然用 Git 管理，内容数据不进 Git。
 
-写作有两条路：本地改文件，或者用浏览器打开 `/studio/`（纯前端后台，直接读写 GitHub 仓库）。两条路最终都变成一次 commit，再由 GitHub Actions 构建并上传。
+写作路径：浏览器打开 `/studio/` 登录，或本地改代码后重新部署。
 
 ---
 
@@ -21,14 +28,14 @@
 
 | 项 | 值 | 说明 |
 |---|---|---|
-| 站点生成器 | Astro `^7.3.8` | 在**构建时**把源码编译成 HTML |
-| Node.js | `>=22.12.0` | **只在本地构建时用**，服务器上不需要 |
+| 站点框架 | Astro `^7.3.8` + `@astrojs/node` | **SSR**：请求时从数据库取数 |
+| Node.js | `>=22.12.0` | 服务器上运行 SSR 进程 |
 | 语言 | TypeScript + CSS + Markdown | 没有 PHP / Java / Python 参与运行 |
-| 图片处理 | Astro 内置图片管线（Sharp） | 构建时自动生成多档尺寸 + WebP |
+| 数据库 | **SQLite**（better-sqlite3，WAL） | 单文件，位置 `/var/www/blog-data/blog.db` |
+| 图片 | 本地 `uploads/` + 浏览器端 Sharp 压缩 | 后台选图时压缩，Nginx 直接发图 |
 | 样式 | 手写 CSS，无框架 | 没有 Tailwind、没有预处理器 |
-| 客户端 JS | 访客页少量 | 文章列表标签筛选、照片灯箱、悬浮球、页脚彩蛋；主页 / 文章归档 / 文章详细 / 照片四页另有 artifact 自带的一套交互与 canvas 动效 |
-| 数据库 | **无** | 内容就是磁盘上的文件 |
-| 部署 | GitHub Actions → FTP | 只传 `dist/` |
+| 客户端 JS | 访客页少量 | 文章筛选、照片灯箱、悬浮球、页脚彩蛋、artifact canvas 动效 |
+| 部署 | systemd + Nginx 反代 | 代码在 `/var/www/blog-app`，静态回滚在 `/var/www/blog` |
 
 ---
 
@@ -36,12 +43,13 @@
 
 ```bash
 npm install          # 首次
-npm run dev          # → http://localhost:4321（改文件热更新）
-npm run build        # → dist/（要上传的就是它）
-npm run preview      # 用构建产物起本地服务器
+cp .env.example .env # 本地数据库路径 / 首个管理员
+npm run dev          # → http://localhost:4321（SSR + SQLite）
+npm run build        # → dist-dynamic/（systemd 跑 dist-dynamic/server/entry.mjs）
 npm run check        # 类型检查（CI 里也会跑）
-npm run vault        # 生成/更换后台解锁密文（见 7.3）
-npm run import:artifact   # 从设计源重新生成 CSS/JS/四个 HUD 页面（见 5.3）
+
+# 本地首次准备数据（把 src/content 与 assets 迁进 SQLite）
+node scripts/migrate-to-db.mjs --db data/blog.db --uploads data/uploads --fresh
 ```
 
 开发服务器建议用后台模式（`CLAUDE.md` / `AGENTS.md` 里也是这条）：
@@ -52,6 +60,7 @@ astro dev status | logs | stop
 ```
 
 > 注意：`npx astro build` 会把 `node_modules/.vite` 写坏，之后 dev 取不到预打包依赖（504）。跑完构建再起 dev 前，先 `rm -rf node_modules/.vite`。
+> `npm run vault` 与 `npm run import:artifact` 属于静态时代工具，动态版不再使用。
 
 ---
 
