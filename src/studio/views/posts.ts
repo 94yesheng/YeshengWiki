@@ -18,7 +18,9 @@ import { createEditor } from '../editor';
 import { normalizeHtml, renderMarkdown } from '../md';
 import { openPreview } from '../preview';
 import { chineseFullDate, isoDate, readingTime } from '../../utils/date';
-import { $, esc, reportError, setBusy, toast } from '../ui';
+import { $, esc, reportError, setBusy, showConfirm, toast } from '../ui';
+import { isV2Layout } from '../layout';
+import { applyV2PostLayout } from '../v2-layout';
 import {
   isStagedNew,
   markDirty,
@@ -521,16 +523,37 @@ export function renderPostView(): void {
     const file = (e.target as HTMLInputElement).files?.[0];
     if (!file) return;
     try {
-      const localUrl = URL.createObjectURL(file);
-      d.fields.cover = localUrl;
       const input = $<HTMLInputElement>('#st-f-cover');
-      if (input) input.value = `../../assets/posts/${file.name}`;
       const img = $<HTMLImageElement>('#st-cover-preview-img');
-      if (img) img.src = localUrl;
+      const localUrl = URL.createObjectURL(file);
+      if (img) {
+        img.style.opacity = '1';
+        img.src = localUrl;
+      }
+
+      // v2 真实模式：真正上传到 src/assets/posts/，frontmatter 里写相对路径。
+      if (isV2Layout() && !state.demoMode && state.gh) {
+        setBusy(true, '压缩并上传封面…');
+        const prepared = await prepareImage(file);
+        const name = await uploadPostAsset(state.gh, prepared, d.entry.id, state.postAssetFiles);
+        state.postAssetFiles.push(name);
+        const rel = `../../assets/posts/${name}`;
+        d.fields.cover = rel;
+        if (input) input.value = rel;
+        markDirty();
+        toast(`封面 ${name} 已上传：${rel}`);
+        return;
+      }
+
+      // 经典版保持原行为：只做本地预览，不改仓库。
+      d.fields.cover = localUrl;
+      if (input) input.value = `../../assets/posts/${file.name}`;
       markDirty();
       toast(`已加载封面预览：${file.name}（16:9 画框已适配）`);
     } catch (err) {
       reportError(err);
+    } finally {
+      if (isV2Layout()) setBusy(false);
     }
   });
 
@@ -544,6 +567,7 @@ export function renderPostView(): void {
       (d.fields.tags as string[]).push(v);
       markDirty();
       renderPostView();
+      if (isV2Layout()) $<HTMLInputElement>('#st-f-newtag')?.focus();
     }
     input.value = '';
   });
@@ -555,6 +579,7 @@ export function renderPostView(): void {
         (d.fields.tags as string[]).push(t);
         markDirty();
         renderPostView();
+        if (isV2Layout()) $<HTMLInputElement>('#st-f-newtag')?.focus();
       }
     })
   );
@@ -564,6 +589,7 @@ export function renderPostView(): void {
       d.fields.tags = (d.fields.tags as string[]).filter((t) => t !== b.dataset.rm);
       markDirty();
       renderPostView();
+      if (isV2Layout()) $<HTMLInputElement>('#st-f-newtag')?.focus();
     })
   );
 
@@ -637,9 +663,22 @@ export function renderPostView(): void {
   });
 
   $('#st-btn-preview-post')?.addEventListener('click', () => previewCurrentPost());
-  $('#st-del-post')?.addEventListener('click', () => removePost(d.entry));
+  $('#st-del-post')?.addEventListener('click', () => {
+    if (!isV2Layout()) {
+      removePost(d.entry);
+      return;
+    }
+    void showConfirm({
+      title: '删除这篇文章？',
+      body: '会先暂存删除，点「保存当前」才真正提交到仓库；保存前可以点「重新读取」撤销。',
+      confirm: '暂存删除',
+    }).then((ok) => {
+      if (ok) removePost(d.entry);
+    });
+  });
 
   renderRightDock(d);
+  if (isV2Layout()) applyV2PostLayout(d);
 }
 
 function renderRightDock(d: NonNullable<Draft['post']>): void {

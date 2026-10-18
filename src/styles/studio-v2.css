@@ -1,0 +1,510 @@
+/* ==========================================================================
+   后台 v2 · 桌面工作台
+   目标：HUD 只留外壳；正文优先、工具栏跟手、右侧检查器。
+   经典版 /studio/ 不加载本文件。
+   ========================================================================== */
+
+.v2-body {
+  --v2-rail: 17rem;
+  --v2-inspector: 24rem;
+
+  background-image: none;
+  font-family: var(--sans);
+}
+
+/* ---------- 顶栏：更安静的一层纸 ---------- */
+.v2-body .st-bar {
+  height: var(--nav-h);
+  padding: 0 1.25rem;
+  background: color-mix(in srgb, var(--paper) 96%, var(--canvas));
+  border-bottom: 1px solid var(--rule);
+}
+
+.v2-body .st-bar-left { gap: 1.5rem; }
+.v2-body .st-bar-right { gap: 0.4rem; }
+
+.v2-body .st-nav {
+  border-left: 1px solid var(--rule);
+  padding-left: 1rem;
+}
+
+.v2-body .st-nav button {
+  min-height: 2rem;
+  padding: 0 0.7rem;
+  border-radius: 3px;
+  font-size: 0.88rem;
+}
+
+.v2-body .st-nav button[aria-current='true'] {
+  background: color-mix(in srgb, var(--accent) 12%, var(--paper));
+  color: var(--ink);
+}
+
+.v2-badge {
+  margin-left: 0.45rem;
+  padding: 0.05rem 0.35rem;
+  border: 1px solid color-mix(in srgb, var(--accent) 55%, var(--rule));
+  border-radius: 2px;
+  font-family: var(--mono);
+  font-size: 0.58rem;
+  letter-spacing: 0.1em;
+  color: var(--accent);
+}
+
+.v2-body .st-btn {
+  min-height: 2.1rem;
+  padding: 0 0.7rem;
+  border-radius: 4px;
+  font-size: 0.82rem;
+}
+
+.v2-body .st-btn--primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.v2-body .st-btn--primary:disabled {
+  opacity: 0.38;
+  color: #fff;
+}
+
+.v2-body .st-btn--ghost {
+  border-color: transparent;
+  background: transparent;
+  color: var(--muted);
+}
+
+.v2-body .st-btn--ghost:hover {
+  border-color: var(--rule);
+  color: var(--accent);
+}
+
+.v2-body .st-dirty-badge { font-size: 0.72rem; }
+.v2-body .st-meta-badge { font-size: 0.7rem; }
+
+/* ---------- 主栅格：列表 / 文档 / 检查器 ---------- */
+.v2-body #st-main {
+  min-height: 0;
+  overflow: hidden;
+}
+
+.v2-body .v2-app {
+  --nav-w: var(--v2-rail);
+  --tools-w: var(--v2-inspector);
+  grid-template-columns: var(--v2-rail) minmax(0, 1fr) var(--v2-inspector);
+  height: 100%;
+  min-height: 0;
+}
+
+.v2-body .st-col {
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--muted) 38%, transparent) transparent;
+}
+
+.v2-body .st-col::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+  display: block;
+}
+
+.v2-body .st-col::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--muted) 32%, transparent);
+  border: 3px solid transparent;
+  background-clip: padding-box;
+  border-radius: 8px;
+}
+
+.v2-body .st-col::-webkit-scrollbar-track { background: transparent; }
+
+/* 左栏 */
+.v2-body .v2-rail {
+  padding: 0.85rem 0 2.5rem;
+  background: color-mix(in srgb, var(--paper) 95%, var(--canvas));
+  border-right: 1px solid var(--rule);
+}
+
+.v2-body .v2-rail .st-panel-title {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  padding: 0.55rem 0.95rem 0.65rem;
+  background: color-mix(in srgb, var(--paper) 97%, var(--canvas));
+  font-size: 0.68rem;
+  letter-spacing: 0.08em;
+}
+
+.v2-body .v2-rail .st-list { padding: 0 0.55rem; }
+.v2-body .v2-rail .st-list button { border-radius: 4px; }
+
+/* 中栏文档 */
+.v2-body .v2-doc {
+  padding: 1.75rem clamp(1.5rem, 3vw, 3rem) 5rem;
+  background: var(--paper);
+  border-right: 0;
+}
+
+.v2-body .v2-doc > * {
+  width: min(100%, 56rem);
+  margin-inline: auto;
+}
+
+.v2-body .v2-doc .st-q-card {
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  background: var(--paper);
+  overflow: visible;
+}
+
+/* 右栏检查器 */
+.v2-body .v2-inspector-col {
+  padding: 0;
+  background: color-mix(in srgb, var(--paper) 94%, var(--canvas));
+  border-left: 1px solid var(--rule);
+  --col-expanded: 100%;
+}
+
+.v2-inspector {
+  padding: 1.1rem 1.1rem 4rem;
+}
+
+.v2-inspector-head {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  margin: -1.1rem -1.1rem 0;
+  padding: 1rem 1.1rem 0.85rem;
+  background: color-mix(in srgb, var(--paper) 97%, var(--canvas));
+  border-bottom: 1px solid var(--rule);
+}
+
+.v2-inspector-kicker {
+  font-family: var(--mono);
+  font-size: 0.62rem;
+  letter-spacing: 0.12em;
+  color: var(--accent);
+}
+
+.v2-inspector-head h2 {
+  margin: 0.2rem 0 0.25rem;
+  font-family: var(--kai);
+  font-size: 1.3rem;
+  font-weight: 400;
+  letter-spacing: 0.04em;
+}
+
+.v2-inspector-head p {
+  margin: 0;
+  font-size: 0.72rem;
+  line-height: 1.55;
+  color: var(--muted);
+}
+
+.v2-inspector-body {
+  padding-top: 0.4rem;
+}
+
+/* 检查器里的元数据：去掉多层边框，改成一条条轻分隔 */
+.v2-inspector-body .st-section-box {
+  padding: 0.9rem 0;
+  border: 0;
+  border-bottom: 1px solid var(--rule);
+  border-radius: 0;
+  background: transparent;
+}
+
+.v2-inspector-body .st-section-box:last-child { border-bottom: 0; }
+
+.v2-inspector-body .st-section-head {
+  padding: 0 0 0.45rem;
+  border: 0;
+  background: transparent;
+}
+
+.v2-inspector-body .st-section-body { padding-top: 0.35rem; }
+
+.v2-inspector-body .st-grid-2,
+.v2-inspector-body .st-grid-3 {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0.6rem;
+}
+
+.v2-inspector-body .st-field {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0.22rem;
+}
+
+.v2-inspector-body .st-field > label {
+  padding-top: 0;
+  font-size: 0.72rem;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+
+.v2-inspector-body .st-input,
+.v2-inspector-body .st-textarea,
+.v2-inspector-body .st-select {
+  font-size: 0.85rem;
+  padding: 0.38rem 0.55rem;
+}
+
+.v2-inspector-body .st-cover-preview-wrap img {
+  max-height: 8.5rem;
+  object-fit: cover;
+}
+
+.v2-inspector-body .st-cover-config-box {
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+  padding: 0.55rem;
+}
+
+.v2-inspector-body .st-section-box .st-section-head .st-sec-tag,
+.v2-inspector-body .st-section-box .st-section-head .st-sec-mono {
+  font-size: 0.6rem;
+}
+
+/* 章节坐标：从工具栏搬到检查器 */
+.v2-toc-card {
+  padding: 0.9rem 0 1rem;
+  border-bottom: 1px solid var(--rule);
+}
+
+.v2-toc-card .ed-glabel {
+  display: block;
+  margin-bottom: 0.45rem;
+  font-family: var(--mono);
+  font-size: 0.62rem;
+  letter-spacing: 0.1em;
+  color: var(--accent);
+}
+
+.v2-toc-card .ed-toc-preview {
+  max-height: 14rem;
+  overflow-y: auto;
+}
+
+/* ---------- 文章页：sticky 文档头 + 正文优先 ---------- */
+.v2-body .v2-doc-head {
+  position: sticky;
+  top: 0;
+  z-index: 6;
+  margin: -1px -1px 0;
+  padding: 1rem 1.25rem 0.85rem;
+  border-bottom: 1px solid var(--rule);
+  border-radius: 6px 6px 0 0;
+  background: var(--paper);
+}
+
+.v2-body .v2-doc-head .st-head-top-row {
+  align-items: flex-start;
+  gap: 1rem;
+}
+
+.v2-body .v2-doc-head .st-kicker {
+  font-size: 0.68rem;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+
+.v2-body .v2-title-field {
+  display: block;
+  width: 100%;
+  margin-top: 0.28rem;
+}
+
+.v2-body .v2-title-field > label { display: none; }
+.v2-body .v2-title-field > div { display: block; }
+
+.v2-body .v2-title-field .st-input {
+  width: 100%;
+  padding: 0;
+  border: 0;
+  border-bottom: 1px solid transparent;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  color: var(--ink);
+  font-family: var(--kai);
+  font-size: clamp(1.7rem, 2.4vw, 2.35rem);
+  line-height: 1.25;
+  letter-spacing: 0.02em;
+}
+
+.v2-body .v2-title-field .st-input:focus {
+  border-bottom-color: var(--accent);
+  box-shadow: none;
+}
+
+.v2-body .v2-doc-head .st-head-btns {
+  flex-shrink: 0;
+  gap: 0.35rem;
+}
+
+.v2-body .v2-doc-head .st-btn,
+.v2-body .v2-doc-head .stage-mini-btn {
+  min-height: 2rem;
+  font-size: 0.78rem;
+}
+
+.v2-body .v2-editor-section {
+  padding: 1rem 1.25rem 1.5rem;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.v2-body .v2-editor-section > .st-section-head { display: none; }
+
+/* 工具栏：从右栏搬到编辑器上方，横向排布 */
+.v2-body .v2-editor-toolbar {
+  margin-bottom: 0.75rem;
+}
+
+.v2-body .v2-editor-toolbar .ed-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.5rem;
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--paper) 97%, var(--canvas));
+}
+
+.v2-body .v2-editor-toolbar .ed-group {
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+
+.v2-body .v2-editor-toolbar .ed-glabel { display: none; }
+.v2-body .v2-editor-toolbar .ed-row { display: flex; flex-wrap: wrap; gap: 0.28rem; }
+
+.v2-body .v2-editor-toolbar .ed-btn {
+  min-height: 1.7rem;
+  padding: 0 0.45rem;
+  font-size: 0.72rem;
+}
+
+.v2-body .v2-editor-toolbar .ed-btn--icon {
+  min-width: 1.7rem;
+  padding: 0 0.3rem;
+}
+
+.v2-body .v2-editor-toolbar .ed-count {
+  margin-left: auto;
+  align-self: center;
+  font-size: 0.68rem;
+}
+
+/* 章节坐标留在工具栏里，避免重渲染时被搬丢；限制高度，保持工具栏紧凑 */
+.v2-body .v2-editor-toolbar .ed-group:has(.ed-toc-preview) {
+  flex-basis: 100%;
+}
+
+.v2-body .v2-editor-toolbar .ed-group:has(.ed-toc-preview) .ed-glabel {
+  display: block;
+  margin-bottom: 0.25rem;
+  font-family: var(--mono);
+  font-size: 0.62rem;
+  letter-spacing: 0.08em;
+  color: var(--accent);
+}
+
+.v2-body .v2-editor-toolbar .ed-toc-preview {
+  max-height: 7.5rem;
+  overflow-y: auto;
+}
+
+.v2-body .v2-editor-section .ed-shell {
+  border-radius: 4px;
+}
+
+.v2-body .v2-editor-section .ed-area {
+  min-height: 32rem;
+  padding: 1.75rem 2rem;
+}
+
+/* ---------- 其他板块：让它们也落在同一套卡片/间距里 ---------- */
+.v2-body .v2-doc .st-head {
+  border-radius: 6px 6px 0 0;
+}
+
+.v2-body .v2-doc .st-section-box {
+  border-radius: 0;
+}
+
+.v2-body .v2-doc .st-section-box:last-child {
+  border-radius: 0 0 6px 6px;
+}
+
+/* ---------- Toast：右上角，低于 modal，不再压住正文 ---------- */
+.v2-body .st-toast {
+  left: calc(var(--v2-rail) + 1.25rem);
+  right: auto;
+  bottom: 1.25rem;
+  top: auto;
+  transform: none;
+  max-width: min(360px, 30vw);
+  padding: 0.55rem 0.8rem;
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--paper) 97%, var(--canvas));
+  color: var(--ink);
+  box-shadow: 0 8px 24px color-mix(in srgb, var(--ink) 10%, transparent);
+  font-size: 0.78rem;
+  line-height: 1.5;
+  text-align: left;
+  z-index: 80;
+}
+
+.v2-body .st-toast--err {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: #fff;
+}
+
+/* ---------- 杂项 ---------- */
+.v2-body .fab,
+.v2-body .st-col-handle,
+.v2-body .st-planar-watermark {
+  display: none !important;
+}
+
+.v2-body .st-busy {
+  background: color-mix(in srgb, var(--paper) 70%, transparent);
+  backdrop-filter: blur(2px);
+}
+
+.v2-body .st-chip button {
+  width: 1.05rem;
+  height: 1.05rem;
+  line-height: 1;
+}
+
+/* 桌面专用：窗口过窄时保底三栏，不做移动端重排 */
+@media (max-width: 1220px) {
+  .v2-body { min-width: 1120px; }
+  .v2-body .v2-app {
+    grid-template-columns: 15.5rem minmax(0, 1fr) 22rem;
+  }
+  .v2-body .st-col--tools,
+  .v2-body .st-col--preview { display: block; }
+}
+
+@media (max-width: 860px) {
+  .v2-body { height: 100vh; overflow: hidden; }
+  .v2-body .v2-app {
+    height: 100%;
+    min-height: 0;
+    grid-template-columns: 15rem minmax(0, 1fr) 21rem;
+  }
+  .v2-body .st-bar { height: var(--nav-h); min-height: var(--nav-h); align-items: center; padding: 0 1rem; }
+  .v2-body .st-bar-left { flex: 0 1 auto; }
+  .v2-body .st-bar-right { position: static; }
+  .v2-body #st-lock,
+  .v2-body #st-refresh { display: inline-flex; }
+}

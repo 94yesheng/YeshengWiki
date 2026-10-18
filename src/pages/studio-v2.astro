@@ -1,0 +1,46 @@
+---
+/**
+ * 后台 v2（桌面工作台）—— 实验版本，不覆盖 /studio/
+ *
+ * 目标：正文优先、工具栏跟手、右侧检查器；只做桌面端。
+ * 经典版仍在 /studio/，两版共用同一套数据/保存逻辑。
+ */
+import '../styles/tokens.css';
+import '../styles/studio.css';
+import '../styles/studio-v2.css';
+import { THEME_BOOT } from '../utils/theme';
+---
+
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex, nofollow" />
+    <title>后台 v2 · 夜笙的小世界</title>
+    <meta name="theme-color" content="#faf9f5" />
+    <script is:inline set:html={THEME_BOOT}></script>
+  </head>
+  <body class="st-body v2-body">
+    <!-- 昼夜切换过渡层：沿用经典版 -->
+    <div class="theme-transition-stage" id="theme-transition-stage" aria-hidden="true">
+      <div class="theme-transition-veil" id="theme-transition-veil"></div>
+      <canvas class="theme-transition-canvas" id="theme-transition-canvas"></canvas>
+      <div class="theme-transition-badge" id="theme-transition-badge">SINGULARITY TRANSITION // ∞ ↔ BLACK HOLE</div>
+    </div>
+
+    <header class="st-bar" id="st-bar"></header>
+
+    <main id="st-main">
+      <p class="st-boot">
+        正在初始化 STUDIO v2 工作台…
+        <span>如果一直停在这里，说明脚本没跑起来：按 F12 查看控制台报错，或回到 <a href="/studio/">经典版</a>。</span>
+      </p>
+    </main>
+    <div class="st-toast" id="st-toast" role="status" aria-live="polite"></div>
+
+    <script>
+      import '../studio/v2/app';
+    </script>
+  </body>
+</html>

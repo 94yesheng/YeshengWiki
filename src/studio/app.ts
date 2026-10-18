@@ -234,6 +234,9 @@ function renderBar(): void {
     if (state.vault) renderUnlock('已锁定会话');
     else renderNoVault();
   });
+
+  // renderBar 会重建整个 #st-bar；不在这里补一次，输入第一个字后顶栏导航就会消失。
+  renderNav();
 }
 
 /* --------------------------------------------------------------------------
