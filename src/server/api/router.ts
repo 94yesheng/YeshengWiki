@@ -12,6 +12,7 @@ import {
   destroySession,
   getAuth,
   hasValidCsrf,
+  hashPassword,
   isRateLimited,
   recordFailure,
   SESSION_COOKIE,
@@ -38,6 +39,12 @@ import { fail, json, readJson } from './http';
 interface LoginBody {
   username?: string;
   password?: string;
+}
+
+interface AccountBody {
+  currentPassword?: string;
+  username?: string;
+  newPassword?: string;
 }
 
 const SLUG_RE = /^[a-z0-9][a-z0-9-_]*$/;
@@ -69,6 +76,9 @@ export async function handleApi(context: APIContext): Promise<Response | null> {
     if (parts[1] === 'login' && parts.length === 2 && method === 'POST') return login(context);
     if (parts[1] === 'logout' && parts.length === 2 && method === 'POST') return logout(context);
     if (parts[1] === 'me' && parts.length === 2 && method === 'GET') return me(context);
+    if (parts[1] === 'account' && parts.length === 2 && (method === 'POST' || method === 'PUT')) {
+      return changeAccount(context);
+    }
   }
 
   // /api/posts
@@ -176,6 +186,80 @@ async function me(context: APIContext): Promise<Response> {
   const auth = getAuth(context);
   if (!auth) return fail('未登录', 401);
   return json({ user: auth.user, csrf: auth.csrf });
+}
+
+async function changeAccount(context: APIContext): Promise<Response> {
+  const auth = getAuth(context);
+  if (!auth) return fail('未登录', 401);
+  if (!hasValidCsrf(context, auth)) return fail('CSRF 校验失败', 403);
+
+  const body = await readJson<AccountBody>(context.request);
+  const currentPassword = body?.currentPassword ?? '';
+  const username = (body?.username ?? '').trim();
+  const newPassword = body?.newPassword ?? '';
+
+  if (!currentPassword) return fail('请输入当前密码', 400);
+  if (!username) return fail('账号不能为空', 400);
+  if (!/^[\p{L}\p{N}._-]{3,32}$/u.test(username)) {
+    return fail('账号需为 3-32 位中英文、数字或 ._-', 400);
+  }
+  if (newPassword && newPassword.length < 8) return fail('新密码至少 8 位', 400);
+  if (newPassword.length > 200) return fail('新密码太长', 400);
+
+  const key = `account:${auth.user.id}:${context.clientAddress || 'unknown'}`;
+  if (isRateLimited(key)) return fail('尝试次数过多，请 10 分钟后再试', 429);
+
+  const db = getDb();
+  const row = db
+    .prepare('SELECT id, username, password_hash FROM users WHERE id = ?')
+    .get(auth.user.id) as { id: number; username: string; password_hash: string } | undefined;
+  if (!row) return fail('账号不存在', 404);
+
+  if (!verifyPassword(currentPassword, row.password_hash)) {
+    recordFailure(key);
+    return fail('当前密码不对', 400);
+  }
+
+  const passwordChanged = newPassword.length > 0;
+  if (username === row.username && !passwordChanged) {
+    return fail('账号和密码都没有变化', 400);
+  }
+
+  if (username !== row.username) {
+    const occupied = db
+      .prepare('SELECT id FROM users WHERE username = ? AND id <> ?')
+      .get(username, auth.user.id);
+    if (occupied) return fail('这个账号已被占用', 409);
+  }
+
+  const passwordHash = passwordChanged ? hashPassword(newPassword) : row.password_hash;
+
+  try {
+    db.transaction(() => {
+      db.prepare('UPDATE users SET username = ?, password_hash = ? WHERE id = ?').run(
+        username,
+        passwordHash,
+        auth.user.id
+      );
+      // 改密后让其他设备/浏览器的旧会话失效，保留当前会话
+      if (passwordChanged) {
+        db.prepare('DELETE FROM sessions WHERE user_id = ? AND id <> ?').run(
+          auth.user.id,
+          auth.sessionId
+        );
+      }
+    })();
+  } catch (error) {
+    console.error('[api/account]', error);
+    return fail('更新账号失败，请稍后重试', 500);
+  }
+
+  clearFailures(key);
+  return json({
+    ok: true,
+    user: { id: auth.user.id, username },
+    passwordChanged,
+  });
 }
 
 /* --------------------------------------------------------------------------

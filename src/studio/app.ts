@@ -253,7 +253,7 @@ const NAV: Array<{ key: Collection; label: string; count: () => number }> = [
     },
   },
   { key: 'links', label: '友链', count: () => state.links?.links.length ?? 0 },
-  { key: 'site',  label: '设置', count: () => 4 },
+  { key: 'site',  label: '设置', count: () => 5 },
 ];
 
 /**
@@ -384,6 +384,10 @@ function renderList(): void {
       <li><button type="button" data-id="rail" aria-current="${state.selected === 'rail'}">
         <span class="st-line"><span class="st-date">04</span><span class="st-name">文章右侧悬浮栏定制</span></span>
         <span class="st-sub">文档速查卡 / 拓扑图 / 自定义悬浮卡</span>
+      </button></li>
+      <li><button type="button" data-id="account" aria-current="${state.selected === 'account'}">
+        <span class="st-line"><span class="st-date">05</span><span class="st-name">账户与安全</span></span>
+        <span class="st-sub">修改登录账号 / 密码 / 会话</span>
       </button></li>
     </ul>`;
   }

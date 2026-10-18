@@ -20,6 +20,7 @@
 - `artifact.js` 的焦点文章/照片数据改为优先读服务端注入，保留静态兜底
 - `/studio/` 传输层已换成 `/api/fs` 虚拟文件接口：`ApiGithub extends Github`，
   `content.ts`/views 几乎不用改；登录改为账号密码 + HttpOnly 会话，不再需要 PAT/vault
+- 后台「设置 → 05 账户与安全」可改管理员账号和密码；改密后其他设备会话失效，当前会话保留
 - 图片上传走 `/api/fs` 的二进制模式，写入 `uploads/`；后台已有 Sharp 压缩与 EXIF 解析
 - 已用无头 Edge 验证：登录 → 6 篇文章列表 → 改标题/取消草稿 → 保存 → 公开页立即 200
 
@@ -116,6 +117,7 @@ Nginx (443, TLS)
 | POST | `/api/auth/login` | 账号密码登录，建会话 |
 | POST | `/api/auth/logout` | 销毁会话 |
 | GET | `/api/auth/me` | 当前用户 + CSRF |
+| POST | `/api/auth/account` | 改管理员账号/密码；需当前密码 + CSRF，改密后其他会话失效 |
 | GET/POST | `/api/posts` | 列表 / 新建 |
 | GET/PUT/DELETE | `/api/posts/[id]` | 单篇读取 / 保存 / 删除 |
 | GET/POST | `/api/walls` | 照片墙列表 / 新建 |

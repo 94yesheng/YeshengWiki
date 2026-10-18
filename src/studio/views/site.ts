@@ -6,9 +6,10 @@
  *   2. `home`    —— 02 · 主页五屏文案、流形方程、粒子场参数与四象限入口
  *   3. `dossier` —— 03 · 关于「我」个人档案、友链互换名片与站点说明志 (Site Colophon)
  *   4. `rail`    —— 04 · 文章详细页右侧悬浮栏（.article-RightRail-q）全局定制与伴读卡片管理
+ *   5. `account` —— 05 · 管理员账号与密码（写 users 表，不经过站点 JSON）
  */
 import { $, esc, toast } from '../ui';
-import { state, markDirty } from '../state';
+import { state, markDirty, rerender } from '../state';
 
 type Json = Record<string, unknown>;
 
@@ -25,6 +26,11 @@ export function renderSiteView(): void {
   if (!edit || !preview || !state.site) return;
 
   const subView = state.selected || 'site';
+  if (subView === 'account') {
+    renderAccountSettings(edit, preview);
+    return;
+  }
+
   const data = siteDraft();
 
   if (subView === 'rail') {
@@ -912,6 +918,202 @@ function renderArticleRailSettings(edit: HTMLElement, data: Json): void {
 /* --------------------------------------------------------------------------
    右栏实时预览（根据当前选中的设置子板块动态呈现 1:1 蓝图预览）
    -------------------------------------------------------------------------- */
+function renderAccountSettings(edit: HTMLElement, preview: HTMLElement): void {
+  const demo = state.demoMode;
+  const current = state.user || 'admin';
+
+  edit.innerHTML = `
+    <div class="st-q-card">
+      <div class="q-topbar">
+        <div class="q-topbar-cell">
+          <span class="q-sec-badge">SECURITY // 05</span>
+          <span>ADMIN ACCOUNT &amp; PASSWORD // 管理员账号与登录密码</span>
+        </div>
+        <div class="q-topbar-cell q-topbar-cell--right">
+          <span class="telemetry-accent">users · SQLite</span>
+        </div>
+      </div>
+
+      <div class="st-head">
+        <div class="st-kicker">CREDENTIALS // 只写服务器数据库，不经过站点 JSON 或 GitHub</div>
+        <h2>修改后台账号与密码</h2>
+      </div>
+
+      ${
+        demo
+          ? '<div class="st-hint" style="margin-bottom:0.8rem;">当前是 UI 演示模式，账户修改不会写数据库。请退出演示并用管理员账号登录后再试。</div>'
+          : ''
+      }
+
+      <div class="st-section-box">
+        <div class="st-section-head">
+          <span>01 // CURRENT CREDENTIALS · 验证当前身份</span>
+          <span class="st-sec-tag">REQUIRED</span>
+        </div>
+        <div class="st-grid-2">
+          <div class="st-field">
+            <label>当前账号</label>
+            <div><input class="st-input" value="${esc(current)}" disabled /></div>
+          </div>
+          <div class="st-field">
+            <label>当前密码（必填）</label>
+            <div><input class="st-input" id="st-acct-current" type="password" autocomplete="current-password" placeholder="输入当前登录密码..." /></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="st-section-box">
+        <div class="st-section-head">
+          <span>02 // NEW CREDENTIALS · 新账号 / 新密码</span>
+          <span class="st-sec-tag">OPTIONAL</span>
+        </div>
+        <div class="st-grid-2">
+          <div class="st-field">
+            <label>新账号</label>
+            <div><input class="st-input" id="st-acct-username" value="${esc(current)}" autocomplete="username" spellcheck="false" /></div>
+          </div>
+          <div class="st-field">
+            <label>新密码（留空表示不改）</label>
+            <div><input class="st-input" id="st-acct-new" type="password" autocomplete="new-password" placeholder="至少 8 位..." /></div>
+          </div>
+          <div class="st-field">
+            <label>确认新密码</label>
+            <div><input class="st-input" id="st-acct-confirm" type="password" autocomplete="new-password" placeholder="再输入一次..." /></div>
+          </div>
+        </div>
+        <div class="st-hint" style="margin-top:0.7rem;">
+          账号 3–32 位中英文、数字或 <code>._-</code>；密码至少 8 位。改密后其他设备/浏览器的登录会失效，当前会话保留。
+        </div>
+      </div>
+
+      <div class="st-head-btns" style="margin-top:0.2rem;">
+        <button type="button" class="st-btn st-btn--primary" id="st-acct-save" ${demo ? 'disabled' : ''}>更新账户</button>
+      </div>
+      <p class="st-hint" id="st-acct-msg" role="status" aria-live="polite"></p>
+    </div>`;
+
+  preview.innerHTML = `
+    <div class="st-col-inner">
+      <div class="st-dock-head"><span>SECURITY // 账户与安全</span></div>
+      <div class="st-hint" style="margin-bottom:0.75rem;">
+        这里修改的是服务器 <code>users</code> 表里的管理员凭据，不写 <code>site.data.json</code>，
+        也不会产生 Git commit。
+      </div>
+      <div class="st-section-box">
+        <div class="st-section-head">
+          <span>SESSION // 当前会话</span>
+          <span class="st-sec-tag">HTTPONLY</span>
+        </div>
+        <div class="st-field">
+          <label>登录账号</label>
+          <div><strong>${esc(current)}</strong></div>
+        </div>
+        <div class="st-field">
+          <label>密码算法</label>
+          <div><strong>scrypt (N=16384)</strong></div>
+        </div>
+        <div class="st-field">
+          <label>会话</label>
+          <div><strong>HttpOnly Cookie · 7 天</strong></div>
+        </div>
+      </div>
+      <div class="st-hint">
+        改密会删除其他设备上的旧会话；当前浏览器继续有效，不需要重新登录。
+      </div>
+    </div>`;
+
+  const save = async () => {
+    const msg = $('#st-acct-msg');
+    const btn = $<HTMLButtonElement>('#st-acct-save');
+    const setMsg = (text: string, error = false) => {
+      if (!msg) return;
+      msg.textContent = text;
+      msg.style.color = error ? 'var(--accent)' : 'var(--pine)';
+    };
+
+    if (demo) {
+      setMsg('演示模式不能修改账户', true);
+      return;
+    }
+    if (!state.csrf) {
+      setMsg('会话已失效，请重新登录后再试', true);
+      return;
+    }
+
+    const currentPassword = $<HTMLInputElement>('#st-acct-current')?.value ?? '';
+    const username = ($<HTMLInputElement>('#st-acct-username')?.value ?? '').trim();
+    const newPassword = $<HTMLInputElement>('#st-acct-new')?.value ?? '';
+    const confirm = $<HTMLInputElement>('#st-acct-confirm')?.value ?? '';
+
+    if (!currentPassword) {
+      setMsg('请输入当前密码', true);
+      return;
+    }
+    if (!/^[\p{L}\p{N}._-]{3,32}$/u.test(username)) {
+      setMsg('账号需为 3–32 位中英文、数字或 ._-', true);
+      return;
+    }
+    if (newPassword && newPassword.length < 8) {
+      setMsg('新密码至少 8 位', true);
+      return;
+    }
+    if (newPassword !== confirm) {
+      setMsg('两次输入的新密码不一致', true);
+      return;
+    }
+    if (username === state.user && !newPassword) {
+      setMsg('账号和密码都没有变化', true);
+      return;
+    }
+
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = '更新中…';
+    }
+    setMsg('');
+
+    try {
+      const res = await fetch('/api/auth/account', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRF-Token': state.csrf,
+        },
+        body: JSON.stringify({ currentPassword, username, newPassword }),
+      });
+      const data = (await res.json().catch(() => ({}))) as {
+        error?: string;
+        user?: { username: string };
+        passwordChanged?: boolean;
+      };
+      if (!res.ok) {
+        setMsg(data.error ?? '更新失败，请稍后重试', true);
+        return;
+      }
+      state.user = data.user?.username ?? username;
+      toast(data.passwordChanged ? '账号与密码已更新 · 其他设备登录已失效' : '账号已更新');
+      rerender();
+    } catch (error) {
+      setMsg(error instanceof Error ? error.message : '网络错误，更新失败', true);
+    } finally {
+      if (btn) {
+        btn.disabled = false;
+        btn.textContent = '更新账户';
+      }
+    }
+  };
+
+  $('#st-acct-save')?.addEventListener('click', () => void save());
+  for (const sel of ['#st-acct-current', '#st-acct-new', '#st-acct-confirm', '#st-acct-username']) {
+    $<HTMLInputElement>(sel)?.addEventListener('keydown', (e) => {
+      if ((e as KeyboardEvent).key === 'Enter') {
+        e.preventDefault();
+        void save();
+      }
+    });
+  }
+}
+
 function renderSitePreview(subView: string, data: Json): void {
   const box = $('#st-preview');
   if (!box) return;
