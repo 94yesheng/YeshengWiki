@@ -6,6 +6,9 @@
 > - Nginx 已改为动态反代；静态配置备份在 `/root/blog-static.conf.bak`
 > - 域名仍指向旧主机；HTTPS 待 DNS 切换后签
 > - `/admin/` 已 301 到 `/studio/`
+> - SSH 已改为仅密钥登录（`/etc/ssh/sshd_config.d/00-hardening.conf`，密码登录关闭）；
+>   忘记密钥时用华为云 VNC 控制台恢复
+> - 备份已生效；`www` / 裸域 Host 头测试均 200
 >
 > 回滚：`cp -a /root/blog-static.conf.bak /etc/nginx/sites-available/blog && nginx -t && systemctl reload nginx`，静态文件仍在 `/var/www/blog`。
 
@@ -117,4 +120,5 @@ nginx -t && systemctl reload nginx
 - [ ] DNS 改到 `150.40.177.193`（`www` A，`@` A）
 - [ ] certbot 签 HTTPS
 - [x] 退役 `vault` / GitHub Actions FTP 流水线（已删除 Sveltia/vault，CI 只做检查）
+- [x] SSH 仅密钥 + fail2ban
 - [ ] README/CLAUDE 更新为动态架构
