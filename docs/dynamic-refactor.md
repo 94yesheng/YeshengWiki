@@ -23,6 +23,7 @@
 
 - **所有公开页面已改为动态；此分支的 `npm run build`（静态）不再保证通过。**
 - 线上回滚点：`feat/studio-v2-desktop` 分支 + 服务器 `/var/www/blog` 的静态文件。
+- **`src/artifact/*.html` 和 `artifact.js` 已手工插入 `@@占位符@@` / 服务端数据分支；不要直接重跑 `npm run import:artifact`，否则会覆盖。** 必须重跑时先备份，再重放 `.work/patch-*.mjs` 的替换。
 - 下一步：studio 传输层（GitHub → `/api`）、上传 API/EXIF、staging 部署。
 
 ## 1. 决策（默认按推荐方案）
