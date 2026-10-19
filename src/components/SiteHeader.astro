@@ -6,13 +6,14 @@
  * 同一套 .site-nav-bar / .nav-brand / .site-nav-link 标记，
  * 样式在 base.css 里补齐；不再使用纸墨版的分隔符导航和主题按钮。
  */
-import { site } from '../site.config';
+import type { SiteConfig } from '../site.config';
 
 interface Props {
   masthead?: boolean;
+  site: SiteConfig;
 }
 
-const { masthead = true } = Astro.props;
+const { masthead = true, site } = Astro.props;
 
 const pathname = Astro.url.pathname;
 const isCurrent = (href: string) =>
@@ -22,7 +23,7 @@ const isCurrent = (href: string) =>
 <header class="site-nav-bar">
   <div class="wrap">
     <div class="nav-left-cluster">
-      <a href="/" class="nav-brand" aria-label="夜笙的小世界 主页">
+      <a href="/" class="nav-brand" aria-label={`${site.title} 主页`}>
         <span class="nav-brand-mark" aria-hidden="true">
           <svg class="planar-icon planar-icon--infinity" viewBox="0 0 36 18" aria-hidden="true">
             <path d="M10.5 2.2C6.7 2.2 3.7 5.2 3.7 9C3.7 12.8 6.7 15.8 10.5 15.8C15.2 15.8 20.8 2.2 25.5 2.2C29.3 2.2 32.3 5.2 32.3 9C32.3 12.8 29.3 15.8 25.5 15.8C20.8 15.8 15.2 2.2 10.5 2.2Z" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"/>

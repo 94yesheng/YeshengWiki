@@ -8,12 +8,14 @@ export const prerender = false;
 import ArtifactLayout from '../../layouts/ArtifactLayout.astro';
 import postsTpl from '../../artifact/posts.html?raw';
 import { listPosts, type Post } from '../../server/repositories/posts';
+import { applyArtifactSite, getSiteConfig } from '../../server/site';
 import { groupByYearMonth } from '../../utils/timeline';
 import { chineseDay, chineseMonth, chineseYear, readingTime } from '../../utils/date';
 import { cjkSpacing } from '../../utils/typography';
 
 const posts = listPosts();
 const total = posts.length;
+const site = getSiteConfig();
 
 const MONTH_EN = [
   'JANUARY',
@@ -251,6 +253,7 @@ for (const [key, value] of Object.entries(slots)) {
   if (!html.includes(token)) console.warn('[posts] 缺占位符', token);
   html = html.split(token).join(value);
 }
+html = applyArtifactSite(html, site, 'posts');
 ---
 
 <ArtifactLayout

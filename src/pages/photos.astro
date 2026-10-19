@@ -8,9 +8,11 @@ export const prerender = false;
 import ArtifactLayout from '../layouts/ArtifactLayout.astro';
 import photosTpl from '../artifact/photos.html?raw';
 import { listWalls, type Photo } from '../server/repositories/photos';
+import { applyArtifactSite, getSiteConfig } from '../server/site';
 
 const walls = listWalls();
 const photos = walls.flatMap((wall) => wall.photos);
+const site = getSiteConfig();
 
 const esc = (s: string) =>
   s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -144,6 +146,7 @@ for (const [key, value] of Object.entries(slots)) {
   if (!html.includes(token)) console.warn('[photos] 缺占位符', token);
   html = html.split(token).join(value);
 }
+html = applyArtifactSite(html, site, 'photos');
 
 const photoJson = JSON.stringify(db).replace(/</g, '\\u003c');
 ---

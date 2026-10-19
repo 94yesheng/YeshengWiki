@@ -21,7 +21,7 @@
 import css from '../artifact/artifact.css?raw';
 import js from '../artifact/artifact.js?raw';
 import homeSnap from '../artifact/home-snap.js?raw';
-import { site } from '../site.config';
+import { getSiteConfig } from '../server/site';
 import { cjkSpacing } from '../utils/typography';
 import { THEME_BOOT } from '../utils/theme';
 
@@ -35,6 +35,7 @@ interface Props {
 }
 
 const { title, description, bodyClass = 'home', page = 'home' } = Astro.props;
+const site = getSiteConfig();
 
 const pageTitle = cjkSpacing(
   title ? `${title} —— ${site.title}` : `${site.title} —— ${site.tagline}`

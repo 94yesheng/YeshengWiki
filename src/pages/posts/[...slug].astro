@@ -11,6 +11,7 @@ import ArtifactLayout from '../../layouts/ArtifactLayout.astro';
 import articleTpl from '../../artifact/article.html?raw';
 import { getPostBySlug, listPosts } from '../../server/repositories/posts';
 import { getSetting } from '../../server/repositories/settings';
+import { applyArtifactSite, getSiteConfig } from '../../server/site';
 import { renderMarkdown } from '../../server/markdown';
 import { chineseFullDate, readingTime } from '../../utils/date';
 import { cjkSpacing } from '../../utils/typography';
@@ -29,6 +30,7 @@ const newer = index > 0 ? posts[index - 1] : null;
 const older = index >= 0 && index < posts.length - 1 ? posts[index + 1] : null;
 
 const rail = getSetting<ArticleRailConfig>('articleRail', staticArticleRail);
+const site = getSiteConfig();
 const { html: proseHtml, headings } = renderMarkdown(post.bodyMarkdown);
 const { chars, minutes } = readingTime(post.bodyMarkdown);
 
@@ -249,6 +251,7 @@ for (const [key, value] of Object.entries(slots)) {
 }
 if (!html.includes('@@PROSE@@')) throw new Error('article.html 缺少 @@PROSE@@ 占位符');
 html = html.replace('@@PROSE@@', proseHtml);
+html = applyArtifactSite(html, site, 'posts');
 ---
 
 <ArtifactLayout

@@ -14,6 +14,7 @@ import links from '../artifact/home/links.html?raw';
 import tail from '../artifact/home/tail.html?raw';
 import { listPosts, type Post } from '../server/repositories/posts';
 import { listWalls } from '../server/repositories/photos';
+import { applyArtifactSite, getSiteConfig } from '../server/site';
 import { chineseMonthDay } from '../utils/date';
 import { cjkSpacing } from '../utils/typography';
 
@@ -24,6 +25,9 @@ const pad2 = (n: number) => String(n).padStart(2, '0');
 const posts = listPosts();
 const featured = posts[0] ?? null;
 const queue = posts.slice(1, 5);
+const site = getSiteConfig();
+const headerHtml = applyArtifactSite(header, site, 'home');
+const tailHtml = applyArtifactSite(tail, site, 'home');
 
 const DESIGN_COVERS: Record<string, string> = {
   'mc-server': '/artifact/home/images/spot-default-mc.jpg',
@@ -150,7 +154,7 @@ for (const [key, value] of Object.entries(photoSlots)) {
 ---
 
 <Fragment set:html={loader} />
-<Fragment set:html={header} />
+<Fragment set:html={headerHtml} />
 <main id="home-view">
   <Fragment set:html={hero} />
   <Fragment set:html={postsHtml} />
@@ -158,4 +162,4 @@ for (const [key, value] of Object.entries(photoSlots)) {
   <Fragment set:html={programs} />
   <Fragment set:html={links} />
 </main>
-<Fragment set:html={tail} />
+<Fragment set:html={tailHtml} />

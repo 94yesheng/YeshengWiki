@@ -1,8 +1,13 @@
 ---
-import { site } from '../site.config';
+import type { SiteConfig } from '../site.config';
 import { chineseYear } from '../utils/date';
 import DivergenceMeter from './divergence-meter/DivergenceMeter.astro';
 
+interface Props {
+  site: SiteConfig;
+}
+
+const { site } = Astro.props;
 const year = chineseYear(new Date().getFullYear());
 ---
 
