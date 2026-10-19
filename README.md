@@ -1,20 +1,19 @@
 # 夜笙的小世界
 
-> 仓库：`94yesheng/YeshengWiki`（私有）
+> 仓库：`94yesheng/YeshengWiki`（公开仓库；**内容数据不在仓库里**）
 > 本地路径：`D:\blog`
-> 线上（当前）：<http://150.40.177.193/> —— 动态版，**域名暂未绑定**
-> 文档更新：2026-10-19
+> 线上：已部署（动态版），域名暂未绑定。
+> 文档更新：2026-10-20
 
 > **当前状态**
 >
 > - 站点已从「静态 Astro + GitHub CMS」重构为 **Astro SSR + SQLite + 自建后台**，生产跑在
->   香港服务器 `150.40.177.193` 上（systemd + Nginx 反代）。
+>   自有服务器上（systemd + Nginx 反代）。
 > - **DNS 尚未切换**：`www.yesheng.wiki` 仍指向旧静态主机，所以域名看到的还是旧站；
->   新动态版只能用 IP 访问。暂缓绑定的原因是**旧博客数据还没迁移**。
-> - 生产库里目前是 6 篇文章（含 1 篇草稿）、1 面照片墙（7 张）、**0 条友链**、6 个设置块；
->   友链等旧数据待迁移，`/links/` 现在基本是空的。
-> - 设计与运维细节见 [docs/dynamic-refactor.md](docs/dynamic-refactor.md)、
->   [docs/cutover.md](docs/cutover.md)、[docs/1panel.md](docs/1panel.md)。
+>   新动态版暂时没有域名可用。
+> - 生产库里目前是 **19 篇文章（5 公开 / 14 草稿）**、1 条友链、57 张正文配图、7 个设置块；
+>   照片墙（`photo_walls`）仍为空，等整理后上传。
+> - 设计与实现细节见 [docs/dynamic-refactor.md](docs/dynamic-refactor.md)。
 
 ---
 
@@ -23,7 +22,7 @@
 这是一个 **Astro SSR 博客**：文章、照片、友链和站点设置存在服务器 SQLite 里，页面在**请求时**读库渲染 HTML。
 后台 `/studio/` 保存后直接写库，**不需要重新构建、不需要 commit**。
 
-代码用 Git 管理，**内容数据不进 Git**：数据在 `/var/www/blog-data/`（`blog.db` + `uploads/`），
+代码用 Git 管理，**内容数据不进 Git**：数据放在服务器上的数据目录里（`blog.db` + `uploads/`），
 每天自动备份。图片上传到 `uploads/`，生产由 Nginx 直接发图。
 
 写作路径：浏览器打开 `/studio/` 登录 → 改 → 保存 → 公开页立即生效。
@@ -37,11 +36,11 @@
 | 站点框架 | Astro `^7.3.8` + `@astrojs/node` `^11.1.8` | **SSR**：`output: 'server'`，standalone adapter |
 | 运行时 | Node.js `>=22.12.0` | systemd 跑 `dist-dynamic/server/entry.mjs` |
 | 语言 | TypeScript + CSS + Markdown | 运行时不涉及 PHP / Python |
-| 数据库 | **SQLite**（`better-sqlite3` `^13`，WAL） | 单文件；生产 `/var/www/blog-data/blog.db` |
+| 数据库 | **SQLite**（`better-sqlite3` `^13`，WAL） | 单文件；生产使用单文件 SQLite |
 | 渲染 | `markdown-it` + `turndown` + `js-yaml` | 正文渲染 / 后台富文本互转 / frontmatter 解析 |
 | 图片 | 本地 `uploads/` + 浏览器端 Sharp 压缩 | 后台选图时压缩转 WebP |
 | 样式 | 手写 CSS，无框架 | 没有 Tailwind、没有预处理器 |
-| 部署 | systemd + Nginx 反代 | 代码 `/var/www/blog-app`，静态回滚在 `/var/www/blog` |
+| 部署 | systemd + Nginx 反代 | 代码由部署脚本推送；静态回滚保留旧配置与文件 |
 | CI | GitHub Actions（仅校验） | `npm run check` + `npm run build:dynamic`，**不做部署** |
 
 ---
@@ -140,7 +139,7 @@ D:\blog\
 | `/studio-v2/` | `src/pages/studio-v2.astro` | 独立（实验） | 同上，桌面端实验版，`noindex` |
 | `/rss.xml` | `src/pages/rss.xml.js` | — | `posts`（不含草稿） |
 | `/sitemap.xml` `/sitemap-index.xml` | `src/pages/sitemap*.ts` | — | 动态生成，排除 `/studio*` |
-| `/uploads/*` | Nginx alias（本地走 middleware） | — | `/var/www/blog-data/uploads/` |
+| `/uploads/*` | Nginx alias（本地走 middleware） | — | 上传目录（web root 之外） |
 | `/admin/*` | — | — | **已退役**：Nginx 301 → `/studio/`，文件也已删除 |
 
 - 全站页面都是 **SSR**：请求时读 SQLite，保存后刷新即可见。
@@ -208,7 +207,7 @@ Schema 唯一来源是 [db/schema.sql](db/schema.sql)（`src/server/schema.ts` �
 | 保存报 409 | 乐观锁：别人（或另一个标签页）先改了同一篇，点「重新读取」再改 |
 | 保存后线上没变 | 先确认保存成功（`/api/fs` 的 PUT 200），再强刷 `Ctrl+F5`；域名访问是旧站，别用它验证 |
 
-**安全边界**：令牌/密码不进仓库；生产环境变量在服务器 `/etc/blog.env`（root 600）；
+**安全边界**：令牌/密码不进仓库；生产环境变量放在服务器上的受保护文件里；
 数据库在 web root 之外；上传限制 MIME/尺寸并重编码、文件名服务端生成。
 
 ---
@@ -233,74 +232,7 @@ Schema 唯一来源是 [db/schema.sql](db/schema.sql)（`src/server/schema.ts` �
 
 ---
 
-## 8. 服务器、部署与运维
-
-### 8.1 服务器现状
-
-| 项 | 值 |
-|---|---|
-| 主机 | `150.40.177.193`（香港，华为云），SSH 仅密钥：`$env:USERPROFILE\.ssh\dsh_blog_ed25519` |
-| 代码 | `/var/www/blog-app`（服务器上无 git，由部署脚本推源码） |
-| 生产数据 | `/var/www/blog-data/{blog.db,uploads}`；环境 `/etc/blog.env`（root 600） |
-| staging 数据 | `/var/www/blog-data-staging/`；环境 `/etc/blog-staging.env` |
-| 服务 | `blog.service` → `127.0.0.1:4322`；`blog-staging.service` → `127.0.0.1:4321` |
-| Nginx | 80 → 反代 `blog_node`；`/uploads/`、`/_astro/`、`/artifact/` 静态直发；`/admin/` 301 `/studio/` |
-| HTTPS | **未签**（等 DNS 指向本机后再 `certbot`） |
-| 运维面板 | 1Panel v2.3.2，只听 `127.0.0.1:8090`（见 [docs/1panel.md](docs/1panel.md)），走隧道访问 |
-| 备份 | `/usr/local/bin/blog-backup` + `/etc/cron.d/blog-backup`（每天 03:30，保留 7 天，目录 `/var/www/backups`） |
-| 回滚点 | Nginx 静态配置 `/root/blog-static.conf.bak`，静态文件仍在 `/var/www/blog` |
-
-### 8.2 部署代码
-
-```powershell
-# staging
-powershell -File scripts\deploy-server.ps1 -Service blog-staging
-# 生产
-powershell -File scripts\deploy-server.ps1
-```
-
-脚本做的事：打包源码（排除 `node_modules`/`dist*`/`.git`/`.work`/`demo`/`mockups`）→ `scp` →
-服务器解包到 `/var/www/blog-app` → `npm ci` + `npm run build:dynamic` → `chown blog:blog` →
-`systemctl restart <service>`。**不碰 SQLite 与 uploads**（内容在数据库里）。
-
-推送 `main` 时 GitHub Actions 只跑 `npm run check` + `npm run build:dynamic`（防坏代码），**不部署**。
-
-### 8.3 本地看线上（SSH 隧道）
-
-```powershell
-# staging 站点
-ssh -N -L 4323:127.0.0.1:4321 -i $env:USERPROFILE\.ssh\dsh_blog_ed25519 root@150.40.177.193
-# 1Panel
-ssh -N -L 8091:127.0.0.1:8090 -i $env:USERPROFILE\.ssh\dsh_blog_ed25519 root@150.40.177.193
-```
-
-`http://127.0.0.1:4323/`（staging）、`http://127.0.0.1:8091/panel_e821bc33/`（面板）。
-
-### 8.4 切换域名 + HTTPS（待做）
-
-1. 阿里云 DNS：`www` 的 CNAME 删掉 → **A `150.40.177.193`**；`@` 新增 **A `150.40.177.193`**。
-2. 确认 `nslookup www.yesheng.wiki` 已是本机 IP 后：
-
-```bash
-certbot --nginx -d www.yesheng.wiki -d yesheng.wiki \
-  --non-interactive --agree-tos --register-unsafely-without-email --redirect
-```
-
-3. 验证 `https://www.yesheng.wiki/`、`/studio/`、RSS、sitemap。
-
-### 8.5 回滚
-
-```bash
-cp -a /root/blog-static.conf.bak /etc/nginx/sites-available/blog
-nginx -t && systemctl reload nginx
-# 需要时再停 Node：systemctl stop blog
-```
-
-静态文件仍在 `/var/www/blog`，回滚不动数据库。
-
----
-
-## 9. 视觉体系
+## 8. 视觉体系
 
 两套视觉并存，**互不污染**：
 
@@ -310,7 +242,7 @@ nginx -t && systemctl reload nginx
 | 壳 | `BaseLayout` | `ArtifactLayout`（自己写 `<html>`，CSS/JS 用 `?raw` + `is:inline` 内联） |
 | 比喻 | 中文书籍：纸 + 墨 + 一枚印 | 航天器蓝图 + 遥测面板 |
 
-### 9.1 纸墨体系
+### 8.1 纸墨体系
 
 - **唯一取值来源** `src/styles/tokens.css`：`--paper` `#faf9f5` / `--ink` `#141413` / `--muted` /
   `--faint` / `--rule`（**只做边框，别当文字色**）/ `--accent` `#d97757`（全站唯一彩色）。
@@ -321,7 +253,7 @@ nginx -t && systemctl reload nginx
 - 日期一律走 `src/utils/date.ts`；中英文之间插空隙但**不处理数字**。
 - 夜间模式 `<html data-theme="dark">`，首屏前由 `THEME_BOOT` 写好，键名 `localStorage['theme']`。
 
-### 9.2 HUD / 蓝图画布体系
+### 8.2 HUD / 蓝图画布体系
 
 - 96rem 超宽画布、细线网格、四角准星、编号（`SEC 00` / `DOC // 01`）、遥测状态行。
 - 三张 canvas（DPR 封顶 2，只在窗口变化时重算尺寸）：
@@ -338,7 +270,7 @@ nginx -t && systemctl reload nginx
 
 ---
 
-## 10. 常见操作手册
+## 9. 常见操作手册
 
 | 我要做什么 | 怎么做 |
 |---|---|
@@ -350,24 +282,24 @@ nginx -t && systemctl reload nginx
 | 改站名 / 导航 / 自我介绍 | `/studio/` → 站点设置（写 `site_settings.site`）；关于「我」的档案卡在「设置 → 03」 |
 | 改子页文案（标题 / 导语 / 空态 / 统计） | `/studio/` → **页面** → 选对应子页（主页 / 文章 / 相册 / 项目 / 友链）；只有改过的字段会写库，默认值就是现状 |
 | 改纸墨配色 / 字号 | `src/styles/tokens.css`（注意楷体 ≥20px） |
-| 改 HUD 视觉 | 主页改 `src/artifact/home/*.html`；大改走设计源 + 生成器 + 手工补丁（见 9.2 警告） |
+| 改 HUD 视觉 | 主页改 `src/artifact/home/*.html`；大改走设计源 + 生成器 + 手工补丁（见 8.2 警告） |
 | 改 canvas 模型 | `src/artifact/artifact.js`（重跑生成器会覆盖） |
 | 改部署流程 | `scripts/deploy-server.ps1` + [docs/cutover.md](docs/cutover.md) |
-| 查线上状态 | `/api/health`；`systemctl status blog`；`/var/log/nginx/access.log` |
-| 手工备份 | 服务器跑 `/usr/local/bin/blog-backup` |
+| 查线上状态 | `/api/health`；服务器上用 systemd 与 Nginx 日志排查 |
+| 手工备份 | 在服务器上手动执行备份脚本（SQLite `.backup` + uploads 打包） |
 | 检查类型 | `npm run check` |
 
 ---
 
-## 11. 待办与注意事项
+## 10. 待办与注意事项
 
 **待办**
 
 1. **旧博客数据迁移**：已从旧 WordPress（`www.yesheng.wiki`）导入 **19 篇**（5 公开 / 10 草稿 / 4 私密→按草稿）
    + 友链 1 条 + 正文图片 57 张（`uploads/posts/<slug>/`）到生产与 staging（2026-10-19）。
-   导入前备份：`/var/www/backups/pre-clear-*.db`、`pre-wp-import-*.db`；迁移完成前**不绑域名**。
+   导入前已在服务器上做数据库快照备份；迁移完成前**不绑域名**。
    照片墙（`photo_walls`）仍是空的，旧站媒体库 100 个文件只导了正文用到的图。
-2. **DNS + HTTPS**：`www` / `@` → A `150.40.177.193`，然后 `certbot`（见 8.4）。
+2. **DNS + HTTPS**：把 `www` / `@` 解析到本机后，再签发证书并开启 HTTPS（部署后自行配置）。
 3. **程序 / 友链数据**：`/links/` 已有 1 条（云鹿庐）；`/programs/` 仍是空态，等你在后台补。
 4. **后台演示模式已移除**：`/studio/` 只剩真实（写库）模式；`mock.ts` 与 `demo-wall.json` 已删除。
 5. **统计 / 评论**：未做（现在有服务端了，可另选方案）。
@@ -379,7 +311,7 @@ nginx -t && systemctl reload nginx
 **注意事项**
 
 - **只改 `src/` 与配置**；`dist/`、`dist-dynamic/`、`.astro/` 是生成物。
-- **内容不进 Git**：改数据走后台；备份靠 `blog-backup`（SQLite `.backup` + uploads tar + Nginx 配置）。
+- **内容不进 Git**：改数据走后台；备份靠每日自动备份（SQLite `.backup` + uploads tar + Nginx 配置）。
 - `.work/` 是本地验证脚手架与截图（`mock-github.mjs`、`page-shot.mjs`、`artifact-check.mjs`、
   `kai-audit.mjs`、`account-test.mjs`、`1panel-login-check.mjs` 等），不进仓库。
 - 构建后 HUD 页约 270–305 KB（图片已外置），Nginx 已开 gzip；可再上 brotli。
