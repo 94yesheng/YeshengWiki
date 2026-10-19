@@ -2,7 +2,7 @@
 export const prerender = false;
 
 import BaseLayout from '../layouts/BaseLayout.astro';
-import { programsConfig as staticPrograms } from '../site.config';
+import { copy, getPageValues } from '../server/pages';
 import { getSetting } from '../server/repositories/settings';
 
 interface ProgModule {
@@ -24,19 +24,25 @@ interface ProgConsole {
   terminalLines?: Array<{ cmd?: string; out?: string }>;
 }
 
-const programsConfig = getSetting<typeof staticPrograms>('programs', staticPrograms);
-const prog = programsConfig as { console?: ProgConsole; modules?: ProgModule[] };
-const consoleData: ProgConsole = prog.console ?? {
-  kicker: 'CORE ENGINE // ACTIVE MODULE',
-  title: 'Dual-Field & 3D Three-Body Engine · 昼夜流形与立体三体引力场',
-  desc: '本站主页与文章页搭载的零依赖数学物理渲染器。',
-  buildVersion: 'BUILD: v6.0-3D-MANIFOLD',
-};
+interface ProgramsConfig {
+  console?: ProgConsole;
+  modules?: ProgModule[];
+}
+
+/** 数据库里没有 programs 设置时的空结构：页面保持空白，不再回落到静态 site.config */
+const EMPTY_PROGRAMS: ProgramsConfig = { modules: [] };
+
+const prog = getSetting<ProgramsConfig>('programs', EMPTY_PROGRAMS);
 const modules = prog.modules ?? [];
-const terminalLines = (consoleData.terminalLines ?? []).filter((l) => l.cmd || l.out);
+const consoleData: ProgConsole | null =
+  prog.console && (prog.console.title || prog.console.desc) ? prog.console : null;
+const terminalLines = (consoleData?.terminalLines ?? []).filter((l) => l.cmd || l.out);
+const hasContent = Boolean(consoleData) || modules.length > 0;
+const pages = getPageValues();
+const c = (key: string, vars?: Record<string, string | number>) => copy(pages, key, vars);
 ---
 
-<BaseLayout masthead={false} title="程序" description="做过的小工具与实验项目。">
+<BaseLayout masthead={false} title={c('programs.title')} description={c('programs.description')}>
   <div class="wrap">
     <div class="section-head">
       <h1>
@@ -52,35 +58,53 @@ const terminalLines = (consoleData.terminalLines ?? []).filter((l) => l.cmd || l
             <ellipse cx="14" cy="7.2" rx="11.2" ry="2.4" transform="rotate(-11 14 7.2)" fill="none" stroke="currentColor" stroke-width="1.35"/>
           </svg>
         </span>
-        <span>程序</span>
+        <span>{c('programs.title')}</span>
       </h1>
-      <p class="note">小工具与物理渲染实验</p>
+      <p class="note">{c('programs.note')}</p>
     </div>
 
     <div class="prog-grid">
-      <article class="prog-card">
-        <div class="prog-kicker">
-          {consoleData.kicker ?? 'CORE ENGINE'}{consoleData.buildVersion ? ` · ${consoleData.buildVersion}` : ''}
-        </div>
-        <h2>{consoleData.title}</h2>
-        <p>{consoleData.desc}</p>
-        {
-          terminalLines.length > 0 && (
-            <div class="prog-terminal" aria-label="引擎终端遥测">
-              {terminalLines.map((line) => (
-                <div>
-                  <span class="prog-terminal-cmd">$ {line.cmd}</span>
-                  <span class="prog-terminal-out">{line.out}</span>
-                </div>
-              ))}
+      {
+        consoleData && (
+          <article class="prog-card">
+            <div class="prog-kicker">
+              {consoleData.kicker ?? 'CORE ENGINE'}
+              {consoleData.buildVersion ? ` · ${consoleData.buildVersion}` : ''}
             </div>
-          )
-        }
-        <div class="prog-foot">
-          <a href="/">前往主页体验 →</a>
-          <a href="/posts/mc-server/">前往文章页体验三体模型 →</a>
-        </div>
-      </article>
+            <h2>{consoleData.title}</h2>
+            <p>{consoleData.desc}</p>
+            {terminalLines.length > 0 && (
+              <div class="prog-terminal" aria-label="引擎终端遥测">
+                {terminalLines.map((line) => (
+                  <div>
+                    <span class="prog-terminal-cmd">$ {line.cmd}</span>
+                    <span class="prog-terminal-out">{line.out}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+            <div class="prog-foot">
+              <a href="/">{c('programs.hostCta')}</a>
+            </div>
+          </article>
+        )
+      }
+
+      {
+        !hasContent && (
+          <article class="prog-card prog-card--empty">
+            <div class="prog-kicker">PROGRAMS // EMPTY</div>
+            <h2>{c('programs.emptyTitle')}</h2>
+            <p>
+              {c('programs.emptyText')}
+            </p>
+            <div class="prog-foot">
+              <a href="/studio/">{c('programs.emptyCta')}</a>
+              <span>等待导入</span>
+            </div>
+          </article>
+        )
+      }
 
       {
         modules.map((m) => (
@@ -92,9 +116,9 @@ const terminalLines = (consoleData.terminalLines ?? []).filter((l) => l.cmd || l
             <p>{m.desc ?? ''}</p>
             <div class="prog-foot">
               {m.href && !m.href.startsWith('#') ? (
-                <a href={m.href}>{m.status || '查看项目 →'}</a>
+                <a href={m.href}>{m.status || c('programs.viewCta')}</a>
               ) : (
-                <span>{(m.status || '运行中').replace(/\s*->\s*$/, '')}</span>
+                <span>{(m.status || c('programs.statusFallback')).replace(/\s*->\s*$/, '')}</span>
               )}
               {m.metric && <span class="prog-metric">{m.metric}</span>}
             </div>

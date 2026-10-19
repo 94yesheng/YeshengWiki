@@ -3,7 +3,7 @@
  *
  * 1. 顶栏与全站 HUD 页面完全统一（.site-nav-bar 风格 + ∞/黑洞平面徽标 + 01..05 编号导航 + 昼夜切换）；
  * 2. 五大板块：01 文章 · 02 照片墙 · 03 程序工坊 · 04 友链矩阵 · 05 站点与右栏；
- * 3. 同时支持「免接口 UI 交互演示模式」与「本地 SQLite 数据库模式」。
+ * 3. 全部读写走 `/api/*`，直接落本地 SQLite 数据库。
  */
 import {
   deletePost,
@@ -34,7 +34,7 @@ import {
 } from './state';
 import { $, esc, reportError, setBusy, toast } from './ui';
 import { mountFab, type FabHandle } from './fab';
-import { enterDemoMode, renderUnlock } from './views/login';
+import { renderUnlock } from './views/login';
 import {
   createNewPost,
   foldStagedPostDraft,
@@ -52,9 +52,17 @@ import {
 } from './views/walls';
 import { postListHtml, wirePostList } from './views/postlist';
 import { renderLinksView } from './views/links';
+import { renderMediaView } from './views/media';
+import {
+  renderPagesView,
+  PAGE_GROUPS,
+  pagesDirty,
+  pagesDiscard,
+  pagesReload,
+  savePagesValues,
+} from './views/pages';
 import { renderProgramsView } from './views/programs';
-import { renderSiteView } from './views/site';
-import { loadMockAll } from './mock';
+import { renderSiteView, siteDraftDirty } from './views/site';
 import { isDark, toggleTheme } from '../utils/theme';
 import type { Github } from './github';
 
@@ -62,27 +70,6 @@ import type { Github } from './github';
    载入
    -------------------------------------------------------------------------- */
 async function loadAll(): Promise<void> {
-  if (state.demoMode) {
-    const mock = loadMockAll();
-    state.posts = mock.posts;
-    state.walls = mock.walls;
-    state.links = mock.links;
-    state.site = mock.site;
-    state.photoFiles = mock.photoFiles;
-    state.postAssetFiles = mock.postAssetFiles;
-    state.staged = { added: [], removed: [] };
-    state.selected =
-      state.collection === 'posts' ? (mock.posts[0]?.id ?? null)
-      : state.collection === 'walls' ? (mock.walls[0]?.id ?? null)
-      : state.collection === 'links' ? '0'
-      : state.collection === 'programs' ? 'console'
-      : 'site';
-    state.draft = {};
-    state.dirty = false;
-    renderApp();
-    return;
-  }
-
   const gh = state.gh;
   if (!gh) return;
   setBusy(true, '读取数据…');
@@ -107,6 +94,8 @@ async function loadAll(): Promise<void> {
       : state.collection === 'walls' ? (walls[0]?.id ?? null)
       : state.collection === 'links' ? '0'
       : state.collection === 'programs' ? 'console'
+      : state.collection === 'media' ? null
+      : state.collection === 'pages' ? (PAGE_GROUPS.some((group) => group.key === state.selected) ? state.selected : 'home')
       : 'site';
     state.draft = {};
     state.dirty = false;
@@ -203,7 +192,7 @@ function renderBar(): void {
     <div class="st-bar-right">
       ${state.dirty ? '<span class="st-dirty-badge"><span class="st-dirty-dot"></span>有未保存修改</span>' : ''}
       <span class="st-meta-badge">
-        ${state.demoMode ? '<strong class="telemetry-accent">演示模式</strong>' : `LOCAL${state.user ? ` · ${esc(state.user)}` : ''}`}
+        LOCAL${state.user ? ` · ${esc(state.user)}` : ''}
       </span>
       <button type="button" class="st-btn" id="st-theme-btn" title="切换白天 / 夜间模式">
         ${dark ? '昼' : '夜'}
@@ -219,16 +208,19 @@ function renderBar(): void {
     fab?.sync();
   });
 
-  $('#st-refresh')?.addEventListener('click', () => {
+  $('#st-refresh')?.addEventListener('click', async () => {
     if (!settleLeaving()) return;
+    if (state.collection === 'pages') pagesDiscard();
     discardStaged();
-    void loadAll();
+    await loadAll();
+    if (state.collection === 'pages') await pagesReload();
   });
 
   $('#st-save')?.addEventListener('click', () => void saveCurrent());
 
   $('#st-lock')?.addEventListener('click', () => {
     if (!settleLeaving()) return;
+    if (state.collection === 'pages') pagesDiscard();
     void fetch('/api/auth/logout', { method: 'POST' }).catch(() => {});
     forgetSession();
     renderUnlock('已锁定会话');
@@ -253,7 +245,9 @@ const NAV: Array<{ key: Collection; label: string; count: () => number }> = [
     },
   },
   { key: 'links', label: '友链', count: () => state.links?.links.length ?? 0 },
-  { key: 'site',  label: '设置', count: () => 5 },
+  { key: 'media', label: '媒体库', count: () => state.media.length },
+  { key: 'pages', label: '页面', count: () => 5 },
+  { key: 'site',  label: '设置', count: () => 2 },
 ];
 
 /**
@@ -261,7 +255,11 @@ const NAV: Array<{ key: Collection; label: string; count: () => number }> = [
  * 不只看 state.dirty：它只在第一次输入时置位，用户把改动撤销回去也仍然是 true。
  */
 function hasUnsavedWork(): boolean {
+  // 「页面」板块的文案与结构化面板由视图缓存，改动同样需要离开确认。
+  if (state.collection === 'pages') return pagesDirty() || siteDraftDirty();
   if (!state.dirty) return false;
+  // 媒体库没有草稿，删除是即时生效的，不需要离开确认。
+  if (state.collection === 'media') return false;
   if (state.collection === 'posts' && state.draft.post) return postDraftEdited();
   if (state.collection === 'walls' && state.draft.wall) return wallDraftEdited();
   return true;
@@ -280,17 +278,19 @@ function settleLeaving(): boolean {
 function selectCollection(c: Collection): void {
   if (c === state.collection) return;
   if (!settleLeaving()) return;
+  // 离开「页面」板块时，用户已经确认放弃未保存的文案改动。
+  if (state.collection === 'pages') pagesDiscard();
   state.collection = c;
   state.selected =
     c === 'posts'    ? (state.posts[0]?.id ?? null)
     : c === 'walls'  ? (state.walls[0]?.id ?? null)
     : c === 'links'  ? (state.links?.links.length ? '0' : null)
     : c === 'programs' ? 'console'
+    : c === 'media'  ? null
+    : c === 'pages'  ? 'home'
     : 'site';
-  if (!state.demoMode) {
-    state.draft = {};
-    state.dirty = false;
-  }
+  state.draft = {};
+  state.dirty = false;
   renderApp();
 }
 
@@ -366,30 +366,44 @@ function renderList(): void {
         </button></li>`
       )
       .join('')}</ul>`;
+  } else if (state.collection === 'media') {
+    const files = state.media.length;
+    const owners = new Set(state.media.map((m) => m.owner ?? '')).size;
+    title.innerHTML = `<span>MEDIA // 共 ${files} 个文件</span>`;
+    box.innerHTML = `<p class="st-media-nav-note">图片按文章 slug 归档，${owners} 个分组；缩略图与删除操作在中间栏。删除立即生效，无需保存。</p>`;
+  } else if (state.collection === 'pages') {
+    title.innerHTML = `<span>页面文案 // 5 个子页</span>`;
+    box.innerHTML = `<ul class="st-list">${PAGE_GROUPS.map(
+      (group, i) => `<li><button type="button" data-id="${group.key}" aria-current="${state.selected === group.key}">
+        <span class="st-line"><span class="st-date">${String(i + 1).padStart(2, '0')}</span><span class="st-name">${group.label}</span></span>
+        <span class="st-sub">${group.sub}</span>
+      </button></li>`
+    ).join('')}</ul>`;
   } else {
-    title.innerHTML = `<span>SITE &amp; RAIL // 站点定制</span>`;
+    title.innerHTML = `<span>SITE // 站点设置</span>`;
     box.innerHTML = `<ul class="st-list">
       <li><button type="button" data-id="site" aria-current="${state.selected === 'site' || !state.selected}">
         <span class="st-line"><span class="st-date">01</span><span class="st-name">全局站点与导航</span></span>
         <span class="st-sub">站名 / 签名 / 导航栏 / 辉光管</span>
       </button></li>
-      <li><button type="button" data-id="home" aria-current="${state.selected === 'home'}">
-        <span class="st-line"><span class="st-date">02</span><span class="st-name">主页五屏与流形引擎</span></span>
-        <span class="st-sub">首屏介绍 / 方程 / 粒子数 / 四象限</span>
-      </button></li>
-      <li><button type="button" data-id="dossier" aria-current="${state.selected === 'dossier'}">
-        <span class="st-line"><span class="st-date">03</span><span class="st-name">关于我与建站说明志</span></span>
-        <span class="st-sub">个人档案 / 友链名片 / 四卡说明志</span>
-      </button></li>
-      <li><button type="button" data-id="rail" aria-current="${state.selected === 'rail'}">
-        <span class="st-line"><span class="st-date">04</span><span class="st-name">文章右侧悬浮栏定制</span></span>
-        <span class="st-sub">文档速查卡 / 拓扑图 / 自定义悬浮卡</span>
-      </button></li>
       <li><button type="button" data-id="account" aria-current="${state.selected === 'account'}">
-        <span class="st-line"><span class="st-date">05</span><span class="st-name">账户与安全</span></span>
+        <span class="st-line"><span class="st-date">02</span><span class="st-name">账户与安全</span></span>
         <span class="st-sub">修改登录账号 / 密码 / 会话</span>
       </button></li>
     </ul>`;
+  }
+
+  if (state.collection === 'pages') {
+    // 页面分组之间切换不需要离开确认：文案缓存在视图里，切回来还在。
+    box.querySelectorAll<HTMLButtonElement>('button[data-id]').forEach((b) =>
+      b.addEventListener('click', () => {
+        const id = b.dataset.id ?? '';
+        if (!id || state.selected === id) return;
+        state.selected = id;
+        renderApp();
+      })
+    );
+    return;
   }
 
   box.querySelectorAll<HTMLButtonElement>('button[data-id]').forEach((b) =>
@@ -461,6 +475,8 @@ function renderApp(): void {
   else if (state.collection === 'walls') renderWallView();
   else if (state.collection === 'programs') renderProgramsView();
   else if (state.collection === 'links') renderLinksView();
+  else if (state.collection === 'media') renderMediaView();
+  else if (state.collection === 'pages') renderPagesView();
   else renderSiteView();
 
   fab?.sync();
@@ -483,9 +499,11 @@ async function flushStaged(gh: Github, skip: string[]): Promise<void> {
 
 async function saveCurrent(): Promise<void> {
   if (!state.dirty) return;
+  // 媒体库没有可保存的草稿：删除是即时生效的。
+  if (state.collection === 'media') return;
 
-  // 演示模式下直接合并内存草稿并提示成功
-  if (state.demoMode || !state.gh) {
+  // 会话失效（没有 gh）时只合并内存草稿并提示，不写入数据库
+  if (!state.gh) {
     foldStagedPostDraft();
     foldStagedWallDraft();
     if (state.draft.site && state.site) {
@@ -496,16 +514,23 @@ async function saveCurrent(): Promise<void> {
     const btn = $<HTMLButtonElement>('#st-save');
     if (btn) btn.disabled = true;
     renderApp();
-    toast('已保存当前全部修改（UI 交互演示模式 · 内存状态已同步更新）');
+    toast('会话已失效，修改只同步到当前页面内存；请重新登录后再保存');
     return;
   }
 
   const gh = state.gh;
+  const isPages = state.collection === 'pages';
   setBusy(true, '提交中…');
   try {
     const written: string[] = [];
 
-    if (state.collection === 'posts') {
+    if (isPages) {
+      // 「页面」板块：文案走 /api/pages，结构化面板走站点 JSON，同一次保存提交。
+      await savePagesValues();
+      if (siteDraftDirty() && state.draft.site) {
+        await saveSite(gh, { sha: state.site?.sha ?? '', data: state.draft.site });
+      }
+    } else if (state.collection === 'posts') {
       const entry = state.draft.post?.entry;
       if (!(await savePostCurrent(gh))) return;
       if (entry && isStagedNew(entry)) written.push(entry.path);
@@ -532,7 +557,12 @@ async function saveCurrent(): Promise<void> {
       renderApp();
     }
 
-    toast('已保存到数据库，页面会立即更新');
+    if (isPages) {
+      await pagesReload();
+      toast('已保存');
+    } else {
+      toast('已保存到数据库，页面会立即更新');
+    }
   } catch (e) {
     reportError(e);
   } finally {
@@ -544,12 +574,6 @@ async function saveCurrent(): Promise<void> {
    启动
    -------------------------------------------------------------------------- */
 async function boot(): Promise<void> {
-  // 支持 URL 带 ?demo=1 直接进入免密 UI 交互工作台
-  if (typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('demo') === '1') {
-    enterDemoMode();
-    return;
-  }
-
   // 已有会话就直接进工作台；否则显示登录页
   try {
     const res = await fetch('/api/auth/me');
@@ -571,7 +595,7 @@ registerHooks({ render: renderApp, reload: loadAll, settle: settleLeaving, dirty
 
 // 关闭标签页 / 刷新浏览器时的最后一道保险。浏览器只显示通用文案，无法自定义。
 window.addEventListener('beforeunload', (e) => {
-  if (state.demoMode || !hasUnsavedWork()) return;
+  if (!hasUnsavedWork()) return;
   // 现代浏览器用 preventDefault 即可触发确认框（returnValue 已废弃）。
   e.preventDefault();
 });

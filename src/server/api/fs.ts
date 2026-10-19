@@ -7,11 +7,13 @@
  *   src/content/photos/<slug>.json   → photo_walls + photos
  *   src/content/links.json           → links
  *   src/site.data.json               → site_settings
- *   src/assets/posts/<file>          → uploads/posts/<file>
+ *   src/assets/posts/<file>          → uploads/posts/<file>          （旧版扁平资源）
+ *   src/assets/posts/<slug>/<file>   → uploads/posts/<slug>/<file>   （按文章归档）
  *   src/assets/photos/<file>         → uploads/photos/<file>
+ *   src/assets/photos/<dir>/<file>   → uploads/photos/<dir>/<file>   （一层子目录）
  */
 import { createHash } from 'node:crypto';
-import { readFile, readdir, stat, unlink, writeFile } from 'node:fs/promises';
+import { readFile, readdir, unlink, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import type { APIContext } from 'astro';
 import { getAuth, hasValidCsrf } from '../auth';
@@ -128,26 +130,37 @@ async function listDir(dir: string): Promise<Response> {
 
 async function listAssets(kind: 'posts' | 'photos', dir: string): Promise<Response> {
   const root = path.join(uploadRoot(), kind);
-  let names: string[] = [];
-  try {
-    names = await readdir(root);
-  } catch {
-    names = [];
-  }
   const entries: FsEntry[] = [];
-  for (const name of names) {
-    if (name.startsWith('.')) continue;
-    const file = path.join(root, name);
-    const info = await stat(file);
-    if (!info.isFile()) continue;
-    const bytes = await readFile(file);
-    entries.push({
-      name,
-      path: `${dir}/${name}`,
-      sha: createHash('sha1').update(bytes).digest('hex'),
-      type: 'file',
-    });
-  }
+
+  const collect = async (relDir: string): Promise<void> => {
+    let list;
+    try {
+      list = await readdir(path.join(root, relDir), { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const item of list) {
+      if (item.name.startsWith('.')) continue;
+      const rel = relDir ? `${relDir}/${item.name}` : item.name;
+      if (item.isDirectory()) {
+        // 只展开一层：<slug>/<file>；更深的目录不进入，避免把 uploads 整棵树扫坏
+        if (!relDir) await collect(item.name);
+        continue;
+      }
+      // 符号链接等非常规条目直接跳过
+      if (!item.isFile()) continue;
+      const bytes = await readFile(path.join(root, rel));
+      entries.push({
+        name: rel,
+        path: `${dir}/${rel}`,
+        sha: createHash('sha1').update(bytes).digest('hex'),
+        type: 'file',
+      });
+    }
+  };
+
+  await collect('');
+  entries.sort((a, b) => a.name.localeCompare(b.name));
   return json({ entries });
 }
 
@@ -277,13 +290,65 @@ function putWall(slug: string, text: string, sha?: string): Response {
    binary assets
    -------------------------------------------------------------------------- */
 
-function assetTarget(filePath: string): { kind: 'posts' | 'photos'; name: string; file: string } | null {
-  const m = /^src\/assets\/(posts|photos)\/([^/]+)$/.exec(filePath);
+interface AssetTarget {
+  kind: 'posts' | 'photos';
+  /** 文章归档目录（一层子目录）；旧版扁平资源为空字符串 */
+  dir: string;
+  name: string;
+  file: string;
+  /** 写进 media.path 的公开路径，例如 /uploads/posts/<slug>/<file> */
+  publicPath: string;
+}
+
+const UNSAFE_SEGMENT = /[\\:*?"<>|\0]/;
+
+/** 资源路径的单个分段：拒绝 . / .. / 隐藏文件 / 盘符与反斜杠 */
+function safeAssetSegment(segment: string): boolean {
+  if (!segment || segment === '.' || segment === '..') return false;
+  if (segment.startsWith('.')) return false;
+  if (UNSAFE_SEGMENT.test(segment)) return false;
+  return segment === path.basename(segment);
+}
+
+function mimeForAsset(name: string): string {
+  const ext = path.extname(name).toLowerCase();
+  if (ext === '.png') return 'image/png';
+  if (ext === '.webp') return 'image/webp';
+  if (ext === '.gif') return 'image/gif';
+  if (ext === '.avif') return 'image/avif';
+  if (ext === '.svg') return 'image/svg+xml';
+  return 'image/jpeg';
+}
+
+/**
+ * 虚拟资源路径 → uploads 下的真实文件。
+ *
+ * 支持两种写法（老文章继续可用）：
+ *   src/assets/posts/<file>              旧版扁平资源 → uploads/posts/<file>
+ *   src/assets/posts/<slug>/<file>       文章归档资源 → uploads/posts/<slug>/<file>
+ * photos 同理。只允许一层子目录；`..`、空段、绝对路径、反斜杠一律拒绝，
+ * 最终路径必须仍落在 uploadRoot()/<kind> 下。
+ */
+function assetTarget(filePath: string): AssetTarget | null {
+  const m = /^src\/assets\/(posts|photos)\/([^/]+)(?:\/([^/]+))?$/.exec(filePath);
   if (!m) return null;
   const kind = m[1] as 'posts' | 'photos';
-  const name = m[2]!;
-  if (!name || name !== path.basename(name) || name.startsWith('.')) return null;
-  return { kind, name, file: path.join(uploadRoot(), kind, name) };
+  const dir = m[3] ? m[2]! : '';
+  const name = m[3] ?? m[2]!;
+  if (!safeAssetSegment(name)) return null;
+  if (dir && !safeAssetSegment(dir)) return null;
+
+  const base = path.resolve(uploadRoot(), kind);
+  const file = path.resolve(base, dir, name);
+  if (!file.startsWith(base + path.sep)) return null;
+
+  return {
+    kind,
+    dir,
+    name,
+    file,
+    publicPath: `/uploads/${kind}/${dir ? dir + '/' : ''}${name}`,
+  };
 }
 
 async function getBinary(filePath: string): Promise<Response> {
@@ -291,18 +356,9 @@ async function getBinary(filePath: string): Promise<Response> {
   if (!target) return fail('文件不存在', 404);
   try {
     const bytes = await readFile(target.file);
-    const ext = path.extname(target.name).toLowerCase();
-    const mime =
-      ext === '.png'
-        ? 'image/png'
-        : ext === '.webp'
-          ? 'image/webp'
-          : ext === '.gif'
-            ? 'image/gif'
-            : 'image/jpeg';
     return new Response(bytes, {
       headers: {
-        'Content-Type': mime,
+        'Content-Type': mimeForAsset(target.name),
         'X-File-Sha': createHash('sha1').update(bytes).digest('hex'),
         'Cache-Control': 'no-store',
       },
@@ -347,8 +403,8 @@ async function putBinary(filePath: string, base64: string, sha?: string): Promis
      ON CONFLICT(path) DO UPDATE SET filename = excluded.filename, size = excluded.size`
   ).run({
     name: target.name,
-    p: `/uploads/${target.kind}/${target.name}`,
-    mime: path.extname(target.name).toLowerCase() === '.png' ? 'image/png' : 'image/jpeg',
+    p: target.publicPath,
+    mime: mimeForAsset(target.name),
     size: bytes.length,
   });
   return json({ ok: true, sha: digest });
@@ -380,7 +436,7 @@ async function deleteFile(filePath: string, sha?: string): Promise<Response> {
     } catch {
       return fail('文件不存在', 404);
     }
-    getDb().prepare('DELETE FROM media WHERE path = ?').run(`/uploads/${target.kind}/${target.name}`);
+    getDb().prepare('DELETE FROM media WHERE path = ?').run(target.publicPath);
     return json({ ok: true });
   }
 

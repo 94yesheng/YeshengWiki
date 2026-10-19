@@ -51,7 +51,7 @@
               </h2>
             </div>
             <div class="q-topbar-cell q-topbar-cell--center">
-              常来常往的邻人独立博客友链，以及关于「我（夜笙）」与「夜笙的小世界」的建站自述。
+              @@HOME_LINKS_NOTE@@
             </div>
             <div class="q-topbar-cell q-topbar-cell--right">
               <span>PEERS &amp; AUTHOR DOSSIER // 友链与自述</span>
@@ -65,28 +65,24 @@
               <div class="site-identity-card author-dossier-card">
                 <div class="site-identity-head">
                   <div class="author-head-cluster">
-                    <span class="author-monogram">夜</span>
+                    <span class="author-monogram">@@AUTHOR_MONOGRAM@@</span>
                     <div>
-                      <h3 class="site-identity-title">关于「我」 · 夜笙</h3>
-                      <div class="author-sub-coord">AUTHOR // YESHENG · 独立记录者</div>
+                      <h3 class="site-identity-title">@@AUTHOR_TITLE@@</h3>
+                      <div class="author-sub-coord">@@AUTHOR_SUBCOORD@@</div>
                     </div>
                   </div>
                   <span class="q-sec-badge">ABOUT ME</span>
                 </div>
-                <p class="author-bio-text">
-                  一个喜欢折腾代码与记录日常的普通人。平时热衷搭建联机服务器、探索三维建模与 Python 工具脚本，也喜欢背着相机在山城街巷随手拍下暮色与江风。「如果抵达不了人生的高度，那就尽可能的探索世界的广度吧。」
-                </p>
+                <p class="author-bio-text">@@AUTHOR_BIO@@</p>
                 <div class="author-tag-row">
-                  <span class="author-chip">坐标 · 重庆 / 远方</span>
-                  <span class="author-chip">技术 · Astro / Python / Blender</span>
-                  <span class="author-chip">爱好 · 街拍 / 沙盒联机 / 随笔</span>
+                  @@AUTHOR_CHIPS@@
                 </div>
               </div>
 
               <!-- 模块二：关于「站点」与互换规格 -->
               <div class="site-identity-card">
                 <div class="site-identity-head">
-                  <h3 class="site-identity-title">关于「站点」 · 友链互换名片</h3>
+                  <h3 class="site-identity-title">@@SITE_CARD_TITLE@@</h3>
                   <span class="planar-motif-badge" aria-hidden="true">
                 <svg class="planar-icon planar-icon--infinity" viewBox="0 0 28 14">
                   <path d="M8.2 1.7C5.3 1.7 2.9 4.1 2.9 7C2.9 9.9 5.3 12.3 8.2 12.3C11.8 12.3 16.2 1.7 19.8 1.7C22.7 1.7 25.1 4.1 25.1 7C25.1 9.9 22.7 12.3 19.8 12.3C16.2 12.3 11.8 1.7 8.2 1.7Z" fill="none" stroke="currentColor" stroke-width="1.55"/>
@@ -100,17 +96,12 @@
                 </svg>
               </span>
                 </div>
-                <p class="author-bio-text">
-                  本站基于 Astro 纯静态构建，零后端、零追踪、零外部 Webfont，采用中文纸墨规制与昼夜双模态流形引擎。欢迎认真写字的独立博客互换友链：
-                </p>
+                <p class="author-bio-text">@@SITE_CARD_DESC@@</p>
                 <ul class="protocol-spec-list">
-                  <li><span>站名 / TITLE</span><strong>夜笙的小世界</strong></li>
-                  <li><span>签名 / MOTTO</span><strong>一个普通人的自述</strong></li>
-                  <li><span>网址 / URL</span><strong>https://www.yesheng.wiki</strong></li>
-                  <li><span>订阅 / RSS</span><strong>https://www.yesheng.wiki/rss.xml</strong></li>
+                  @@SITE_SPEC@@
                 </ul>
                 <div class="site-card-actions">
-                  <button type="button" class="stage-mini-btn" id="btn-copy-site-card" style="flex:1;">复制本站友链信息</button>
+                  <button type="button" class="stage-mini-btn" id="btn-copy-site-card" data-site-card="@@SITE_CARD_COPY@@" style="flex:1;">@@SITE_CARD_BTN@@</button>
                   <a class="stage-mini-btn" style="flex:1; text-align:center;" href="/rss.xml">订阅 RSS 源 -&gt;</a>
                 </div>
               </div>
@@ -119,149 +110,19 @@
             <!-- 右侧栏：友链展示矩阵（6 个邻人独立博客卡片） -->
             <div class="links-peers-panel">
               <div class="links-peers-head">
-                <span>CONNECTED PEERS // 已建立友链的独立站点 (06)</span>
+                <span>CONNECTED PEERS // 已建立友链的独立站点 (@@PEER_COUNT_PAD@@)</span>
                 <a class="peer-link-action" href="/links/">查看完整站点说明 -&gt;</a>
               </div>
 
               <div class="links-directory-grid">
-                <article class="peer-card">
-                  <div>
-                    <div class="peer-card-head">
-                      <span class="peer-avatar">林</span>
-                      <div class="peer-head-meta">
-                        <div class="peer-title-line">
-                          <h3 class="peer-name">林间拾遗</h3>
-                          <span class="peer-tag">图形学 · 随笔</span>
-                        </div>
-                        <div class="peer-domain">https://linjian.dev</div>
-                      </div>
-                    </div>
-                    <p class="peer-bio">
-                      独立开发者木林的个人笔记，记录 WebGL 着色器实验、光线追踪渲染笔记与山野徒步胶片摄影。
-                    </p>
-                  </div>
-                  <div class="peer-foot">
-                    <span>站长：木林 · 持续更新</span>
-                    <a class="peer-link-action" href="https://linjian.dev" target="_blank" rel="noopener noreferrer">访问站点 -&gt;</a>
-                  </div>
-                </article>
-
-                <article class="peer-card">
-                  <div>
-                    <div class="peer-card-head">
-                      <span class="peer-avatar">星</span>
-                      <div class="peer-head-meta">
-                        <div class="peer-title-line">
-                          <h3 class="peer-name">星海观测站</h3>
-                          <span class="peer-tag">天文 · 物理模拟</span>
-                        </div>
-                        <div class="peer-domain">https://starsea.blog</div>
-                      </div>
-                    </div>
-                    <p class="peer-bio">
-                      业余深空摄影与计算物理爱好者，用代码复现多体引力演化、星云流体模拟与夜空星图手记。
-                    </p>
-                  </div>
-                  <div class="peer-foot">
-                    <span>站长：牧星人 · 双周更</span>
-                    <a class="peer-link-action" href="https://starsea.blog" target="_blank" rel="noopener noreferrer">访问站点 -&gt;</a>
-                  </div>
-                </article>
-
-                <article class="peer-card">
-                  <div>
-                    <div class="peer-card-head">
-                      <span class="peer-avatar">苔</span>
-                      <div class="peer-head-meta">
-                        <div class="peer-title-line">
-                          <h3 class="peer-name">青苔造物局</h3>
-                          <span class="peer-tag">硬件 · HomeLab</span>
-                        </div>
-                        <div class="peer-domain">https://mosslab.io</div>
-                      </div>
-                    </div>
-                    <p class="peer-bio">
-                      热衷家庭实验室（HomeLab）、内网穿透自托管服务、树莓派集群与电子墨水屏桌面小工具改造。
-                    </p>
-                  </div>
-                  <div class="peer-foot">
-                    <span>站长：青苔 · 硬件工坊</span>
-                    <a class="peer-link-action" href="https://mosslab.io" target="_blank" rel="noopener noreferrer">访问站点 -&gt;</a>
-                  </div>
-                </article>
-
-                <article class="peer-card">
-                  <div>
-                    <div class="peer-card-head">
-                      <span class="peer-avatar">北</span>
-                      <div class="peer-head-meta">
-                        <div class="peer-title-line">
-                          <h3 class="peer-name">北纬三十度</h3>
-                          <span class="peer-tag">地理 · 城市漫游</span>
-                        </div>
-                        <div class="peer-domain">https://lat30.org</div>
-                      </div>
-                    </div>
-                    <p class="peer-bio">
-                      沿着北纬三十度记录西南山城与江南街巷的空间肌理、独立旧书店地图与地方饮食风物志。
-                    </p>
-                  </div>
-                  <div class="peer-foot">
-                    <span>站长：季风 · 城市纪行</span>
-                    <a class="peer-link-action" href="https://lat30.org" target="_blank" rel="noopener noreferrer">访问站点 -&gt;</a>
-                  </div>
-                </article>
-
-                <article class="peer-card">
-                  <div>
-                    <div class="peer-card-head">
-                      <span class="peer-avatar">纸</span>
-                      <div class="peer-head-meta">
-                        <div class="peer-title-line">
-                          <h3 class="peer-name">纸上编译</h3>
-                          <span class="peer-tag">排版 · 静态架构</span>
-                        </div>
-                        <div class="peer-domain">https://papercompile.net</div>
-                      </div>
-                    </div>
-                    <p class="peer-bio">
-                      专注中文书籍网格排版、古籍汉字字形考据与纯静态博客构建工具链的极简技术小站。
-                    </p>
-                  </div>
-                  <div class="peer-foot">
-                    <span>站长：字匠 · 纸墨研究</span>
-                    <a class="peer-link-action" href="https://papercompile.net" target="_blank" rel="noopener noreferrer">访问站点 -&gt;</a>
-                  </div>
-                </article>
-
-                <article class="peer-card">
-                  <div>
-                    <div class="peer-card-head">
-                      <span class="peer-avatar">浮</span>
-                      <div class="peer-head-meta">
-                        <div class="peer-title-line">
-                          <h3 class="peer-name">浮光掠影志</h3>
-                          <span class="peer-tag">街拍 · 影像</span>
-                        </div>
-                        <div class="peer-domain">https://lightframe.me</div>
-                      </div>
-                    </div>
-                    <p class="peer-bio">
-                      35mm 定焦镜头下的日常光影切片，分享街头纪实摄影、暗房胶片调色配方与阅读随感。
-                    </p>
-                  </div>
-                  <div class="peer-foot">
-                    <span>站长：阿澈 · 影像档案</span>
-                    <a class="peer-link-action" href="https://lightframe.me" target="_blank" rel="noopener noreferrer">访问站点 -&gt;</a>
-                  </div>
-                </article>
+                @@PEER_CARDS@@
               </div>
             </div>
           </div>
 
           <div class="q-footbar">
             <span>SECTION 04 // FRIENDS &amp; AUTHOR DOSSIER</span>
-            <span>DIRECTORY: <span class="telemetry-accent">ABOUT ME + SITE CARD + 6 FRIEND NODES</span></span>
+            <span>DIRECTORY: <span class="telemetry-accent">@@PEER_DIRECTORY@@</span></span>
             <span>ROUTE: <a data-nav-view="posts" class="peer-link-action" href="/posts/">浏览文章归档 -&gt;</a> · <a class="peer-link-action" href="/rss.xml">RSS 全文订阅 -&gt;</a></span>
           </div>
         </div>

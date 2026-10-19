@@ -6,6 +6,7 @@
  */
 import { site as staticSite, type SiteConfig } from '../site.config';
 import { getSetting } from './repositories/settings';
+import { copy, getPageValues } from './pages';
 
 const esc = (s: string) =>
   s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -60,6 +61,15 @@ export function applyArtifactSite(html: string, site: SiteConfig, current?: stri
     /(<span class="loader-title-kai">)[\s\S]*?(<\/span>)/,
     (_m, a: string, b: string) => `${a}${esc(site.title)}${b}`
   );
+
+  // 子页 artifact 模板里带着和主页同一份 loader；状态文字统一走页面文案配置。
+  if (out.includes('id="loader-status-text"')) {
+    const pages = getPageValues();
+    out = out.replace(
+      /(<span id="loader-status-text">)[\s\S]*?(<\/span>)/,
+      (_m, a: string, b: string) => `${a}${esc(copy(pages, 'home.loader.status'))}${b}`
+    );
+  }
 
   out = out.replace(/<nav class="site-nav"[\s\S]*?<\/nav>/, renderNav(site, current));
 

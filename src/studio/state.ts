@@ -5,7 +5,29 @@ import type { Github } from './github';
 import type { EditorHandle } from './editor';
 import type { LinksFile, PostEntry, SiteFile, WallEntry } from './content';
 
-export type Collection = 'posts' | 'walls' | 'programs' | 'links' | 'site';
+export type Collection = 'posts' | 'walls' | 'programs' | 'links' | 'media' | 'pages' | 'site';
+
+/**
+ * 媒体库条目 —— 复制自 `src/server/repositories/media.ts` 的 MediaItem。
+ *
+ * 这里只保留接口类型：studio 前端如果直接 import 那个模块，会把
+ * SQLite 驱动与 node:fs 一起打进前端包，所以这里只复制类型，不 import。
+ */
+export interface MediaItem {
+  id: number;
+  filename: string;
+  path: string;
+  url: string;
+  width: number | null;
+  height: number | null;
+  mime: string | null;
+  size: number | null;
+  createdAt: string;
+  /** `/uploads/posts/<slug>/` 里的 slug；照片墙为 'photos'；其他为 null */
+  owner: string | null;
+  /** owner 对应的 posts.title（等价于 JOIN posts.slug） */
+  postTitle: string | null;
+}
 
 export type Entry = PostEntry | WallEntry;
 
@@ -40,8 +62,6 @@ export const state = {
   csrf: null as string | null,
   gh: null as Github | null,
   user: '',
-  /** 演示模式标记：无需登录即可完整交互体验所有 UI 与逻辑 */
-  demoMode: false,
   collection: 'posts' as Collection,
   selected: null as string | null,
   justAdded: null as string | null,
@@ -51,6 +71,9 @@ export const state = {
   walls: [] as WallEntry[],
   links: null as LinksFile | null,
   site: null as SiteFile | null,
+  media: [] as MediaItem[],
+  /** 媒体库是否已经拉过（由媒体库视图自己拉，loadAll 不碰） */
+  mediaLoaded: false,
   photoFiles: [] as string[],
   postAssetFiles: [] as string[],
   draft: {} as Draft,
@@ -65,7 +88,6 @@ export function forgetSession(): void {
   state.csrf = null;
   state.gh = null;
   state.user = '';
-  state.demoMode = false;
   state.dirty = false;
   state.draft = {};
   state.staged = { added: [], removed: [] };
@@ -73,6 +95,8 @@ export function forgetSession(): void {
   state.walls = [];
   state.links = null;
   state.site = null;
+  state.media = [];
+  state.mediaLoaded = false;
   state.selected = null;
 }
 

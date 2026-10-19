@@ -31,10 +31,17 @@ import {
   type PostInput,
 } from '../repositories/posts';
 import { listWalls } from '../repositories/photos';
+import { deleteMedia, listMedia } from '../repositories/media';
 import { listLinks, replaceLinks } from '../repositories/links';
 import { getSettings, SETTING_KEYS, setSetting, type SettingKey } from '../repositories/settings';
 import { handleFs } from './fs';
 import { fail, json, readJson } from './http';
+import {
+  getPageValues,
+  PAGE_COPY_DEFAULTS,
+  PAGE_DEFS,
+  sanitizePageValues,
+} from '../pages';
 
 interface LoginBody {
   username?: string;
@@ -105,6 +112,46 @@ export async function handleApi(context: APIContext): Promise<Response | null> {
         console.error('[api/links]', error);
         return fail('保存友链失败', 500);
       }
+    }
+  }
+
+  // /api/media
+  if (parts[0] === 'media' && parts.length === 1) {
+    if (method === 'GET') {
+      const auth = getAuth(context);
+      if (!auth) return fail('未登录', 401);
+      return json({ media: listMedia() });
+    }
+    if (method === 'DELETE') {
+      const denied = requireCsrf(context);
+      if (denied) return denied;
+      const target = context.url.searchParams.get('path') ?? '';
+      if (!target) return fail('缺少 path', 400);
+      try {
+        if (!deleteMedia(target)) return fail('媒体不存在', 404);
+        return json({ ok: true });
+      } catch (error) {
+        console.error('[api/media] delete', error);
+        return fail('删除媒体失败', 500);
+      }
+    }
+  }
+
+  // /api/pages：后台「页面」板块的文案 schema 与读写
+  if (parts[0] === 'pages' && parts.length === 1) {
+    if (method === 'GET') {
+      const auth = getAuth(context);
+      if (!auth) return fail('未登录', 401);
+      return json({ pages: PAGE_DEFS, values: getPageValues(), defaults: PAGE_COPY_DEFAULTS });
+    }
+    if (method === 'PUT') {
+      const denied = requireCsrf(context);
+      if (denied) return denied;
+      const body = await readJson<{ values?: unknown }>(context.request);
+      if (!body || typeof body !== 'object') return fail('请求体不是合法 JSON', 400);
+      const merged = { ...getPageValues(), ...(body.values as Record<string, unknown> | undefined) };
+      setSetting('pages', sanitizePageValues(merged));
+      return json({ ok: true, values: getPageValues() });
     }
   }
 

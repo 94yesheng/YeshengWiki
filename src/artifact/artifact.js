@@ -46,6 +46,14 @@
     }
   };
 
+  /* 首屏顶栏/坐标/原点由后台「页面 → 主页」配置；切昼夜时沿用配置，不覆盖成写死文案 */
+  var HOME_META = window.__HOME_META || null;
+  if (HOME_META) {
+    ['originBadge', 'topbarTag', 'coordText'].forEach(function (key) {
+      if (typeof HOME_META[key] === 'string' && HOME_META[key]) MODE_META.infinity[key] = HOME_META[key];
+    });
+  }
+
   var SUN_SVG_CONTENT = '<circle cx="9" cy="9" r="3.6"/><path d="M9 2v2M9 14v2M2 9h2M14 9h2M4.1 4.1l1.4 1.4M12.5 12.5l1.4 1.4M13.9 4.1l-1.4 1.4M5.5 12.5l-1.4 1.4"/>';
   var MOON_SVG_CONTENT = '<path d="M14.5 11.8A5.8 5.8 0 0 1 6.2 3.5a5.8 5.8 0 1 0 8.3 8.3Z"/>';
 
@@ -595,289 +603,18 @@
   var viewSwitchBtns = document.querySelectorAll('[data-switch-view]');
   var navLinks = Array.from(document.querySelectorAll('.site-nav-link'));
 
-  var ARTICLE_DB = {
-    mc: {
-      entryNo: '01',
-      slug: '/posts/mc-server/',
-      path: '/posts/mc-server/',
-      title: '如何快速零成本搭建一个 Mc 小型服务器',
-      date: '二〇二六年三月十三日',
-      tags: '技术 · 服务器',
-      words: '约 2,400 字',
-      reading: '约 6 分钟',
-      lead: '用尽量简单且低成本的方法让 Minecraft 服务器迅速跑起来。针对无公网 IP 场景，通过 frp 内网穿透结合本地闲置算力，三步完成多人联机部署。',
-      toc: [
-        { id: 'sec-01', num: '01', text: '一、Java 21 运行环境配置' },
-        { id: 'sec-02', num: '02', text: '二、PaperMC 服务端内核初始化' },
-        { id: 'sec-03', num: '03', text: '三、FRP 内网穿透映射实操' },
-        { id: 'sec-04', num: '04', text: '四、联机排障与性能调优参数' }
-      ],
-      specs: [
-        ['JDK RUNTIME', 'Temurin 21 LTS'],
-        ['SERVER CORE', 'Paper 1.21.x'],
-        ['HEAP MEMORY', '-Xms4G -Xmx4G'],
-        ['GC POLICY', 'G1GC (Aikars)'],
-        ['DEFAULT PORT', 'TCP 25565']
-      ],
-      prose: null // 初始化时从 DOM 保存默认 Mc 正文
-    },
-    jibao: {
-      entryNo: '02',
-      slug: '/posts/ji-bao/',
-      path: '/posts/ji-bao/',
-      title: '3月9号，想吃鸡煲',
-      date: '二〇二六年三月九日',
-      tags: '随笔 · 日常',
-      words: '约 1,350 字',
-      reading: '约 4 分钟',
-      lead: '校外那间普通的重庆鸡公煲贴上了旺铺出租。记下这些微不足道却真实存在的生活切片，大概也是探索世界广度的一种方式。',
-      toc: [
-        { id: 'jb-01', num: '01', text: '一、不辞而别的校外小店' },
-        { id: 'jb-02', num: '02', text: '二、进门右手边第一张桌子' },
-        { id: 'jb-03', num: '03', text: '三、彼此经历中的小小注脚' }
-      ],
-      specs: [
-        ['CATEGORY', '日常随笔 · 记事'],
-        ['LOCATION', '校门外 · 重庆鸡公煲'],
-        ['DATE', '二〇二六年三月九日'],
-        ['MOOD', '微辣 · 怀念'],
-        ['BGM', '网易云外链单曲']
-      ],
-      prose:
-        '<h2 id="jb-01"><span class="sec-index">01 // MEMORY</span><span>一、不辞而别的校外小店</span></h2>' +
-        '<p>鸡煲，全名重庆鸡公煲，校外的一间普通小店。3月9号，一个稀松平常的下午，鸡煲的门头贴上了一张鲜红的旺铺出租，里面空无一物。鸡煲倒闭了。</p>' +
-        '<p>鸡煲是什么时候走的呢？我不得而知，像青春里略带缺憾的感情，没有华丽的开头，没有正式的告别，在不经意间不辞而别了。</p>' +
-        '<h2 id="jb-02"><span class="sec-index">02 // HABIT</span><span>二、进门右手边第一张桌子</span></h2>' +
-        '<p>我向来不喜欢出校门，太远，太麻烦。某天几个朋友说外面有家餐馆还不错，一向不爱出门的我稀里糊涂地坐在了鸡煲的廉价木凳子上。那是我们第一次见面。</p>' +
-        '<p>那次之后，我开始习惯去鸡煲吃饭，习惯在进门右手边第一张桌子的第一个凳子坐下，点上一份微辣鸡公煲，配一份萝卜牛腩或冒烤鸭，渐渐成为了店里定期刷新的 NPC。世界上大多数遇见都是如此：你恰巧需要一些东西调剂寡淡的生活时，它恰好出现。</p>' +
-        '<div class="q-callout"><div class="q-callout-head">LIFE SLICE // 随笔摘录</div><p>当它触手可及时，我们总是选择性忽略；直到门头贴上旺铺出租的那天夜里，才突然格外想念那口咸辣滚烫的炭火香气。</p></div>' +
-        '<h2 id="jb-03"><span class="sec-index">03 // FOOTNOTE</span><span>三、彼此经历中的小小注脚</span></h2>' +
-        '<p>不久后，鸡煲的位置或许会重新开一家餐馆，而我和鸡煲都将开启一段新的旅程，最终变成彼此生命里的一个小小注脚。或许在很久以后的将来，踏进一家陌生的餐馆点上一份鸡公煲，熟悉咸辣的味道在口腔炸开，我大概会发愣几秒，然后笑笑。</p>'
-    },
-    maptoposter: {
-      entryNo: '03',
-      slug: '/posts/maptoposter/',
-      path: '/posts/maptoposter/',
-      title: '一键生成城市地图壁纸 —— MapToPoster',
-      date: '二〇二六年三月九日',
-      tags: '技术 · 工具',
-      words: '约 1,680 字',
-      reading: '约 5 分钟',
-      lead: '利用 OpenStreetMap 的道路拓扑矢量与经纬度网格数据，通过 Python 脚本将任意城市的街道肌理渲染成极简理性的几何海报壁纸。',
-      toc: [
-        { id: 'mp-01', num: '01', text: '一、前期准备：Git 与 Python 环境' },
-        { id: 'mp-02', num: '02', text: '二、克隆仓库与虚拟环境依赖安装' },
-        { id: 'mp-03', num: '03', text: '三、自定义城市经纬度与风格渲染' }
-      ],
-      specs: [
-        ['LANGUAGE', 'Python 3.10+'],
-        ['DATA SOURCE', 'OpenStreetMap (OSM)'],
-        ['OUTPUT', '300 DPI PNG / SVG'],
-        ['REPO', 'originalankur/maptoposter'],
-        ['LICENSE', 'MIT Open Source']
-      ],
-      prose:
-        '<h2 id="mp-01"><span class="sec-index">01 // ENVIRONMENT</span><span>一、前期准备：Git 与 Python 环境</span></h2>' +
-        '<p>MapToPoster 可以根据自定义的城市名称、经纬度边界与配色主题，拉取 OpenStreetMap 开放地理矢量数据，一键生成极具几何秩序感的城市街巷海报壁纸。</p>' +
-        '<p>在开始前只需准备好 Git 版本控制工具与 Python 3 运行环境（Windows 用户可直接通过 Microsoft Store 搜索 Python 一键安装）。</p>' +
-        '<h2 id="mp-02"><span class="sec-index">02 // INSTALLATION</span><span>二、克隆仓库与虚拟环境依赖安装</span></h2>' +
-        '<div class="q-codeblock"><div class="q-codebar"><span>SHELL // 克隆与安装依赖</span><button type="button" class="q-copy-code-btn" data-copy-code="git clone https://github.com/originalankur/maptoposter.git">COPY</button></div>' +
-        '<pre><code>$ git clone https://github.com/originalankur/maptoposter.git\n$ cd maptoposter\n$ python -m venv venv\n$ venv\\Scripts\\activate\n$ pip install -r requirements.txt</code></pre></div>' +
-        '<h2 id="mp-03"><span class="sec-index">03 // RENDERING</span><span>三、自定义城市经纬度与风格渲染</span></h2>' +
-        '<p>配置好虚拟环境后，即可指定目标城市名称、半径范围与纸墨或暗黑配色方案，脚本会自动抓取主干道、支路与水系多边形并排版输出高分辨率海报。</p>'
-    },
-    blender: {
-      entryNo: '04',
-      slug: '/posts/blender/',
-      path: '/posts/blender/',
-      title: '七天了解一件事 —— Blender',
-      date: '二〇二六年二月二十四日',
-      tags: '技术 · 建模',
-      words: '约 1,920 字',
-      reading: '约 5 分钟',
-      lead: '给自己设定七天的时间边界，从零开始接触三维网格拓扑、修改器堆栈、着色器节点与 Cycles 光线追踪渲染。',
-      toc: [
-        { id: 'bl-01', num: '01', text: '一、Day 1–2：视图导航与基础网格雕刻' },
-        { id: 'bl-02', num: '02', text: '二、Day 3–5：修改器堆栈与硬表面建模' },
-        { id: 'bl-03', num: '03', text: '三、Day 6–7：节点材质、布光与 Cycles 渲染' }
-      ],
-      specs: [
-        ['SOFTWARE', 'Blender 4.x LTS'],
-        ['RENDER ENGINE', 'Cycles / EEVEE'],
-        ['DURATION', '7 Days Intensive'],
-        ['KEY SKILLS', 'Mesh / Nodes / Lighting'],
-        ['GOAL', '新房空间布局与三维入门']
-      ],
-      prose:
-        '<h2 id="bl-01"><span class="sec-index">01 // MESH BASICS</span><span>一、Day 1–2：视图导航与基础网格雕刻</span></h2>' +
-        '<p>年后在家里闲着没事，家里刚好买了一套新房，年底才开始装修，便想着提前用三维软件规划一下新家布局，顺带给自己定个「七天了解一件事」的小目标——从零开始学 Blender。</p>' +
-        '<p>第一天跟着 Kurt 的零基础教程熟悉了视图旋转、G/R/S 变换快捷键，以及建模、布光、材质、渲染的完整工作流，花了五个小时做出了第一个练习模型；第二天进入编辑模式，学习挤出（Extrude）、内插面（Inset）与倒角（Bevel），从「搭积木」进阶到「雕石膏」。</p>' +
-        '<h2 id="bl-02"><span class="sec-index">02 // MODIFIERS</span><span>二、Day 3–5：修改器堆栈与硬表面建模</span></h2>' +
-        '<p>掌握表面细分（Subdivision Surface）、镜像（Mirror）与布尔（Boolean）修改器后，建模效率成倍提升。通过控制卡线与拓扑流向，能够干净地塑造出家具弧度与器物倒角。</p>' +
-        '<h2 id="bl-03"><span class="sec-index">03 // CYCLES RENDER</span><span>三、Day 6–7：节点材质、布光与 Cycles 渲染</span></h2>' +
-        '<p>最后两天接触 Shader Editor 着色器节点与三点布光法，开启 Cycles 光线追踪与 OIDN 降噪器，看着冰冷的灰模在全局光照下呈现出温润的陶瓷与木纹质感，成就感满满。</p>'
-    },
-    deepseek: {
-      entryNo: '05',
-      slug: '/posts/deepseek-wechat/',
-      path: '/posts/deepseek-wechat/',
-      title: '关于将 Deepseek 接入微信',
-      date: '二〇二五年三月七日',
-      tags: '技术 · AI',
-      words: '约 2,150 字',
-      reading: '约 6 分钟',
-      lead: '记录如何通过轻量级服务容器将 DeepSeek API 接入日常即时通讯工作流，配置上下文记忆窗口与异常重试机制。',
-      toc: [
-        { id: 'ds-01', num: '01', text: '一、前期准备：微信号、Python 与 API 密钥' },
-        { id: 'ds-02', num: '02', text: '二、WeChatBot 客户端配置与模型绑定' },
-        { id: 'ds-03', num: '03', text: '三、提示词设定与上下文窗口调优' }
-      ],
-      specs: [
-        ['LLM API', 'DeepSeek-V3 / R1'],
-        ['PROVIDER', 'Official / SiliconCloud'],
-        ['RUNTIME', 'Python 3.8+ (Windows)'],
-        ['FRAMEWORK', 'WeChatBot_WXAUTO_SE v3.8'],
-        ['LATENCY', '~1.2s First Token']
-      ],
-      prose:
-        '<h2 id="ds-01"><span class="sec-index">01 // PREPARATION</span><span>一、前期准备：微信号、Python 与 API 密钥</span></h2>' +
-        '<p>最近使用 DeepSeek 的频率越来越高，便尝试将其接入微信日常对话流中。整个方案需要准备：两个微信号（小号作为 Bot 载体）、Python 3.8+ 环境、DeepSeek 官方开放平台或硅基流动（SiliconCloud）的 API Key，以及开源的 WeChatBot_WXAUTO_SE 客户端。</p>' +
-        '<h2 id="ds-02"><span class="sec-index">02 // CONFIGURATION</span><span>二、WeChatBot 客户端配置与模型绑定</span></h2>' +
-        '<div class="q-codeblock"><div class="q-codebar"><span>CONFIG.JSON // API 接入核心参数</span><button type="button" class="q-copy-code-btn" data-copy-code="base_url = https://api.siliconflow.cn/v1">COPY</button></div>' +
-        '<pre><code>{\n  "api_base": "https://api.siliconflow.cn/v1",\n  "model": "deepseek-ai/DeepSeek-V3",\n  "temperature": 0.65,\n  "max_context_turns": 12\n}</code></pre></div>' +
-        '<h2 id="ds-03"><span class="sec-index">03 // WORKFLOW</span><span>三、提示词设定与上下文窗口调优</span></h2>' +
-        '<p>填入 API 密钥并绑定监听对象后，即可在微信聊天窗口直接唤醒 DeepSeek 协助检索技术资料、润色文稿或推导代码逻辑。</p>'
-    }
-  };
+  /* 文章正文由服务端按需渲染；这里只保留客户端切换所需的可选注入（window.__ARTICLE_DB） */
+  var ARTICLE_DB = window.__ARTICLE_DB || {};
 
   var proseBodyEl = document.getElementById('article-prose-body');
+  ARTICLE_DB.mc = ARTICLE_DB.mc || {};
   if (proseBodyEl && !ARTICLE_DB.mc.prose) {
     ARTICLE_DB.mc.prose = proseBodyEl.innerHTML;
   }
 
   /* 照片信息详细页数据库（需求 8） */
-  var PHOTO_DB = (window.__PHOTO_DB && window.__PHOTO_DB.length) ? window.__PHOTO_DB : [
-    {
-      idx: 0,
-      coord: 'FRAME #01 // GROUP 01 · LATEST',
-      groupBadge: 'LATEST GROUP #01',
-      title: '暮色天际线 · 山城日落切片',
-      story: '二〇二四年秋日傍晚摄于重庆南滨路。夕阳沉入远山棱线之后，天空在二十分钟内由暖琥珀过渡至深邃群青，江面与城市天际线形成天然的 16:9 宽银幕电影画幅。',
-      src: '/artifact/home/images/photo-01-large.jpg',
-      ratioPill: '16:9 HORIZONTAL',
-      fileCode: 'FILE: 2024-10-07-SUNSET.JPG',
-      date: '二〇二四年十月七日',
-      location: '重庆 · 南滨路江畔',
-      aspect: '16:9 横幅 (2560×1440)',
-      camera: 'Canon EOS R6',
-      lens: 'RF 35mm F1.8 · 定焦',
-      exposure: 'f/4.0 · 1/250s · ISO 160',
-      color: 'WARM AMBER // 暖调直出',
-      gps: '29°33\'18"N · 106°34\'42"E',
-      ev: 'EV -0.3 · HIGH DYNAMIC',
-      hist: [28, 42, 64, 82, 90, 74, 58, 46, 62, 78, 88, 70, 52, 36, 24, 16]
-    },
-    {
-      idx: 1,
-      coord: 'FRAME #06 // GROUP 02 · ARCHIVE',
-      groupBadge: 'ARCHIVE GROUP #02',
-      title: '初夏傍晚街景 · 旧时光切片',
-      story: '二〇二二年六月一日傍晚随手记录的街头时刻。4:3 原生传感器比例保留了恰到好处的天空留白与街巷烟火气。',
-      src: '/artifact/home/images/photo-02-large.jpg',
-      ratioPill: '4:3 HORIZONTAL',
-      fileCode: 'FILE: 2022-06-01-STREET.JPG',
-      date: '二〇二二年六月一日',
-      location: '街头漫游 · 黄昏',
-      aspect: '4:3 横幅 (2560×1920)',
-      camera: 'RICOH GR III',
-      lens: '18.3mm (等效 28mm) F2.8',
-      exposure: 'f/2.8 · 1/160s · ISO 200',
-      color: 'POSITIVE FILM // 正片模拟',
-      gps: '30°16\'04"N · 120°09\'12"E',
-      ev: 'EV 0.0 · BALANCED TONE',
-      hist: [18, 32, 48, 66, 78, 85, 80, 72, 64, 58, 50, 42, 34, 26, 18, 12]
-    },
-    {
-      idx: 2,
-      coord: 'FRAME #02 // GROUP 01 · LATEST',
-      groupBadge: 'LATEST GROUP #01',
-      title: '山城立体纵深 · 阶梯与吊脚楼',
-      story: '重庆特有的三维立体城市地形，采用 3:4 纵向构图收纳自下而上层叠生长的步道、吊脚楼群与江岸微光。',
-      src: '/artifact/home/images/photo-03-large.jpg',
-      ratioPill: '3:4 VERTICAL',
-      fileCode: 'FILE: 2024-07-17-MOUNTAIN-CITY.JPG',
-      date: '二〇二四年七月十七日',
-      location: '重庆 · 洪崖洞至戴家巷步道',
-      aspect: '3:4 竖幅 (630×840)',
-      camera: 'Canon EOS R6',
-      lens: 'RF 50mm F1.8 · 标准定焦',
-      exposure: 'f/2.8 · 1/125s · ISO 400',
-      color: 'CLASSIC NEG // 暖金夜色',
-      gps: '29°33\'49"N · 106°34\'28"E',
-      ev: 'EV -0.7 · LOWKEY SHADOWS',
-      hist: [54, 76, 88, 72, 58, 45, 38, 42, 55, 68, 60, 44, 30, 22, 15, 10]
-    },
-    {
-      idx: 3,
-      coord: 'FRAME #05 // GROUP 02 · ARCHIVE',
-      groupBadge: 'ARCHIVE GROUP #02',
-      title: '城市经纬海报 · MapToPoster 生成切片',
-      story: '通过 Python 脚本拉取 OpenStreetMap 城市路网与水系矢量数据，以纸墨蓝图配色渲染出的 4:3 极简几何海报。',
-      src: '/artifact/home/images/photo-04-large.jpg',
-      ratioPill: '4:3 HORIZONTAL',
-      fileCode: 'FILE: 2026-03-09-MAPTOPOSTER.PNG',
-      date: '二〇二六年三月九日',
-      location: '数字工坊 · OSM 矢量渲染',
-      aspect: '4:3 横幅 (1024×750)',
-      camera: 'MapToPoster Engine v1.4',
-      lens: 'WGS84 Mercator Projection',
-      exposure: '300 DPI · Vector Anti-Alias',
-      color: 'PAPER & INK // 纸墨蓝图',
-      gps: '29°33\'00"N · 106°33\'00"E',
-      ev: 'HIGH KEY // 纸底高调',
-      hist: [10, 12, 15, 18, 22, 26, 30, 35, 42, 52, 68, 82, 92, 96, 88, 74]
-    },
-    {
-      idx: 4,
-      coord: 'FRAME #03 // GROUP 01 · LATEST',
-      groupBadge: 'LATEST GROUP #01',
-      title: '嘉陵江畔夜色 · 桥影与晚风',
-      story: '盛夏夜晚吹着嘉陵江的晚风，跨江大桥的暖色灯光倒映在流动的江水中，16:9 画幅将两岸灯火尽收眼底。',
-      src: '/artifact/home/images/photo-05-large.jpg',
-      ratioPill: '16:9 HORIZONTAL',
-      fileCode: 'FILE: 2024-07-17-CHONGQING-RIVER.JPG',
-      date: '二〇二四年七月十七日',
-      location: '重庆 · 嘉陵江北岸',
-      aspect: '16:9 横幅 (2560×1436)',
-      camera: 'Canon EOS R6',
-      lens: 'RF 24-105mm F4L @ 24mm',
-      exposure: 'f/5.6 · 1/60s · ISO 640',
-      color: 'TUNGSTEN GOLD // 夜景暖调',
-      gps: '29°34\'12"N · 106°34\'15"E',
-      ev: 'EV -0.5 · NIGHT GLOW',
-      hist: [62, 84, 92, 78, 60, 48, 42, 46, 58, 70, 64, 48, 32, 24, 18, 12]
-    },
-    {
-      idx: 5,
-      coord: 'FRAME #04 // GROUP 01 · LATEST',
-      groupBadge: 'LATEST GROUP #01',
-      title: '远山层云天光 · 盛夏午后',
-      story: '七月初夏雨后初晴，远山棱线之上层云叠嶂，清澈的高空光线让远近山脊呈现出如同水墨画般的空气透视感。',
-      src: '/artifact/home/images/photo-06-large.jpg',
-      ratioPill: '16:9 HORIZONTAL',
-      fileCode: 'FILE: 2024-07-08-CLOUDS.JPG',
-      date: '二〇二四年七月八日',
-      location: '川渝远山 · 观景台',
-      aspect: '16:9 横幅 (2560×1436)',
-      camera: 'Canon EOS R6',
-      lens: 'RF 85mm F2 · 中长焦',
-      exposure: 'f/8.0 · 1/800s · ISO 100',
-      color: 'DAYLIGHT CLEAR // 日光通透',
-      gps: '29°38\'20"N · 106°28\'05"E',
-      ev: 'EV +0.3 · SKY HIGHLIGHT',
-      hist: [14, 22, 34, 48, 62, 74, 82, 86, 80, 72, 64, 54, 42, 30, 20, 14]
-    }
-  ];
+  /* 照片数据由服务端渲染进 DOM / window.__PHOTO_DB；不再内置旧照片 */
+  var PHOTO_DB = (window.__PHOTO_DB && window.__PHOTO_DB.length) ? window.__PHOTO_DB : [];
 
   // 为每张照片补充精确宽高比 ar 与横竖方向标识（#02 idx=2 为 3:4 竖向，其余为 16:9 或 4:3 横向）
   var PHOTO_AR_MAP = { 0: 1.7797, 1: 1.3333, 2: 0.7500, 3: 1.3659, 4: 1.7834, 5: 1.7834 };
@@ -889,12 +626,13 @@
   // 按视觉卡片顺序排列的索引序列；有服务端数据时按数据库顺序
   var PHOTO_VISUAL_ORDER = (window.__PHOTO_DB && window.__PHOTO_DB.length)
     ? PHOTO_DB.map(function (item) { return item.idx; })
-    : [0, 2, 4, 5, 3, 1];
+    : [];
   var currentPhotoIdx = 0;
 
   /* 根据当前选中照片的宽高比 (ar) 与一屏视口边界，动态计算最大化无越界画框尺寸并驱动横/竖平滑伸缩动画 */
   function updateInspectorFrameGeometry() {
     var target = PHOTO_DB[currentPhotoIdx] || PHOTO_DB[0];
+    if (!target) return;
     var gridEl = document.getElementById('photos-inspector-grid');
     var vpEl = document.getElementById('insp-viewport');
     var frameBox = document.getElementById('insp-frame-box');
@@ -943,6 +681,7 @@
 
   function selectPhotoInInspector(idx) {
     var target = PHOTO_DB[idx] || PHOTO_DB[0];
+    if (!target) return;
     currentPhotoIdx = target.idx;
     var isPortrait = target.ar < 1.0;
 
@@ -1098,6 +837,7 @@
   if (inspToggleOrientBtn) {
     inspToggleOrientBtn.addEventListener('click', function () {
       var curr = PHOTO_DB[currentPhotoIdx] || PHOTO_DB[0];
+      if (!curr) return;
       // 若当前为横向则切换到 #02 竖向照片 (idx=2)，若当前为竖向则切换到 #01 横向照片 (idx=0)
       var nextTargetIdx = curr.ar < 1.0 ? 0 : 2;
       selectPhotoInInspector(nextTargetIdx);
@@ -1515,6 +1255,10 @@
   if (tlRandomReadBtn) {
     tlRandomReadBtn.addEventListener('click', function () {
       var keys = Object.keys(ARTICLE_DB);
+      if (!keys.length) {
+        showToast('暂无文章，先去 /studio/ 写一篇');
+        return;
+      }
       var rk = keys[Math.floor(Math.random() * keys.length)];
       setViewMode('article', rk);
       showToast('随机漫游至文章《' + ARTICLE_DB[rk].title + '》');
@@ -1596,11 +1340,13 @@
   var btnCopySiteCard = document.getElementById('btn-copy-site-card');
   if (btnCopySiteCard) {
     btnCopySiteCard.addEventListener('click', function () {
-      var cardText = '站名：夜笙的小世界 | 网址：https://www.yesheng.wiki | 简介：一个普通人的自述 | RSS：https://www.yesheng.wiki/rss.xml';
+      var cardText =
+        btnCopySiteCard.getAttribute('data-site-card') ||
+        '站名：夜笙的小世界 | 网址：https://www.yesheng.wiki | 简介：一个普通人的自述 | RSS：https://www.yesheng.wiki/rss.xml';
       if (navigator.clipboard && navigator.clipboard.writeText) {
         navigator.clipboard.writeText(cardText).catch(function () {});
       }
-      showToast('已复制「夜笙的小世界」友链名片信息到剪贴板');
+      showToast('已复制本站友链名片信息到剪贴板');
     });
   }
 
@@ -1843,8 +1589,10 @@
 
     var openArtTrigger = e.target.closest('[data-open-article]');
     if (openArtTrigger) {
-      e.preventDefault();
       var artKey = openArtTrigger.dataset.openArticle || currentSpotId || 'mc';
+      // 本地没有这篇的正文时，交给真实链接跳转（服务端渲染的文章页）
+      if (!ARTICLE_DB[artKey] && openArtTrigger.getAttribute('href')) return;
+      e.preventDefault();
       setViewMode('article', artKey);
       showToast('已进入文章详细页（右侧运行高立体感《三体》引力轨迹模型）');
       return;
@@ -1854,7 +1602,7 @@
     if (switchArtTrigger) {
       var nextKey = switchArtTrigger.dataset.switchArticle;
       setViewMode('article', nextKey);
-      showToast('已切换至文章《' + (ARTICLE_DB[nextKey] ? ARTICLE_DB[nextKey].title : '') + '》');
+      showToast(ARTICLE_DB[nextKey] ? '已切换至文章《' + ARTICLE_DB[nextKey].title + '》' : '已切换文章');
       return;
     }
 

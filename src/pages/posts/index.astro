@@ -8,6 +8,7 @@ export const prerender = false;
 import ArtifactLayout from '../../layouts/ArtifactLayout.astro';
 import postsTpl from '../../artifact/posts.html?raw';
 import { listPosts, type Post } from '../../server/repositories/posts';
+import { copy, getPageValues } from '../../server/pages';
 import { applyArtifactSite, getSiteConfig } from '../../server/site';
 import { groupByYearMonth } from '../../utils/timeline';
 import { chineseDay, chineseMonth, chineseYear, readingTime } from '../../utils/date';
@@ -16,6 +17,8 @@ import { cjkSpacing } from '../../utils/typography';
 const posts = listPosts();
 const total = posts.length;
 const site = getSiteConfig();
+const pages = getPageValues();
+const c = (key: string, vars?: Record<string, string | number>) => copy(pages, key, vars);
 
 const MONTH_EN = [
   'JANUARY',
@@ -90,7 +93,7 @@ const tags = [...tagCounts.entries()].sort(
 );
 
 const tagChipsHtml = [
-  `<button type="button" class="archive-tag-chip" data-tl-tag="all" aria-pressed="true">全部 (${total})</button>`,
+  `<button type="button" class="archive-tag-chip" data-tl-tag="all" aria-pressed="true">${esc(c('posts.allTag'))} (${total})</button>`,
   ...tags.map(
     ([tag, count]) =>
       `<button type="button" class="archive-tag-chip" data-tl-tag="${esc(tag)}" aria-pressed="false">${esc(tag)} (${count})</button>`
@@ -103,7 +106,7 @@ function entryHtml(post: Post, indexInMonth: number): string {
   const { chars, minutes } = readingTime(post.bodyMarkdown);
   const date = new Date(`${post.pubDate}T00:00:00`);
   const badge = post.entryBadge?.trim() || DESIGN_BADGES[post.slug] || post.tags[0] || 'ARCHIVE';
-  const tagText = post.tags.length ? post.tags.join(' · ') : '未分类';
+  const tagText = post.tags.length ? post.tags.join(' · ') : c('posts.uncategorized');
   const lead = leadFor(post);
   const cover = coverFor(post);
   return `<article class="tl-item tl-post-card" style="--i:${indexInMonth}" data-tl-entry data-article-key="${esc(
@@ -128,7 +131,7 @@ function entryHtml(post: Post, indexInMonth: number): string {
     <div class="tl-card-foot">
       <span class="tl-slug-code">/posts/${post.slug}/</span>
       <a class="q-read-btn tl-read-btn" href="/posts/${post.slug}/">
-        <span>进入详细页阅读</span>
+        <span>${esc(c('posts.readLabel'))}</span>
         <span aria-hidden="true">-&gt;</span>
       </a>
     </div>
@@ -157,7 +160,7 @@ const timelineHtml = years
   <button type="button" class="tl-month-head" aria-expanded="true">
     <span class="tl-month-label">${chineseMonth(month.month)}月</span>
     <span class="tl-month-code">${year.year}.${pad2(month.month)} // ${MONTH_EN[month.month - 1]}</span>
-    <span class="tl-count" data-month-count>${month.items.length} 篇</span>
+    <span class="tl-count" data-month-count>${month.items.length} ${esc(c('posts.unit'))}</span>
     <span class="tl-chevron" aria-hidden="true">▾</span>
   </button>
   <div class="tl-panel" data-open>
@@ -173,7 +176,7 @@ ${items}
   <button type="button" class="tl-year-head" aria-expanded="true">
     <span class="tl-year-label">${chineseYear(year.year)}</span>
     <span class="tl-year-code">${year.year} CHRONICLE</span>
-    <span class="tl-count" data-year-count>${yearCount} 篇</span>
+    <span class="tl-count" data-year-count>${yearCount} ${esc(c('posts.unit'))}</span>
     <span class="tl-chevron" aria-hidden="true">▾</span>
   </button>
   <div class="tl-panel" data-open>
@@ -188,18 +191,18 @@ ${monthsHtml}
 const oldest = posts[posts.length - 1];
 const originHtml = oldest
   ? `<div class="tl-start" aria-hidden="true">
-  <span class="tl-origin-caption">ORIGIN (0, 0) // 时间从这里开始 · FIRST COMMIT ${esc(oldest.pubDate)}</span>
+  <span class="tl-origin-caption">${esc(c('posts.origin'))} · FIRST COMMIT ${esc(oldest.pubDate)}</span>
 </div>`
   : '';
 
 const finalTimelineHtml = total
   ? `<div class="tl-now-cap">
   <span class="tl-now-dot" aria-hidden="true"></span>
-  <span class="tl-now-text">NOW // PRESENT HORIZON · 时间轴顶端（由近及远）</span>
+  <span class="tl-now-text">${esc(c('posts.now'))}</span>
 </div>
 ${timelineHtml}
 ${originHtml}`
-  : `<p class="tl-empty-state" style="display:block">还没有文章。去 /studio/ 写第一篇。</p>`;
+  : `<p class="tl-empty-state" style="display:block">${esc(c('posts.empty'))}</p>`;
 
 /* ---------- 右栏 ---------- */
 const railJumpsHtml = years
@@ -212,7 +215,7 @@ const railJumpsHtml = years
             (month) => `<li>
   <button type="button" data-tl-scroll="tl-month-${year.year}-${pad2(month.month)}">
     <span class="r-idx">${year.year} // ${MONTH_EN[month.month - 1]} · ${pad2(month.month)}</span>
-    <span class="r-tit">${chineseYear(year.year!)}${chineseMonth(month.month)}月（${month.items.length} 篇）</span>
+    <span class="r-tit">${chineseYear(year.year!)}${chineseMonth(month.month)}月（${month.items.length} ${esc(c('posts.unit'))}）</span>
   </button>
 </li>`
           )
@@ -229,7 +232,7 @@ const railDensityHtml = years
             const pct = total ? Math.round((month.items.length / total) * 100) : 0;
             const filled = Math.max(1, Math.round((month.items.length / Math.max(1, total)) * 3));
             const bars = '█'.repeat(filled) + '░'.repeat(Math.max(0, 3 - filled));
-            return `<li><span>${year.year}.${pad2(month.month)}</span><strong>${bars} ${pct}% (${month.items.length} 篇)</strong></li>`;
+            return `<li><span>${year.year}.${pad2(month.month)}</span><strong>${bars} ${pct}% (${month.items.length} ${esc(c('posts.unit'))})</strong></li>`;
           })
   )
   .join('\n');
@@ -237,10 +240,10 @@ const railDensityHtml = years
 const slots: Record<string, string> = {
   AXIS_YEARS: `${maxYear} — ${minYear}`,
   AXIS_COUNT: String(total),
-  STAT_TOTAL: `${total} 篇长短文`,
+  STAT_TOTAL: esc(c('posts.statTotal', { count: total })),
   STAT_SPAN: `${chineseYear(minYear)} — ${chineseYear(maxYear)}`,
-  STAT_VISIBLE: `${total} / ${total} 篇可见`,
-  STAT_WORDS: `约 ${totalChars.toLocaleString('zh-CN')} 字`,
+  STAT_VISIBLE: esc(c('posts.statVisible', { count: total })),
+  STAT_WORDS: esc(c('posts.statWords', { chars: totalChars.toLocaleString('zh-CN') })),
   TAG_CHIPS: tagChipsHtml,
   TIMELINE: finalTimelineHtml,
   RAIL_JUMPS: railJumpsHtml,
@@ -259,8 +262,8 @@ html = applyArtifactSite(html, site, 'posts');
 <ArtifactLayout
   page="posts"
   bodyClass="home"
-  title="文章"
-  description="按时间从近及远排列的全部文章，支持标签筛选与关键词检索。"
+  title={c('posts.title')}
+  description={c('posts.description')}
 >
   <Fragment set:html={html} />
 </ArtifactLayout>

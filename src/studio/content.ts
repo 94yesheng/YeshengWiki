@@ -322,9 +322,29 @@ export async function listPhotoFiles(gh: Github): Promise<DirEntry[]> {
 }
 
 export async function listPostAssetFiles(gh: Github): Promise<DirEntry[]> {
+  const imageName = /\.(jpe?g|png|webp|avif|gif|svg)$/i;
   try {
     const entries = await gh.listDir(DIRS.postAssets);
-    return entries.filter((e) => e.type === 'file' && /\.(jpe?g|png|webp|avif|gif|svg)$/i.test(e.name));
+    const files: DirEntry[] = [];
+    for (const entry of entries) {
+      if (entry.type === 'file') {
+        if (imageName.test(entry.name)) files.push(entry);
+        continue;
+      }
+      // 兼容真实 GitHub：子目录单独列一次，name 用 `<slug>/<file>`，
+      // 这样上传去重和编辑器里的兜底缩略图都能直接定位。
+      if (entry.type !== 'dir') continue;
+      try {
+        const children = await gh.listDir(entry.path);
+        for (const child of children) {
+          if (child.type !== 'file' || !imageName.test(child.name)) continue;
+          files.push({ ...child, name: `${entry.name}/${child.name}` });
+        }
+      } catch {
+        // 子目录不可读就跳过，不影响其它配图
+      }
+    }
+    return files;
   } catch {
     return [];
   }
@@ -457,19 +477,42 @@ export async function uploadPhoto(
   return name;
 }
 
+/**
+ * 把 state.postAssetFiles 里的条目归一成 `<slug>/<file>` 或 `<file>`。
+ * 这些条目可能是旧版扁平文件名、`<slug>/<file>`，也可能已经被调用方
+ * 换成了 `../../assets/posts/...` 这样的正文相对路径。
+ */
+function postAssetName(name: string): string {
+  return name
+    .replace(/^\.\.\/\.\.\/assets\/posts\//, '')
+    .replace(/^\/?src\/assets\/posts\//, '')
+    .replace(/^\/?uploads\/posts\//, '')
+    .replace(/^\/+/, '');
+}
+
+/**
+ * 上传文章配图：归档到 `src/assets/posts/<slug>/<slug>-NN.jpg`，
+ * 返回可直接写进正文的 `../../assets/posts/<slug>/<file>`。
+ *
+ * 目录用 safeFilename(postSlug) 再兜一层；上传接口（fs.ts 的 assetTarget）
+ * 只接受一层子目录，`..` / 空段 / 绝对路径都会被拒绝。
+ */
 export async function uploadPostAsset(
   gh: Github,
   prepared: PreparedImage,
   postSlug: string,
   existing: string[]
 ): Promise<string> {
-  const prefix = safeFilename(postSlug || 'post');
+  const safeSlug = safeFilename(postSlug || 'post');
+  const folder = safeSlug && safeSlug !== '.' && safeSlug !== '..' ? safeSlug : 'post';
+  const existingNames = new Set(existing.map(postAssetName));
   let n = 1;
-  let name = `${prefix}-${String(n).padStart(2, '0')}.jpg`;
-  while (existing.includes(name)) {
+  let name = `${folder}-${String(n).padStart(2, '0')}.jpg`;
+  // 同时避开旧版扁平文件名与新版归档目录里的同名文件
+  while (existingNames.has(`${folder}/${name}`) || existingNames.has(name)) {
     n += 1;
-    name = `${prefix}-${String(n).padStart(2, '0')}.jpg`;
+    name = `${folder}-${String(n).padStart(2, '0')}.jpg`;
   }
-  await gh.putBinary(`${DIRS.postAssets}/${name}`, prepared.bytes, `content: 上传文章配图 ${name}`);
-  return name;
+  await gh.putBinary(`${DIRS.postAssets}/${folder}/${name}`, prepared.bytes, `content: 上传文章配图 ${folder}/${name}`);
+  return `../../assets/posts/${folder}/${name}`;
 }

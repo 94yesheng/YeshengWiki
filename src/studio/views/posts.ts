@@ -18,7 +18,7 @@ import { createEditor } from '../editor';
 import { normalizeHtml, renderMarkdown } from '../md';
 import { openPreview } from '../preview';
 import { chineseFullDate, isoDate, readingTime } from '../../utils/date';
-import { $, esc, reportError, setBusy, showConfirm, toast } from '../ui';
+import { $, $$, esc, reportError, setBusy, showConfirm, toast } from '../ui';
 import { isV2Layout } from '../layout';
 import { applyV2PostLayout } from '../v2-layout';
 import {
@@ -51,6 +51,16 @@ interface RailTopologyCfg {
   line1?: string;
   line2?: string;
 }
+
+/**
+ * 文章草稿附带的界面状态：只存在内存里，不写进 frontmatter / 数据库。
+ * 折叠面板里的控件操作常常会触发整块重渲染，开合状态必须挂在 draft 上，
+ * 渲染时据此恢复 is-open / aria-expanded，否则点一下控件面板就会自动收起。
+ */
+type PostDraftUi = NonNullable<Draft['post']> & {
+  /** 「信息悬浮窗」小节是否展开 */
+  railOpen?: boolean;
+};
 
 function autoUpdatedDefault(): boolean {
   const data = state.site?.data as Record<string, unknown> | undefined;
@@ -89,7 +99,7 @@ function extractAutoLeadFromMarkdown(mdText: string): string {
   return parts.join(' ');
 }
 
-function postDraft(): Draft['post'] {
+function postDraft(): PostDraftUi | undefined {
   const entry = currentPost();
   if (!entry) return undefined;
   if (!state.draft.post || state.draft.post.entry.id !== entry.id) {
@@ -335,15 +345,14 @@ export function renderPostView(): void {
         </div>
       </div>
 
-      <!-- 右栏伴读定制（可折叠的高级选项）-->
-      <div class="st-section-box is-collapsible" id="st-rail-section">
-        <div class="st-section-head" id="st-rail-head">
-          <span>右栏伴读定制</span>
+      <!-- 信息悬浮窗（可折叠的高级选项）：只有标题行能开合，点内容区不会折叠 -->
+      <div class="st-section-box is-collapsible${d.railOpen ? ' is-open' : ''}" id="st-rail-section">
+        <div class="st-section-head" id="st-rail-head" role="button" tabindex="0" aria-expanded="${d.railOpen ? 'true' : 'false'}" aria-controls="st-rail-body" aria-label="信息悬浮窗：点击展开或收起">
+          <span>信息悬浮窗</span>
           <span class="st-sec-mono" style="font-family:var(--mono);font-size:0.72rem;letter-spacing:0.06em;color:var(--accent);">高级 · 可折叠</span>
-          <button type="button" class="stage-mini-btn" id="st-switch-rail-preview" style="margin-left:auto;">预览 →</button>
           <span class="st-collapse-icon">›</span>
         </div>
-        <div class="st-section-body">
+        <div class="st-section-body" id="st-rail-body">
           <div style="padding-top:0.5rem;">
 
         <div class="st-field">
@@ -491,14 +500,31 @@ export function renderPostView(): void {
     markDirty();
   });
 
-  // 可折叠 section 绑定
-  edit.querySelectorAll<HTMLElement>('.st-section-box.is-collapsible .st-section-head').forEach((head) => {
-    const box = head.closest('.st-section-box');
+  // 可折叠 section：开合只由标题行触发，点击内容区（输入框 / 下拉 / 复选 / 按钮）不会折叠。
+  // 开合状态写进 draft（d.railOpen），重渲染时由模板恢复 is-open / aria-expanded。
+  $$<HTMLElement>('.st-section-box.is-collapsible > .st-section-head', edit).forEach((head) => {
+    const box = head.closest<HTMLElement>('.st-section-box');
     if (!box) return;
-    head.addEventListener('click', (e) => {
-      // 点击 section 内的按钮不触发折叠
-      if ((e.target as HTMLElement).closest('button, input, select, textarea')) return;
-      box.classList.toggle('is-open');
+
+    const setOpen = (open: boolean) => {
+      box.classList.toggle('is-open', open);
+      head.setAttribute('aria-expanded', open ? 'true' : 'false');
+      // 「信息悬浮窗」的开合要跨重渲染保留；其它可折叠小节若以后加入，在这里补字段即可。
+      if (box.id === 'st-rail-section') d.railOpen = open;
+    };
+    const toggle = (e: Event) => {
+      // 标题行里将来若加了链接 / 按钮 / 表单控件，只走它们自己的行为，不触发折叠
+      if ((e.target as HTMLElement).closest('a, button, input, select, textarea, label, summary, [data-no-collapse]')) {
+        return;
+      }
+      setOpen(!box.classList.contains('is-open'));
+    };
+
+    head.addEventListener('click', toggle);
+    head.addEventListener('keydown', (e) => {
+      if (e.key !== 'Enter' && e.key !== ' ') return;
+      e.preventDefault();
+      toggle(e);
     });
   });
 
@@ -531,17 +557,16 @@ export function renderPostView(): void {
         img.src = localUrl;
       }
 
-      // v2 真实模式：真正上传到 src/assets/posts/，frontmatter 里写相对路径。
-      if (isV2Layout() && !state.demoMode && state.gh) {
+      // v2 真实模式：上传到 src/assets/posts/<文章 slug>/，frontmatter 里写相对路径。
+      if (isV2Layout() && state.gh) {
         setBusy(true, '压缩并上传封面…');
         const prepared = await prepareImage(file);
-        const name = await uploadPostAsset(state.gh, prepared, d.entry.id, state.postAssetFiles);
-        state.postAssetFiles.push(name);
-        const rel = `../../assets/posts/${name}`;
+        const rel = await uploadPostAsset(state.gh, prepared, d.entry.id, state.postAssetFiles);
+        if (!state.postAssetFiles.includes(rel)) state.postAssetFiles.push(rel);
         d.fields.cover = rel;
         if (input) input.value = rel;
         markDirty();
-        toast(`封面 ${name} 已上传：${rel}`);
+        toast(`封面已上传并归档到 ${rel}`);
         return;
       }
 
@@ -657,11 +682,6 @@ export function renderPostView(): void {
     })
   );
 
-  $('#st-switch-rail-preview')?.addEventListener('click', () => {
-    d.rightTab = 'rail';
-    renderRightDock(d);
-  });
-
   $('#st-btn-preview-post')?.addEventListener('click', () => previewCurrentPost());
   $('#st-del-post')?.addEventListener('click', () => {
     if (!isV2Layout()) {
@@ -716,19 +736,20 @@ function renderRightDock(d: NonNullable<Draft['post']>): void {
         },
         getPostAssets: () => state.postAssetFiles,
         onUploadPostAsset: async (file: File) => {
-          if (state.demoMode || !state.gh) {
+          if (!state.gh) {
             const name = file.name.replace(/\s+/g, '-');
-            if (!state.postAssetFiles.includes(name)) state.postAssetFiles.push(name);
-            toast(`已载入配图「${name}」（演示模式）`);
-            return name;
+            const rel = `../../assets/posts/${name}`;
+            if (!state.postAssetFiles.includes(rel)) state.postAssetFiles.push(rel);
+            toast(`已载入配图「${name}」（会话失效，未上传到服务器）`);
+            return rel;
           }
           setBusy(true, '压缩并上传文章配图…');
           try {
             const prepared = await prepareImage(file);
-            const name = await uploadPostAsset(state.gh, prepared, d.entry.id, state.postAssetFiles);
-            state.postAssetFiles.push(name);
-            toast(`配图 ${name} 已上传至 src/assets/posts/`);
-            return name;
+            const rel = await uploadPostAsset(state.gh, prepared, d.entry.id, state.postAssetFiles);
+            if (!state.postAssetFiles.includes(rel)) state.postAssetFiles.push(rel);
+            toast(`配图已上传并归档到 ${rel}`);
+            return rel;
           } catch (err) {
             reportError(err);
             return null;
@@ -945,7 +966,7 @@ export function postDraftEdited(): boolean {
 export function foldStagedPostDraft(): void {
   const d = state.draft.post;
   if (!d) return;
-  if (state.demoMode || isStagedNew(d.entry)) {
+  if (isStagedNew(d.entry)) {
     const parsed = parsePost(
       buildPostText(d.entry, diffFields(d.entry.parsed.data, d.fields, [...POST_FIELDS]), d.editor?.getMarkdown() ?? d.body)
     );

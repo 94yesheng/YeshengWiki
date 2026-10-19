@@ -28,28 +28,17 @@ import { isStagedNew, markDirty, rerender, settleBeforeLeaving, stageAdd, stageR
 import { chineseFullDate, isoDate } from '../../utils/date';
 import type { Github } from '../github';
 
-/** 映射已知的展示页静态图片，方便在后台直接看到真实缩略图 */
-const DEMO_IMG_MAP: Record<string, string> = {
-  '2024-10-07-日落.jpg': '/artifact/home/images/photo-01-large.jpg',
-  '2022-06-01-IMG_20220601_195659.jpg': '/artifact/home/images/photo-02-large.jpg',
-  '2024-07-17-山城竖幅.jpg': '/artifact/home/images/photo-03-large.jpg',
-  '2026-03-09-城市壁纸.png': '/artifact/home/images/photo-04-large.jpg',
-  '2024-07-17-chongqing.jpg': '/artifact/home/images/photo-05-large.jpg',
-  '2024-07-08-2R9A9476.jpg': '/artifact/home/images/photo-06-large.jpg',
-  '2026-03-09-鸡煲.jpg': '/artifact/home/images/post-cover-jibao.jpg',
-};
-
 /**
  * 生产环境没有 Vite 的 /src/ 静态服务，`/src/assets/photos/...` 会 404。
- * 已知的展示图走 DEMO_IMG_MAP；其余先给占位图，等 hydratePhotoPreviews 用
- * GitHub Contents API 取回二进制后换成 blob URL。
+ * 未知文件先给统一占位图，等 hydratePhotoPreviews 用 GitHub Contents API
+ * 取回二进制后换成 blob URL。
  */
 function resolvePhotoPreviewUrl(file: string): string {
   if (!file) return '/studio/photo-placeholder.svg';
   if (file.startsWith('blob:') || file.startsWith('data:') || file.startsWith('http') || file.startsWith('/')) {
     return file;
   }
-  return DEMO_IMG_MAP[file] ?? '/studio/photo-placeholder.svg';
+  return '/studio/photo-placeholder.svg';
 }
 
 /** 图片预览缓存：文件名 → blob URL；同一张只取一次 */
@@ -67,12 +56,10 @@ function mimeOf(file: string): string {
 
 async function loadPhotoPreview(file: string): Promise<string | null> {
   if (!file) return null;
-  // 已知的展示图 / 刚上传的本地预览先用本地 URL，不浪费一次 API 请求。
-  const local = DEMO_IMG_MAP[file];
-  if (local) return local;
-  if (state.demoMode || !state.gh) return null;
+  // 刚上传/拖入的照片已缓存本地 blob URL，直接复用，不浪费一次 API 请求。
   const cached = previewCache.get(file);
   if (cached) return cached;
+  if (!state.gh) return null;
   const pending = previewLoading.get(file);
   if (pending) return pending;
 
@@ -283,7 +270,7 @@ export function renderWallView(): void {
     const newIdx = w.photos.length + 1;
     w.photos.push({
       file: `2026-10-18-UNREAD-SAMPLE-0${newIdx}.jpg`,
-      caption: '街头未知切片（部分 EXIF 缺失演示）',
+      caption: '街头未知切片（部分 EXIF 缺失）',
       title: `街头未知光影切片 #0${newIdx}`,
       story: '这张照片模拟从社交软件或截图导入：仅自动识别出 16:9 画幅与影调直方图，器材机身、镜头焦段、曝光参数与经纬坐标均未读取，在右侧用户视图中自动应用「模糊化乱码」艺术处理。',
       group: 'latest',
@@ -333,7 +320,6 @@ function renderSinglePhotoEditorHtml(p: WallPhoto, idx: number, total: number): 
         <span>03 // FRAME #${String(idx + 1).padStart(2, '0')} OPTICAL &amp; EXIF EDITOR · 单张摄影参数编辑（留空项在用户侧自动转为模糊乱码）</span>
         <div style="display:flex;gap:0.4rem;flex-wrap:wrap;">
           <button type="button" class="stage-mini-btn" id="st-photo-clear-some" title="清空机身、镜头、GPS 等字段，立即测试用户侧模糊乱码艺术效果">置空部分参数以预览乱码效果</button>
-          <button type="button" class="stage-mini-btn" id="st-photo-fill-demo" title="一键补全标准 Canon R6 摄影参数">填入示例完整 EXIF</button>
           <button type="button" class="stage-mini-btn st-btn--danger" id="st-photo-remove">移除此张 (${idx + 1}/${total})</button>
         </div>
       </div>
@@ -453,21 +439,6 @@ function wireSinglePhotoEditor(edit: HTMLElement, w: WallEntry, p: WallPhoto, id
     markDirty();
     renderWallView();
     toast('已置空机身、镜头、曝光、地点与经纬 —— 右栏用户侧预览已实时切换为模糊乱码艺术效果');
-  });
-
-  $('#st-photo-fill-demo')?.addEventListener('click', () => {
-    p.camera = p.camera || 'Canon EOS R6';
-    p.lens = p.lens || 'RF 35mm F1.8 · 定焦';
-    p.exposure = p.exposure || 'f/4.0 · 1/250s · ISO 160';
-    p.location = p.location || (w.place || '重庆 · 南滨路江畔');
-    p.gps = p.gps || '29°33\'18"N · 106°34\'42"E';
-    p.color = p.color || 'WARM AMBER // 暖调直出';
-    p.date = p.date || chineseFullDate(new Date());
-    p.ev = p.ev || 'EV -0.3 · HIGH DYNAMIC';
-    p.aspect = p.aspect || '16:9 横幅 (2560×1440)';
-    markDirty();
-    renderWallView();
-    toast('已补全全部摄影参数');
   });
 
   $('#st-photo-remove')?.addEventListener('click', () => {
@@ -615,15 +586,13 @@ async function uploadImages(w: WallEntry, files: File[]): Promise<void> {
       const prepared = await prepareImage(file);
 
       let savedName = `${w.date ? `${w.date}-` : ''}${prepared.filename}`;
-      if (!state.demoMode && state.gh) {
+      if (state.gh) {
         savedName = await uploadPhoto(state.gh, prepared, w.date, [...state.photoFiles, ...w.photos.map((p) => p.file)]);
       }
-      // 无论真实上传还是演示模式，都先用压缩后的字节生成本地预览：
-      // 上传完立刻能看到图，不必再等一次 GitHub API。
+      // 先用压缩后的字节生成本地预览：上传完立刻能看到图，不必再等一次 GitHub API。
       const blobUrl = URL.createObjectURL(
         new Blob([new Uint8Array(prepared.bytes).buffer as ArrayBuffer], { type: 'image/jpeg' })
       );
-      DEMO_IMG_MAP[savedName] = blobUrl;
       previewCache.set(savedName, blobUrl);
 
       state.photoFiles.push(savedName);
@@ -711,7 +680,7 @@ export function wallDraftEdited(): boolean {
 export function foldStagedWallDraft(): void {
   const w = state.draft.wall;
   if (!w) return;
-  if (state.demoMode || isStagedNew(w)) {
+  if (isStagedNew(w)) {
     const entry = state.walls.find((x) => x.path === w.path);
     if (!entry) return;
     entry.title = w.title;

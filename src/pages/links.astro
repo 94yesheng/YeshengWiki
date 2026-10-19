@@ -4,6 +4,7 @@ export const prerender = false;
 import BaseLayout from '../layouts/BaseLayout.astro';
 import LinkCard from '../components/LinkCard.astro';
 import { site as staticSite, type SiteConfig } from '../site.config';
+import { copy, getPageValues } from '../server/pages';
 import { getSetting } from '../server/repositories/settings';
 import { listLinks } from '../server/repositories/links';
 
@@ -12,9 +13,27 @@ const site = getSetting<SiteConfig>('site', staticSite);
 const links = listLinks()
   .filter((item) => item.id !== 'example' && !item.url.includes('example.com'))
   .sort((a, b) => a.name.localeCompare(b.name, 'zh-Hans-CN'));
+const pages = getPageValues();
+const c = (key: string, vars?: Record<string, string | number>) => copy(pages, key, vars);
+
+interface ColophonCard {
+  kicker?: string;
+  title: string;
+  desc: string;
+}
+
+const dossier = getSetting<{ colophon?: ColophonCard[] }>('authorDossier', {});
+const colophon = (Array.isArray(dossier.colophon) ? dossier.colophon : []).filter(
+  (item) => typeof item?.title === 'string' && typeof item?.desc === 'string'
+);
+const copyDoneJson = JSON.stringify(c('links.copyDone')).replace(/</g, '\\u003c');
+const siteBase = site.url.replace(/\/+$/, '');
+const cardInfoJson = JSON.stringify(
+  `站名：${site.title} | 网址：${siteBase} | 简介：${site.tagline} | RSS：${siteBase}/rss.xml`
+).replace(/</g, '\\u003c');
 ---
 
-<BaseLayout masthead={false} title="友链" description="常看的独立博客友链，以及关于「夜笙的小世界」的站点架构与排版说明。">
+<BaseLayout masthead={false} title={c('links.title')} description={c('links.description')}>
   <div class="wrap">
     <div class="section-head">
       <h1>
@@ -30,16 +49,16 @@ const links = listLinks()
             <ellipse cx="14" cy="7.2" rx="11.2" ry="2.4" transform="rotate(-11 14 7.2)" fill="none" stroke="currentColor" stroke-width="1.35"/>
           </svg>
         </span>
-        <span>友链</span>
+        <span>{c('links.title')}</span>
       </h1>
-      <p class="note">友链名录 · 本站规格 · 架构志</p>
+      <p class="note">{c('links.note')}</p>
     </div>
 
     <!-- 第一部分：友链名录与本站名片 -->
     <section class="links-block" aria-labelledby="heading-peers">
       <div class="sub-head">
-        <h2 id="heading-peers">一、邻人友链与本站名片</h2>
-        <span class="sub-note">{links.length > 0 ? `已收录 ${links.length} 个独立站点` : '虚位以待 · 欢迎互换友链'}</span>
+        <h2 id="heading-peers">{c('links.peersTitle')}</h2>
+        <span class="sub-note">{links.length > 0 ? c('links.peersCount', { count: links.length }) : c('links.peersEmpty')}</span>
       </div>
 
       {
@@ -62,21 +81,21 @@ const links = listLinks()
       <div class="site-card-box">
         <div class="site-card-main">
           <div class="site-card-title-row">
-            <h3>本站名片 · 友链互换信息</h3>
+            <h3>{c('links.cardTitle')}</h3>
             <span class="site-card-badge">YESHENG.WIKI</span>
           </div>
           <p class="site-card-desc">
-            如果你也在维护一个认真写字、记录技术笔记或生活广度的独立博客，欢迎通过下方规格互换友链。友链数据存储在服务器的 SQLite 数据库中，可通过 <code>/studio/</code> 后台即时维护。
+            {c('links.cardIntro')}
           </p>
           <dl class="site-spec-dl">
-            <div><dt>站点名称</dt><dd>{site.title}</dd></div>
-            <div><dt>站点副标</dt><dd>{site.tagline}</dd></div>
-            <div><dt>站点地址</dt><dd>{site.url}</dd></div>
-            <div><dt>RSS 订阅</dt><dd><a href="/rss.xml">{site.url}/rss.xml</a></dd></div>
+            <div><dt>{c('links.specName')}</dt><dd>{site.title}</dd></div>
+            <div><dt>{c('links.specTagline')}</dt><dd>{site.tagline}</dd></div>
+            <div><dt>{c('links.specUrl')}</dt><dd>{site.url}</dd></div>
+            <div><dt>{c('links.specRss')}</dt><dd><a href="/rss.xml">{site.url}/rss.xml</a></dd></div>
           </dl>
         </div>
         <div class="site-card-actions">
-          <button type="button" class="action-btn" id="copy-site-card-btn">复制本站友链信息</button>
+          <button type="button" class="action-btn" id="copy-site-card-btn">{c('links.copyBtn')}</button>
           <a class="action-btn action-btn--secondary" href="/rss.xml">打开 RSS 全文订阅源 →</a>
         </div>
       </div>
@@ -85,59 +104,45 @@ const links = listLinks()
     <!-- 第二部分：站点说明志 -->
     <section class="links-block" aria-labelledby="heading-colophon">
       <div class="sub-head">
-        <h2 id="heading-colophon">二、站点说明（Site Colophon）</h2>
-        <span class="sub-note">建站初衷 · 服务端渲染 · SQLite · 昼夜双模态</span>
+        <h2 id="heading-colophon">{c('links.colophonTitle')}</h2>
+        <span class="sub-note">{c('links.colophonNote')}</span>
       </div>
 
       <div class="colophon-grid">
-        <article class="colophon-card">
-          <div class="colophon-kicker">01 // PHILOSOPHY</div>
-          <h3>关于本站 · 探索世界的广度</h3>
-          <p>
-            这里是夜笙的小世界。写点技术笔记（Minecraft 服务器内网穿透、Blender 三维建模入门、MapToPoster 城市经纬海报、DeepSeek 接入微信工作流），也写点日常随笔。「如果抵达不了人生的高度，那就尽可能的探索世界的广度吧。」
-          </p>
-        </article>
-
-        <article class="colophon-card">
-          <div class="colophon-kicker">02 // ARCHITECTURE</div>
-          <h3>服务端渲染 · SQLite 数据库 · 零追踪</h3>
-          <p>
-            本站基于 Astro SSR 构建：文章、照片与站点设置在请求时从服务器 SQLite 读取，后台保存后即时生效，不再需要重新构建。页面仍保持纯文本传输，不挂载任何第三方统计或追踪脚本。
-          </p>
-        </article>
-
-        <article class="colophon-card">
-          <div class="colophon-kicker">03 // TYPOGRAPHY</div>
-          <h3>纸墨排版 · 零 Webfont 隐私保护</h3>
-          <p>
-            全站坚持零 Webfont 下载，直接调用系统自带的楷体、宋体与黑体，不向第三方字体 CDN 暴露访客 IP。通过 <code>unicode-range</code> 复合字体（<code>KaiDigits</code> / <code>SongDigits</code>）让阿拉伯数字走黑体、中文走楷宋，并严格遵守楷体字号 ≥20px 的清晰度护栏。
-          </p>
-        </article>
-
-        <article class="colophon-card">
-          <div class="colophon-kicker">04 // VISUAL ENGINE</div>
-          <h3>昼夜双模态 · 无限环、黑洞与三体</h3>
-          <p>
-            白天模式以「立体无限环（∞）」与暖奶油纸底（<code>#faf9f5</code>）呈现；夜间模式坍缩为「卡冈图雅黑洞」与深空底色（<code>#141413</code>），并在页脚点亮致敬《命运石之门》的世界线变动率辉光管；文章详细页右侧运行《三体》恒星与行星混沌引力场模型。
-          </p>
-        </article>
+        {
+          colophon.length > 0 ? (
+            colophon.map((item) => (
+              <article class="colophon-card">
+                {item.kicker ? <div class="colophon-kicker">{item.kicker}</div> : null}
+                <h3>{item.title}</h3>
+                <p>{item.desc}</p>
+              </article>
+            ))
+          ) : (
+            <p class="sub-note" style="grid-column: 1 / -1;">
+              {c('links.empty')}
+            </p>
+          )
+        }
       </div>
     </section>
   </div>
-</BaseLayout>
-
-<script>
+  <script
+    is:inline
+    set:html={`(() => {
   const copyBtn = document.getElementById('copy-site-card-btn');
   copyBtn?.addEventListener('click', () => {
-    const info = '站名：夜笙的小世界 | 网址：https://www.yesheng.wiki | 简介：一个普通人的自述 | RSS：https://www.yesheng.wiki/rss.xml';
+    const info = ${cardInfoJson};
     navigator.clipboard?.writeText(info).catch(() => {});
     const orig = copyBtn.textContent;
-    copyBtn.textContent = '已复制本站名片';
+    copyBtn.textContent = ${copyDoneJson};
     setTimeout(() => {
       copyBtn.textContent = orig;
     }, 2200);
   });
-</script>
+})();`}
+  ></script>
+</BaseLayout>
 
 <style>
   .links-block + .links-block {

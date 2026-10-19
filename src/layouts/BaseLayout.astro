@@ -5,6 +5,7 @@ import SiteHeader from '../components/SiteHeader.astro';
 import SiteFooter from '../components/SiteFooter.astro';
 import FloatingMenu from '../components/FloatingMenu.astro';
 import { getSiteConfig } from '../server/site';
+import { copy, getPageValues } from '../server/pages';
 import { cjkSpacing } from '../utils/typography';
 import { THEME_BOOT } from '../utils/theme';
 
@@ -17,7 +18,7 @@ interface Props {
 
 const { title, description, bodyClass, masthead = true } = Astro.props;
 const site = getSiteConfig();
-
+const pages = getPageValues();
 const pageTitle = cjkSpacing(
   title ? `${title} —— ${site.title}` : `${site.title} —— ${site.tagline}`
 );
@@ -64,7 +65,7 @@ const canonical = new URL(Astro.url.pathname, Astro.site);
         <div class="loader-brand-emblem">
           <span class="loader-title-kai">{site.title}</span>
         </div>
-        <span id="loader-status-text">INFINITY MANIFOLD // 正在展开立体无限流形</span>
+        <span id="loader-status-text">{copy(pages, 'home.loader.status')}</span>
         <div class="loader-progress-row">
           <div class="loader-bar-track">
             <div class="loader-bar-fill" id="loader-bar-fill"></div>

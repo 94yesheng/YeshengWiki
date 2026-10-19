@@ -33,8 +33,12 @@ function rewriteAssetPaths(markdown: string): string {
 function firstImage(markdown: string): string | null {
   const m = /!\[[^\]]*\]\(\s*([^)\s]+)/.exec(markdown);
   if (!m) return null;
-  const name = m[1].split('/').pop();
-  return name ? `/uploads/posts/${name}` : null;
+  const src = rewriteAssetPaths(m[1]);
+  // 站内路径已经带上了 /uploads/posts/；文章配图现在按 slug 归档（/uploads/posts/<slug>/<file>），
+  // 所以不能只取 basename，否则封面会丢一层目录。
+  const idx = src.indexOf('/uploads/posts/');
+  const rel = idx >= 0 ? src.slice(idx + '/uploads/posts/'.length) : (src.split('/').pop() ?? '');
+  return rel ? `/uploads/posts/${rel}` : null;
 }
 
 export function parsePostMarkdown(raw: string, slug: string): ParsedPost {

@@ -5,36 +5,15 @@
  * 后台的读写走 `/api/fs`。不再需要 GitHub PAT 或 vault 密文。
  */
 import { ApiGithub } from '../api';
-import { $, esc, setBusy, toast } from '../ui';
-import { state, reload, rerender } from '../state';
+import { $, esc, setBusy } from '../ui';
+import { state, reload } from '../state';
 import { site } from '../../site.config';
-import { loadMockAll } from '../mock';
 
 function showOnly(html: string): void {
   const main = $('#st-main');
   const bar = $('#st-bar');
   if (bar) bar.innerHTML = '';
   if (main) main.innerHTML = html;
-}
-
-export function enterDemoMode(): void {
-  const mock = loadMockAll();
-  state.demoMode = true;
-  state.user = 'yesheng (LOCAL-UI)';
-  state.csrf = null;
-  state.gh = null;
-  state.posts = mock.posts;
-  state.walls = mock.walls;
-  state.links = mock.links;
-  state.site = mock.site;
-  state.photoFiles = mock.photoFiles;
-  state.postAssetFiles = mock.postAssetFiles;
-  state.staged = { added: [], removed: [] };
-  state.selected = state.posts[0]?.id ?? null;
-  state.draft = {};
-  state.dirty = false;
-  rerender();
-  toast('已进入 UI 交互演示模式 · 所有编辑、EXIF 解析与乱码预览均可直接交互');
 }
 
 async function useLogin(username: string, password: string): Promise<void> {
@@ -53,7 +32,6 @@ async function useLogin(username: string, password: string): Promise<void> {
     state.user = data.user.username;
     state.csrf = data.csrf;
     state.gh = new ApiGithub(data.csrf);
-    state.demoMode = false;
     state.token = null;
     setBusy(false);
     await reload();
@@ -109,7 +87,6 @@ export function renderUnlock(message?: string): void {
           <label class="st-label" for="st-unlock-pw">PASSWORD // 登录密码</label>
           <input class="st-input" id="st-unlock-pw" type="password" autocomplete="current-password" placeholder="输入登录密码..." />
           <button class="st-btn st-btn--primary st-btn--block" id="st-unlock-go">登录后台 (SIGN IN)</button>
-          <button class="st-btn st-btn--block" id="st-enter-demo" style="margin-top:0.6rem;">直接进入 UI 交互演示模式（不写数据库） →</button>
           ${message ? `<p class="st-error">${esc(message)}</p>` : ''}
         </div>
         <div class="q-footbar">
@@ -123,13 +100,12 @@ export function renderUnlock(message?: string): void {
     const acct = $<HTMLInputElement>('#st-unlock-acct')?.value ?? '';
     const pw = $<HTMLInputElement>('#st-unlock-pw')?.value ?? '';
     if (!acct || !pw) {
-      renderUnlock('请输入账号和密码；只想看界面可以点下方演示模式');
+      renderUnlock('请输入账号和密码');
       return;
     }
     await useLogin(acct, pw);
   };
   $('#st-unlock-go')?.addEventListener('click', () => void go());
-  $('#st-enter-demo')?.addEventListener('click', () => enterDemoMode());
   for (const sel of ['#st-unlock-acct', '#st-unlock-pw']) {
     $<HTMLInputElement>(sel)?.addEventListener('keydown', (e) => {
       if ((e as KeyboardEvent).key === 'Enter') void go();

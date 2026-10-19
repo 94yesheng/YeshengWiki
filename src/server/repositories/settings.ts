@@ -1,4 +1,4 @@
-/** 站点设置（site / home / authorDossier / articleRail / programs / studio）。 */
+/** 站点设置（site / home / authorDossier / articleRail / programs / studio / pages）。 */
 import { getDb } from '../db';
 
 export const SETTING_KEYS = [
@@ -8,6 +8,7 @@ export const SETTING_KEYS = [
   'articleRail',
   'programs',
   'studio',
+  'pages',
 ] as const;
 
 export type SettingKey = (typeof SETTING_KEYS)[number];

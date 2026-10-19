@@ -5,6 +5,7 @@
 > - 生产服务 `blog.service`（127.0.0.1:4322），数据 `/var/www/blog-data`
 > - Nginx 已改为动态反代；静态配置备份在 `/root/blog-static.conf.bak`
 > - 域名仍指向旧主机；HTTPS 待 DNS 切换后签
+> - **域名绑定暂缓（2026-10-19 决定）：旧博客数据尚未迁移，迁移完成前不切 DNS；新站暂用 `http://150.40.177.193/` 访问**
 > - `/admin/` 已 301 到 `/studio/`
 > - SSH 已改为仅密钥登录（`/etc/ssh/sshd_config.d/00-hardening.conf`，密码登录关闭）；
 >   忘记密钥时用华为云 VNC 控制台恢复
@@ -117,8 +118,9 @@ nginx -t && systemctl reload nginx
 - [x] 切 Nginx
 - [x] 备份 cron
 - [x] 退役 `/admin/`（301 到 `/studio/`）
+- [ ] 旧博客数据迁移（文章 / 照片 / 友链；迁移完成前不切 DNS）
 - [ ] DNS 改到 `150.40.177.193`（`www` A，`@` A）
 - [ ] certbot 签 HTTPS
 - [x] 退役 `vault` / GitHub Actions FTP 流水线（已删除 Sveltia/vault，CI 只做检查）
 - [x] SSH 仅密钥 + fail2ban
-- [ ] README/CLAUDE 更新为动态架构
+- [x] README/CLAUDE 更新为动态架构（2026-10-19）

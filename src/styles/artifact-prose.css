@@ -129,6 +129,82 @@
   background: var(--rule);
 }
 
+/* ---------- 章节分隔线四式 ----------
+   与后台编辑器的 `.ed-area hr.xxx`、格式工具按钮里的 `.ed-hr-preview--xxx`
+   共用同一套画法：星号沿用 prose.css 的 `＊ ＊ ＊`，樱花复用 tokens.css 的
+   --sakura / --sakura-mask，三点与双线是新增的两档。 */
+
+/* 星号：中文书籍里的「＊ ＊ ＊」，比一条横线更贴题 */
+.article-prose-q hr.star {
+  width: auto;
+  height: auto;
+  margin: 2.2rem 0;
+  background: none;
+  text-align: center;
+}
+.article-prose-q hr.star::before {
+  content: "＊ ＊ ＊";
+  font-size: var(--text-xs);
+  letter-spacing: 0.5em;
+  text-indent: 0.5em;
+  color: var(--faint);
+}
+
+/* 樱花：两侧极淡的细线 + 中间一朵用蒙版画的淡粉花（不用字体字形，跨平台一致） */
+.article-prose-q hr.sakura {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: auto;
+  height: auto;
+  margin: 2.2rem 0;
+  background:
+    linear-gradient(var(--rule), var(--rule)) left 50% / calc(50% - 2.2em) 1px no-repeat,
+    linear-gradient(var(--rule), var(--rule)) right 50% / calc(50% - 2.2em) 1px no-repeat;
+}
+.article-prose-q hr.sakura::before {
+  content: "";
+  width: 1.05em;
+  height: 1.05em;
+  background-color: var(--sakura);
+  -webkit-mask: var(--sakura-mask) center / contain no-repeat;
+  mask: var(--sakura-mask) center / contain no-repeat;
+}
+
+/* 三点：细、疏、低调 */
+.article-prose-q hr.dots {
+  width: auto;
+  height: auto;
+  margin: 2.2rem 0;
+  background: none;
+  text-align: center;
+}
+.article-prose-q hr.dots::before {
+  content: "· · ·";
+  font-size: var(--text-xs);
+  letter-spacing: 0.65em;
+  text-indent: 0.65em;
+  color: var(--faint);
+}
+
+/* 双线：两条 1px 线、间隔 5px、宽 40% */
+.article-prose-q hr.double {
+  display: flex;
+  justify-content: center;
+  width: auto;
+  height: auto;
+  margin: 2.2rem 0;
+  background: none;
+}
+.article-prose-q hr.double::before {
+  content: "";
+  width: 40%;
+  height: 7px;
+  background:
+    linear-gradient(var(--rule), var(--rule)) top / 100% 1px no-repeat,
+    linear-gradient(var(--rule), var(--rule)) bottom / 100% 1px no-repeat;
+}
+
 /* ---------- 三、四级标题（现有文章没有，留给以后） ---------- */
 .article-prose-q h3,
 .article-prose-q h4 {

@@ -8,11 +8,14 @@ export const prerender = false;
 import ArtifactLayout from '../layouts/ArtifactLayout.astro';
 import photosTpl from '../artifact/photos.html?raw';
 import { listWalls, type Photo } from '../server/repositories/photos';
+import { copy, getPageValues } from '../server/pages';
 import { applyArtifactSite, getSiteConfig } from '../server/site';
 
 const walls = listWalls();
 const photos = walls.flatMap((wall) => wall.photos);
 const site = getSiteConfig();
+const pages = getPageValues();
+const c = (key: string, vars?: Record<string, string | number>) => copy(pages, key, vars);
 
 const esc = (s: string) =>
   s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -64,11 +67,11 @@ const filterChips = (() => {
     ratios.set(ratio, (ratios.get(ratio) ?? 0) + 1);
   }
   const items = [
-    `<button type="button" class="archive-tag-chip" data-photo-filter="all" aria-pressed="true">全部影像 (${photos.length})</button>`,
+    `<button type="button" class="archive-tag-chip" data-photo-filter="all" aria-pressed="true">${esc(c('photos.all'))} (${photos.length})</button>`,
   ];
   const groupLabels: Record<string, string> = {
-    latest: '最新一组',
-    earlier: '早期与数字造物',
+    latest: c('photos.latest'),
+    earlier: c('photos.earlier'),
   };
   for (const [group, count] of groups) {
     items.push(
@@ -135,9 +138,11 @@ const cards = photos
 
 const slots: Record<string, string> = {
   PHOTO_FILTERS: filterChips,
-  PHOTO_CARDS: cards,
+  PHOTO_CARDS: photos.length
+    ? cards
+    : `<p class="tl-empty-state" style="grid-column: 1 / -1">${esc(c('photos.empty'))}</p>`,
   FILMSTRIP: filmstrip,
-  PHOTO_SCROLL_LABEL: `↓ 向下滚动浏览全部影集网格 (${photos.length} 张)`,
+  PHOTO_SCROLL_LABEL: `${esc(c('photos.scrollLabel'))} (${photos.length} 张)`,
 };
 
 let html = photosTpl;
@@ -154,8 +159,8 @@ const photoJson = JSON.stringify(db).replace(/</g, '\\u003c');
 <ArtifactLayout
   page="photos"
   bodyClass="home"
-  title="照片"
-  description="保持原始比例的照片档案，可检视拍摄参数与完整影集。"
+  title={c('photos.title')}
+  description={c('photos.description')}
 >
   <Fragment set:html={html} />
   <script is:inline set:html={`window.__PHOTO_DB = ${photoJson};`}></script>
