@@ -3,7 +3,7 @@
  *
  * 用法：
  *   node scripts/migrate-pages-settings.mjs --db data/blog.db
- *   node scripts/migrate-pages-settings.mjs --db /var/www/blog-data/blog.db --dry-run
+ *   node scripts/migrate-pages-settings.mjs --db /srv/blog-data/blog.db --dry-run
  *
  * 只迁移有对应关系、且 `pages` 里还没有显式设置过的 key（幂等，可重复执行）。
  */

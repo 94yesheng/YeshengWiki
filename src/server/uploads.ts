@@ -1,7 +1,7 @@
 /**
  * `/uploads/*` 的本地兜底静态服务。
  *
- * 生产环境 Nginx 会直接 alias 到 `/var/www/blog-data/uploads`，不会走到 Node；
+ * 生产环境 Nginx 会直接 alias 到 `/srv/blog-data/uploads`，不会走到 Node；
  * 这个 handler 用于本地 dev / staging（没有 Nginx 时也能看到图）。
  */
 import { readFile, stat } from 'node:fs/promises';

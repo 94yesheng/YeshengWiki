@@ -27,21 +27,21 @@
 注意：
 
 - **所有公开页面已改为动态；此分支的 `npm run build`（静态）不再保证通过。**
-- 线上回滚点：`feat/studio-v2-desktop` 分支 + 服务器 `/var/www/blog` 的静态文件。
+- 线上回滚点：`feat/studio-v2-desktop` 分支 + 服务器 `/srv/blog-static` 的静态文件。
 - **`src/artifact/*.html` 和 `artifact.js` 已手工插入 `@@占位符@@` / 服务端数据分支；不要直接重跑 `npm run import:artifact`，否则会覆盖。** 必须重跑时先备份，再重放 `.work/patch-*.mjs` 的替换。
 - 下一步：DNS + HTTPS（代码与部署已完成）。
 
 ### 部署现状（2026-10-19）
 
-- 代码：`/var/www/blog-app`（`npm ci` + `npm run build:dynamic`）
-- staging：`/var/www/blog-data-staging`，`blog-staging.service`（127.0.0.1:4321）
-- **生产**：`/var/www/blog-data`，`blog.service`（127.0.0.1:4322）
+- 代码：`/srv/blog-app`（`npm ci` + `npm run build:dynamic`）
+- staging：`/srv/blog-data-staging`，`blog-staging.service`（127.0.0.1:4321）
+- **生产**：`/srv/blog-data`，`blog.service`（127.0.0.1:4322）
 - 生产环境：`/etc/blog.env`（root 600）
 - Nginx：已切到动态反代；静态配置备份 `/root/blog-static.conf.bak`
-- 直接访问 `http://150.40.177.193/` 已是动态版；`/admin/` 301 到 `/studio/`
-- 备份：`/usr/local/bin/blog-backup` + `/etc/cron.d/blog-backup`，目录 `/var/www/backups`
+- 直接访问 `http://<SERVER_IP>/` 已是动态版；`/admin/` 301 到 `/studio/`
+- 备份：`/usr/local/bin/blog-backup` + `/etc/cron.d/blog-backup`，目录 `/srv/backups`
 - 已验证：全部页面 200、生产后台登录、FS 写入/删除、公开页即时反映、图片 `/uploads` 200
-- 待办：域名 A 记录切到 `150.40.177.193`，然后 certbot 签 HTTPS
+- 待办：域名 A 记录切到 `<SERVER_IP>`，然后 certbot 签 HTTPS
 
 ## 1. 决策（默认按推荐方案）
 
@@ -72,7 +72,7 @@ Nginx (443, TLS)
             └── /api/upload：Sharp → uploads/
                  │
                  ▼
-          /var/www/blog-data/
+          /srv/blog-data/
             ├── blog.db  (SQLite, WAL)
             └── uploads/
 ```
@@ -182,21 +182,21 @@ Nginx (443, TLS)
 
 ### staging（不碰线上）
 
-- 代码：`/var/www/blog-staging`（rsync 源码）。
-- DB：`/var/www/blog-data-staging/blog.db`。
+- 代码：`/srv/blog-staging`（rsync 源码）。
+- DB：`/srv/blog-data-staging/blog.db`。
 - 服务：`blog-staging.service`，监听 `127.0.0.1:4321`。
 - Nginx：不公开；用 SSH 隧道访问 `http://localhost:4321`。
 - 验证：所有路由、后台登录、保存、图片上传、RSS/sitemap。
 
 ### 切线上
 
-1. 备份 `/var/www/blog`（当前静态站）和 `blog.db`。
+1. 备份 `/srv/blog-static`（当前静态站）和 `blog.db`。
 2. 构建/迁移 staging → 验证。
 3. 新建 `blog.service`（生产端口 4322）和 Nginx upstream；先切一小部分（可选）。
 4. 切换 Nginx `root`/proxy；保留旧静态目录作为回滚。
 5. 观察 24h，再删旧流水线。
 
-回滚：Nginx 指回 `/var/www/blog` 静态目录；DB 不受影响。
+回滚：Nginx 指回 `/srv/blog-static` 静态目录；DB 不受影响。
 
 ## 9. 风险
 

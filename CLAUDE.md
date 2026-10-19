@@ -3,8 +3,8 @@
 `D:\blog` 是「夜笙的小世界」博客：**Astro SSR（`@astrojs/node`）+ SQLite（better-sqlite3）+ 自建后台 `/studio/`**。
 页面在请求时读库渲染；后台保存直接写库，**不需要构建或 commit**。内容数据不进 Git。
 
-- 生产：`150.40.177.193`，`blog.service`（127.0.0.1:4322）+ Nginx 反代；域名暂未绑定
-- 代码：`/var/www/blog-app`；数据：`/var/www/blog-data/{blog.db,uploads}`
+- 生产：`<SERVER_IP>`，`blog.service`（127.0.0.1:4322）+ Nginx 反代；域名暂未绑定
+- 代码：`/srv/blog-app`；数据：`/srv/blog-data/{blog.db,uploads}`
 - 详见 [README.md](README.md)、[docs/dynamic-refactor.md](docs/dynamic-refactor.md)、
   [docs/cutover.md](docs/cutover.md)、[docs/1panel.md](docs/1panel.md)
 
