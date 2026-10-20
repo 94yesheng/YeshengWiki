@@ -22,6 +22,8 @@ export interface SiteConfig {
     worldline: string;
   };
   nav: NavItem[];
+  /** 站点图标（favicon）地址；留空时用 /favicon.svg */
+  favicon?: string;
 }
 
 export interface HomeSection {

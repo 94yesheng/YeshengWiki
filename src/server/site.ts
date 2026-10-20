@@ -20,6 +20,34 @@ export function getSiteConfig(): SiteConfig {
   };
 }
 
+export interface FaviconInfo {
+  href: string;
+  type: string;
+}
+
+const FAVICON_TYPES: Record<string, string> = {
+  '.svg': 'image/svg+xml',
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.webp': 'image/webp',
+  '.ico': 'image/x-icon',
+  '.gif': 'image/gif',
+};
+
+/**
+ * 站点图标地址：只接受站内 /uploads/... 或 /favicon.*，其余一律回退默认，
+ * 避免把 javascript: 之类的地址写进 <link rel="icon">。
+ */
+export function faviconInfo(site: Partial<SiteConfig> | undefined): FaviconInfo {
+  const raw = String(site?.favicon ?? '').trim();
+  const safe = /^\/(?:uploads\/[A-Za-z0-9._\/-]+|favicon\.[a-z0-9]+)$/i.test(raw);
+  const href = safe ? raw : '/favicon.svg';
+  const dot = href.lastIndexOf('.');
+  const ext = dot >= 0 ? href.slice(dot).toLowerCase() : '.svg';
+  return { href, type: FAVICON_TYPES[ext] ?? 'image/png' };
+}
+
 const NAV_VIEW: Record<string, string> = {
   '/': 'home',
   '/posts/': 'posts',

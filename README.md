@@ -285,6 +285,7 @@ Schema 唯一来源是 [db/schema.sql](db/schema.sql)（`src/server/schema.ts` �
 | 写新文章 | `/studio/` 点「＋」；或直接写库（不推荐） |
 | 加一面照片墙 | `/studio/` 照片墙板块新建 + 上传 |
 | 给文章加伴读音乐 | `/studio/` 文章编辑器 → 右栏「信息悬浮窗」→ 音乐卡 → 从媒体库选音频（自动读标签）或本地上传 |
+| 换浏览器标签小图标（favicon） | /studio/ → **设置** → 01 BRAND & SEO → 「站点图标」：从本地上传（SVG/PNG/ICO/WebP）或从媒体库选择，保存后刷新页面 |
 | 加友链 | `/studio/` 友链板块（生产已有 1 条：云鹿庐） |
 | 从 WordPress 导入旧数据 | `node scripts/import-wordpress.mjs --export .work/wp-export --db <库> --uploads <上传目录>`；先加 `--dry-run` 看清单。正文图片落到 `uploads/posts/<slug>/`，草稿 / 私密统一按 `draft` 入库 |
 | 改站名 / 导航 / 自我介绍 | `/studio/` → 站点设置（写 `site_settings.site`）；关于「我」的档案卡在「设置 → 03」 |

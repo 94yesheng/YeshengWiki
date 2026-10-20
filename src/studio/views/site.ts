@@ -10,6 +10,7 @@
 import { $, esc, toast } from '../ui';
 import { state, markDirty, rerender } from '../state';
 import { renderWidgetCardHtml, type RailWidgetCard, type RailWidgetType } from '../../utils/article-rail';
+import { uploadSiteIcon } from '../content';
 
 type Json = Record<string, unknown>;
 
@@ -56,6 +57,8 @@ function renderGlobalIdentitySettings(host: HTMLElement, data: Json): void {
   const dm = (site.divergenceMeter ?? { enabled: true, worldline: '1.048596' }) as Json;
   const studioAuto = studio.autoUpdated !== false;
   const cipherOn = studio.exifCipherEffect !== false;
+  const faviconHref =
+    typeof site.favicon === 'string' && site.favicon.trim() ? site.favicon.trim() : '/favicon.svg';
 
   host.innerHTML = `
     <div class="st-q-card">
@@ -111,6 +114,26 @@ function renderGlobalIdentitySettings(host: HTMLElement, data: Json): void {
         <div class="st-field" style="margin-top:0.65rem;">
           <label>全局描述</label>
           <div><textarea class="st-textarea" data-site="description" rows="2">${esc(site.description ?? '')}</textarea></div>
+        </div>
+        <div class="st-field" style="margin-top:0.65rem;">
+          <label>站点图标（favicon）</label>
+          <div class="st-favicon-row">
+            <span class="st-favicon-preview"><img id="st-favicon-img" src="${esc(
+              faviconHref
+            )}" alt="站点图标预览" /></span>
+            <div class="st-favicon-meta">
+              <input class="st-input" id="st-favicon-path" value="${esc(
+                site.favicon ?? ''
+              )}" placeholder="留空则使用默认 /favicon.svg" readonly />
+              <div class="st-hint">建议 128×128 的 SVG 或 PNG（也支持 ICO / WebP，单文件 ≤ 512 KB）。保存后刷新页面生效；浏览器缓存较顽固，必要时 Ctrl+F5。</div>
+              <div class="st-favicon-actions">
+                <button type="button" class="st-btn st-btn--primary" id="st-favicon-upload">从本地上传</button>
+                <button type="button" class="stage-mini-btn" id="st-favicon-pick">从媒体库选择</button>
+                <button type="button" class="stage-mini-btn" id="st-favicon-reset">恢复默认</button>
+                <input type="file" id="st-favicon-file" accept=".svg,.png,.ico,.webp,.jpg,.jpeg,image/*" hidden />
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -226,6 +249,49 @@ function renderGlobalIdentitySettings(host: HTMLElement, data: Json): void {
     site.divergenceMeter = dm;
     markDirty();
     renderSitePreview('site', data);
+  });
+
+  const applyFavicon = (value: string): void => {
+    const next = value.trim();
+    if (next) site.favicon = next;
+    else delete site.favicon;
+    data.site = site;
+    const img = $<HTMLImageElement>('#st-favicon-img');
+    if (img) img.src = next || '/favicon.svg';
+    const field = $<HTMLInputElement>('#st-favicon-path');
+    if (field) field.value = next;
+    markDirty();
+    renderSitePreview('site', data);
+  };
+
+  $('#st-favicon-upload')?.addEventListener('click', () => {
+    $<HTMLInputElement>('#st-favicon-file')?.click();
+  });
+
+  $<HTMLInputElement>('#st-favicon-file')?.addEventListener('change', (event) => {
+    const input = event.target as HTMLInputElement;
+    const picked = input.files?.[0];
+    input.value = '';
+    if (!picked) return;
+    if (!state.gh) {
+      toast('未连接后台接口，无法上传', true);
+      return;
+    }
+    void uploadSiteIcon(state.gh, picked)
+      .then((url) => {
+        applyFavicon(url);
+        toast('图标已上传，点击顶栏「保存」后生效');
+      })
+      .catch((error: Error) => toast(`上传失败：${error.message}`, true));
+  });
+
+  $('#st-favicon-pick')?.addEventListener('click', () => {
+    openFaviconPicker((value) => applyFavicon(value));
+  });
+
+  $('#st-favicon-reset')?.addEventListener('click', () => {
+    applyFavicon('');
+    toast('已恢复默认图标，保存后生效');
   });
 }
 
@@ -1052,4 +1118,176 @@ function renderSitePreview(subView: string, data: Json): void {
         </div>
       </div>
     </div>`;
+}
+/* --------------------------------------------------------------------------
+   站点图标选择弹窗：媒体库 / 本地上传 / 手动填写地址
+   -------------------------------------------------------------------------- */
+function openFaviconPicker(onPick: (value: string) => void): void {
+  document.getElementById('st-favicon-modal')?.remove();
+
+  const backdrop = document.createElement('div');
+  backdrop.className = 'ed-img-modal-backdrop';
+  backdrop.id = 'st-favicon-modal';
+  backdrop.setAttribute('role', 'dialog');
+  backdrop.setAttribute('aria-modal', 'true');
+  backdrop.setAttribute('aria-label', '选择站点图标');
+
+  backdrop.innerHTML = `
+    <div class="ed-img-modal">
+      <div class="ed-img-modal-head">
+        <div class="ed-img-modal-title-group">
+          <span class="ed-img-modal-kicker">FAVICON // 站点图标 · 浏览器标签页小图标</span>
+          <h3 class="ed-img-modal-title">从媒体库选择，或从本地上传图标</h3>
+        </div>
+        <button type="button" class="stage-mini-btn ed-img-modal-close" id="st-fav-modal-close" aria-label="关闭弹窗">关闭 ×</button>
+      </div>
+
+      <div class="ed-img-modal-body">
+        <section class="ed-img-section">
+          <div class="ed-img-section-head">
+            <span>01 // 从媒体库选择图片（点击即选用，建议正方形、主体居中）</span>
+            <span class="ed-img-section-count" id="st-fav-modal-count">读取中…</span>
+          </div>
+          <div class="ed-media-grid" id="st-fav-modal-grid" style="grid-template-columns:repeat(auto-fill,minmax(9rem,1fr));">
+            <p class="ed-media-empty">正在读取媒体库中的图片…</p>
+          </div>
+        </section>
+
+        <section class="ed-img-section">
+          <div class="ed-img-section-head">
+            <span>02 // 从本地上传（SVG / PNG / ICO / WebP，≤ 512 KB）</span>
+          </div>
+          <div class="ed-dropzone" id="st-fav-modal-dropzone" role="button" tabindex="0" aria-label="上传本地图标">
+            <div class="ed-dropzone-content">
+              <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <rect x="3" y="3" width="18" height="18" rx="4"/>
+                <circle cx="12" cy="12" r="4"/>
+              </svg>
+              <span>把图标文件拖到这里，或点击选择上传（上传后归档到 /uploads/site/）</span>
+            </div>
+            <input type="file" id="st-fav-modal-file" accept=".svg,.png,.ico,.webp,.jpg,.jpeg,image/*" hidden />
+          </div>
+        </section>
+
+        <section class="ed-img-section">
+          <div class="ed-img-section-head">
+            <span>03 // 或手动填写图片地址</span>
+          </div>
+          <div style="display:flex;gap:0.45rem;align-items:center;flex-wrap:wrap;">
+            <input class="st-input" id="st-fav-modal-manual" style="flex:1 1 16rem;" placeholder="/uploads/site/favicon-xxxx.svg 或 /favicon.svg" />
+            <button type="button" class="st-btn st-btn--primary" id="st-fav-modal-confirm">使用此地址</button>
+          </div>
+        </section>
+      </div>
+    </div>`;
+
+  document.body.appendChild(backdrop);
+
+  const onEsc = (event: KeyboardEvent) => {
+    if (event.key === 'Escape') close();
+  };
+  const close = () => {
+    document.removeEventListener('keydown', onEsc);
+    backdrop.remove();
+  };
+  document.addEventListener('keydown', onEsc);
+  backdrop.addEventListener('click', (event) => {
+    if (event.target === backdrop) close();
+  });
+  backdrop.querySelector('#st-fav-modal-close')?.addEventListener('click', close);
+
+  const pick = (value: string) => {
+    const next = value.trim();
+    if (!next) return;
+    onPick(next);
+    close();
+  };
+
+  const grid = backdrop.querySelector<HTMLElement>('#st-fav-modal-grid');
+  const count = backdrop.querySelector<HTMLElement>('#st-fav-modal-count');
+  if (grid) {
+    void (async () => {
+      try {
+        const response = await fetch('/api/media', { headers: { Accept: 'application/json' } });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const data = (await response.json()) as {
+          media?: Array<{ path: string; filename: string; mime?: string | null }>;
+        };
+        const list = (data.media ?? []).filter(
+          (item) =>
+            (item.mime ?? '').startsWith('image/') || /\.(svg|png|ico|webp|jpe?g)$/i.test(item.path)
+        );
+        if (count) count.textContent = `共 ${list.length} 张图片`;
+        if (!list.length) {
+          grid.innerHTML = '<p class="ed-media-empty">媒体库还没有图片，可用下方上传区上传图标。</p>';
+          return;
+        }
+        grid.innerHTML = list
+          .map(
+            (item) => `<button type="button" class="ed-media-item" data-fav-path="${esc(
+              item.path
+            )}" title="${esc(item.filename)}">
+              <div class="ed-media-thumb-box"><img src="${esc(
+                item.path
+              )}" alt="${esc(item.filename)}" loading="lazy" /></div>
+              <div class="ed-media-caption"><span class="ed-media-name">${esc(item.filename)}</span></div>
+            </button>`
+          )
+          .join('');
+      } catch (error) {
+        if (count) count.textContent = '读取失败';
+        grid.innerHTML = `<p class="ed-media-empty ed-media-empty--error">媒体库读取失败：${esc(
+          (error as Error).message
+        )}</p>`;
+      }
+    })();
+  }
+
+  grid?.addEventListener('click', (event) => {
+    const btn = (event.target as HTMLElement).closest<HTMLElement>('[data-fav-path]');
+    if (btn?.dataset.favPath) pick(btn.dataset.favPath);
+  });
+
+  const dropzone = backdrop.querySelector<HTMLElement>('#st-fav-modal-dropzone');
+  const fileInput = backdrop.querySelector<HTMLInputElement>('#st-fav-modal-file');
+  const upload = (file: File | undefined) => {
+    if (!file) return;
+    if (!state.gh) {
+      toast('未连接后台接口，无法上传', true);
+      return;
+    }
+    void uploadSiteIcon(state.gh, file)
+      .then((url) => {
+        toast('图标已上传');
+        pick(url);
+      })
+      .catch((error: Error) => toast(`上传失败：${error.message}`, true));
+  };
+  dropzone?.addEventListener('click', () => fileInput?.click());
+  dropzone?.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      fileInput?.click();
+    }
+  });
+  fileInput?.addEventListener('change', () => {
+    const picked = fileInput.files?.[0];
+    fileInput.value = '';
+    upload(picked);
+  });
+  dropzone?.addEventListener('dragover', (event) => {
+    event.preventDefault();
+    dropzone.classList.add('is-dragover');
+  });
+  dropzone?.addEventListener('dragleave', () => dropzone.classList.remove('is-dragover'));
+  dropzone?.addEventListener('drop', (event) => {
+    event.preventDefault();
+    dropzone.classList.remove('is-dragover');
+    upload(event.dataTransfer?.files?.[0]);
+  });
+
+  backdrop.querySelector('#st-fav-modal-confirm')?.addEventListener('click', () => {
+    const manual = backdrop.querySelector<HTMLInputElement>('#st-fav-modal-manual');
+    pick(manual?.value ?? '');
+  });
 }

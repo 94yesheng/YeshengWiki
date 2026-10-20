@@ -15,6 +15,7 @@ export const DIRS = {
   photos: 'src/assets/photos',
   postAssets: 'src/assets/posts',
   audio: 'src/assets/audio',
+  site: 'src/assets/site',
 } as const;
 
 export const FILES = {
@@ -544,4 +545,20 @@ export async function uploadAudioAsset(
 
   await gh.putBinary(`${DIRS.audio}/${fileName}`, bytes, `content: 上传媒体库音频 ${fileName}`);
   return `/uploads/audio/${fileName}`;
+}
+
+/**
+ * 上传站点图标：写入 `src/assets/site/<file>`（公开路径 `/uploads/site/<file>`）。
+ * 支持 SVG / PNG / ICO / WebP，最大 512 KB。
+ */
+export async function uploadSiteIcon(gh: Github, file: File): Promise<string> {
+  const extMatch = /\.(svg|png|ico|webp|jpe?g|gif)$/i.exec(file.name);
+  const ext = extMatch ? extMatch[0].toLowerCase() : '.png';
+  if (file.size > 512 * 1024) throw new Error('图标文件不能超过 512 KB');
+  const stamp = Date.now().toString(36).slice(-6);
+  const name = `favicon-${stamp}${ext}`;
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  if (!bytes.length) throw new Error('图标文件为空');
+  await gh.putBinary(`${DIRS.site}/${name}`, bytes, `content: 上传站点图标 ${name}`);
+  return `/uploads/site/${name}`;
 }

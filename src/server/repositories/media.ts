@@ -68,6 +68,10 @@ function parseOwner(mediaPath: string, mime?: string | null): OwnerParts {
     return { owner: isAudio ? 'audio' : null, filename: fallback };
   }
 
+  if (parts[2] === 'site') {
+    return { owner: 'site', filename: parts.slice(3).join('/') || fallback };
+  }
+
   if (parts[2] === 'audio') {
     const rest = parts.slice(3);
     if (rest.length >= 2) {

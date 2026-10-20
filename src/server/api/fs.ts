@@ -293,7 +293,7 @@ function putWall(slug: string, text: string, sha?: string): Response {
    -------------------------------------------------------------------------- */
 
 interface AssetTarget {
-  kind: 'posts' | 'photos' | 'audio';
+  kind: 'posts' | 'photos' | 'audio' | 'site';
   /** 文章归档目录（一层子目录）；旧版扁平资源为空字符串 */
   dir: string;
   name: string;
@@ -319,6 +319,7 @@ function mimeForAsset(name: string): string {
   if (ext === '.gif') return 'image/gif';
   if (ext === '.avif') return 'image/avif';
   if (ext === '.svg') return 'image/svg+xml';
+  if (ext === '.ico') return 'image/x-icon';
   if (ext === '.mp3') return 'audio/mpeg';
   if (ext === '.wav') return 'audio/wav';
   if (ext === '.ogg') return 'audio/ogg';
@@ -341,13 +342,14 @@ function mimeForAsset(name: string): string {
  *   src/assets/audio/<slug>/<file>       文章归档音频 → uploads/audio/<slug>/<file>
  */
 function assetTarget(filePath: string): AssetTarget | null {
-  const m = /^src\/assets\/(posts|photos|audio)\/([^/]+)(?:\/([^/]+))?$/.exec(filePath);
+  const m = /^src\/assets\/(posts|photos|audio|site)\/([^/]+)(?:\/([^/]+))?$/.exec(filePath);
   if (!m) return null;
-  const kind = m[1] as 'posts' | 'photos' | 'audio';
+  const kind = m[1] as 'posts' | 'photos' | 'audio' | 'site';
   const dir = m[3] ? m[2]! : '';
   const name = m[3] ?? m[2]!;
   if (!safeAssetSegment(name)) return null;
   if (dir && !safeAssetSegment(dir)) return null;
+  if (kind === 'site' && dir) return null;
 
   const base = path.resolve(uploadRoot(), kind);
   const file = path.resolve(base, dir, name);

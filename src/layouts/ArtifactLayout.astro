@@ -21,7 +21,7 @@
 import css from '../artifact/artifact.css?raw';
 import js from '../artifact/artifact.js?raw';
 import homeSnap from '../artifact/home-snap.js?raw';
-import { getSiteConfig } from '../server/site';
+import { faviconInfo, getSiteConfig } from '../server/site';
 import { cjkSpacing } from '../utils/typography';
 import { THEME_BOOT } from '../utils/theme';
 
@@ -36,6 +36,7 @@ interface Props {
 
 const { title, description, bodyClass = 'home', page = 'home' } = Astro.props;
 const site = getSiteConfig();
+const favicon = faviconInfo(site);
 
 const pageTitle = cjkSpacing(
   title ? `${title} —— ${site.title}` : `${site.title} —— ${site.tagline}`
@@ -53,7 +54,8 @@ const canonical = new URL(Astro.url.pathname, Astro.site);
     <meta name="description" content={pageDesc} />
     <link rel="canonical" href={canonical} />
 
-    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="icon" href={favicon.href} type={favicon.type} />
+    {favicon.type !== 'image/svg+xml' && <link rel="apple-touch-icon" href={favicon.href} />}
     <link
       rel="alternate"
       type="application/rss+xml"

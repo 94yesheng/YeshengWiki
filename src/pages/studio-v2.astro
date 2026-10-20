@@ -9,6 +9,9 @@ import '../styles/tokens.css';
 import '../styles/studio.css';
 import '../styles/studio-v2.css';
 import { THEME_BOOT } from '../utils/theme';
+import { faviconInfo, getSiteConfig } from '../server/site';
+
+const favicon = faviconInfo(getSiteConfig());
 ---
 
 <!doctype html>
@@ -19,6 +22,7 @@ import { THEME_BOOT } from '../utils/theme';
     <meta name="robots" content="noindex, nofollow" />
     <title>后台 v2 · 夜笙的小世界</title>
     <meta name="theme-color" content="#faf9f5" />
+    <link rel="icon" href={favicon.href} type={favicon.type} />
     <script is:inline set:html={THEME_BOOT}></script>
   </head>
   <body class="st-body v2-body">

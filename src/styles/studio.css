@@ -6705,3 +6705,44 @@ html[data-theme-switching="true"] *::after {
 :root[data-inf-logo="v3"] .inf-logo-v3 {
   display: inline;
 }
+/* --------------------------------------------------------------------------
+   设置 → 01 站点图标（favicon）字段
+   -------------------------------------------------------------------------- */
+.st-favicon-row {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+  flex-wrap: wrap;
+}
+
+.st-favicon-preview {
+  width: 4.25rem;
+  height: 4.25rem;
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--rule);
+  border-radius: 0.7rem;
+  background: var(--paper);
+  overflow: hidden;
+}
+
+.st-favicon-preview img {
+  width: 2.6rem;
+  height: 2.6rem;
+  object-fit: contain;
+}
+
+.st-favicon-meta {
+  flex: 1 1 18rem;
+  min-width: 14rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.st-favicon-actions {
+  display: flex;
+  gap: 0.45rem;
+  flex-wrap: wrap;
+}
