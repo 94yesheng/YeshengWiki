@@ -32,7 +32,14 @@ import {
 } from '../repositories/posts';
 import { listWalls } from '../repositories/photos';
 import { deleteMedia, listMedia } from '../repositories/media';
-import { listLinks, replaceLinks } from '../repositories/links';
+import {
+  approveLinkApplication,
+  createLinkApplication,
+  deleteLinkApplication,
+  listLinkApplications,
+  listLinks,
+  replaceLinks,
+} from '../repositories/links';
 import { getSettings, SETTING_KEYS, setSetting, type SettingKey } from '../repositories/settings';
 import { handleFs } from './fs';
 import { fail, json, readJson } from './http';
@@ -52,6 +59,15 @@ interface AccountBody {
   currentPassword?: string;
   username?: string;
   newPassword?: string;
+}
+
+interface LinkApplyBody {
+  owner?: string;
+  name?: string;
+  url?: string;
+  description?: string;
+  avatar?: string;
+  tag?: string;
 }
 
 const SLUG_RE = /^[a-z0-9][a-z0-9-_]*$/;
@@ -98,19 +114,100 @@ export async function handleApi(context: APIContext): Promise<Response | null> {
     return json({ walls: listWalls({ includeEmpty: true }) });
   }
 
-  // /api/links
+  // /api/links & /api/links/apply & /api/links/applications
   if (parts[0] === 'links') {
-    if (method === 'GET') return json({ links: listLinks() });
-    if (method === 'PUT') {
+    if (parts.length === 1) {
+      if (method === 'GET') return json({ links: listLinks() });
+      if (method === 'PUT') {
+        const denied = requireCsrf(context);
+        if (denied) return denied;
+        const body = await readJson<{ links?: unknown }>(context.request);
+        if (!Array.isArray(body?.links)) return fail('links 必须是数组', 400);
+        try {
+          return json({ links: replaceLinks(body.links as never) });
+        } catch (error) {
+          console.error('[api/links]', error);
+          return fail('保存友链失败', 500);
+        }
+      }
+    }
+
+    // 访客提交友链申请（公开接口）
+    if (parts.length === 2 && parts[1] === 'apply' && method === 'POST') {
+      const body = await readJson<LinkApplyBody>(context.request);
+      const owner = String(body?.owner ?? '').trim();
+      const name = String(body?.name ?? '').trim();
+      const url = String(body?.url ?? '').trim();
+      const description = String(body?.description ?? '').trim();
+      const avatar = String(body?.avatar ?? '').trim();
+      const tag = String(body?.tag ?? '').trim();
+
+      if (!owner) return fail('请填写站长称呼', 400);
+      if (!name) return fail('请填写站点标题', 400);
+      if (!url || !/^https?:\/\/[^\s/$.?#].[^\s]*$/i.test(url)) {
+        return fail('请填写以 http:// 或 https:// 开头的完整站点链接', 400);
+      }
+      if (!description) return fail('请填写自我介绍或站点简介', 400);
+      if (owner.length > 48 || name.length > 64 || url.length > 256 || description.length > 320) {
+        return fail('填写的字段长度超出限制', 400);
+      }
+
+      try {
+        const application = createLinkApplication({
+          owner,
+          name,
+          url,
+          description,
+          avatar: avatar ? avatar.slice(0, 2) : null,
+          tag: tag ? tag.slice(0, 32) : null,
+        });
+        return json({ ok: true, application }, 201);
+      } catch (error) {
+        console.error('[api/links/apply]', error);
+        return fail('提交友链申请失败，请稍后重试', 500);
+      }
+    }
+
+    // 后台查看友链申请列表
+    if (parts.length === 2 && parts[1] === 'applications' && method === 'GET') {
+      const auth = getAuth(context);
+      if (!auth) return fail('未登录', 401);
+      return json({ applications: listLinkApplications() });
+    }
+
+    // 后台一键批准并添加进友链列表
+    if (parts.length === 4 && parts[1] === 'applications' && parts[3] === 'approve' && method === 'POST') {
       const denied = requireCsrf(context);
       if (denied) return denied;
-      const body = await readJson<{ links?: unknown }>(context.request);
-      if (!Array.isArray(body?.links)) return fail('links 必须是数组', 400);
+      const appId = Number(parts[2]);
+      if (!Number.isInteger(appId) || appId <= 0) return fail('申请 ID 无效', 400);
       try {
-        return json({ links: replaceLinks(body.links as never) });
+        const result = approveLinkApplication(appId);
+        if (!result.application) return fail('该友链申请不存在', 404);
+        return json({
+          ok: true,
+          application: result.application,
+          links: result.links,
+          applications: listLinkApplications(),
+        });
       } catch (error) {
-        console.error('[api/links]', error);
-        return fail('保存友链失败', 500);
+        console.error('[api/links/applications/approve]', error);
+        return fail('批准友链申请失败', 500);
+      }
+    }
+
+    // 后台删除/忽略友链申请
+    if (parts.length === 3 && parts[1] === 'applications' && method === 'DELETE') {
+      const denied = requireCsrf(context);
+      if (denied) return denied;
+      const appId = Number(parts[2]);
+      if (!Number.isInteger(appId) || appId <= 0) return fail('申请 ID 无效', 400);
+      try {
+        if (!deleteLinkApplication(appId)) return fail('该友链申请不存在', 404);
+        return json({ ok: true, applications: listLinkApplications() });
+      } catch (error) {
+        console.error('[api/links/applications/delete]', error);
+        return fail('删除友链申请失败', 500);
       }
     }
   }
@@ -288,7 +385,6 @@ async function changeAccount(context: APIContext): Promise<Response> {
         passwordHash,
         auth.user.id
       );
-      // 改密后让其他设备/浏览器的旧会话失效，保留当前会话
       if (passwordChanged) {
         db.prepare('DELETE FROM sessions WHERE user_id = ? AND id <> ?').run(
           auth.user.id,

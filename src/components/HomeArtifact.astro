@@ -4,7 +4,7 @@
  *
  * 文章队列 / 焦点文章 / 最新照片墙 / 程序工坊 / 友链与作者档案由 SQLite 生成，
  * 所有文案、四象限导览卡片与流形参数均与后台「页面」和「设置」实时联动。
- * 当文章无封面时，自动展示符合昼夜主题的 SVG 图案（昼：无限流形 ∞，夜：卡冈图雅黑洞）。
+ * 当文章无封面时，自动展示「该内容未解锁」低频故障特效与符合昼夜主题的 SVG 图案。
  */
 import loader from '../artifact/home/loader.html?raw';
 import header from '../artifact/home/header.html?raw';
@@ -21,7 +21,7 @@ import { getSetting } from '../server/repositories/settings';
 import { copy, copyLines, getPageValues } from '../server/pages';
 import { applyArtifactSite, getSiteConfig } from '../server/site';
 import { home as staticHome, type HomeConfig } from '../site.config';
-import { chineseMonthDay } from '../utils/date';
+import { chineseMonthDay, readingTime } from '../utils/date';
 import { cjkSpacing } from '../utils/typography';
 import { THEME_COVER_SVG_HTML } from '../utils/cover-svg';
 
@@ -81,7 +81,18 @@ screenAnchors.forEach((anchor, idx) => {
   heroHtml = heroHtml.replace(re, (_m, a: string, b: string) => `${a}${esc(secTitle)}${b}`);
 });
 
-const loaderHtml = fillTokens(loader, { LOADER_STATUS: esc(c('home.loader.status')) }, 'loader');
+const loaderHtml = applyArtifactSite(
+  fillTokens(
+    loader,
+    {
+      LOADER_STATUS: esc(c('home.loader.status')),
+      SITE_TITLE: esc(site.title),
+    },
+    'loader'
+  ),
+  site,
+  'home'
+);
 
 const headerHtml = applyArtifactSite(header, site, 'home');
 const tailHtml = applyArtifactSite(tail, site, 'home');
@@ -98,7 +109,7 @@ function leadFor(post: Post): string {
     .replace(/[*_`#>~-]/g, '')
     .replace(/\s+/g, ' ')
     .trim();
-  return text.length > 110 ? `${text.slice(0, 110)}…` : text;
+  return text.length > 210 ? `${text.slice(0, 210)}…` : text;
 }
 
 const queueHtml = queue
@@ -109,6 +120,10 @@ const queueHtml = queue
     const cover = coverFor(post);
     const tags = post.tags.join(' · ');
     const firstTag = post.tags[0] ?? 'ARCHIVE';
+    const { chars, minutes } = readingTime(post.bodyMarkdown);
+    const wordsText = `约 ${chars.toLocaleString('zh-CN')} 字`;
+    const readingText = `约 ${minutes} 分钟`;
+    const captionText = post.coverCaption?.trim() || 'ADAPTIVE COVER';
     return `<li>
   <a data-post-id="${esc(post.slug)}" data-post-title="${esc(
     cjkSpacing(post.title)
@@ -116,6 +131,10 @@ const queueHtml = queue
     no
   )} · ${post.pubDate.replaceAll('-', '.')}" data-post-cover="${esc(
     cover
+  )}" data-post-caption="${esc(captionText)}" data-post-words="${esc(
+    wordsText
+  )}" data-post-reading="${esc(readingText)}" data-post-category="${esc(
+    firstTag
   )}" data-post-excerpt="${esc(lead)}" href="/posts/${post.slug}/">
     <span class="post-q-item-coord"><span class="idx">${pad2(no)} // ARCHIVE</span><span>${post.pubDate.slice(
       5
@@ -132,7 +151,11 @@ const spotDate = featured ? chineseMonthDay(new Date(`${featured.pubDate}T00:00:
 const spotTags = featured ? featured.tags.join(' · ') : '';
 const spotCover = featured ? coverFor(featured) : '';
 const spotExcerpt = featured ? leadFor(featured) : c('posts.empty');
-const spotCoverCaption = featured?.coverCaption?.trim() || '16:9 FEATURED';
+const spotCoverCaption = featured?.coverCaption?.trim() || 'ADAPTIVE COVER';
+const spotStats = featured ? readingTime(featured.bodyMarkdown) : { chars: 0, minutes: 1 };
+const spotWords = featured ? `约 ${spotStats.chars.toLocaleString('zh-CN')} 字` : '—';
+const spotReading = featured ? `约 ${spotStats.minutes} 分钟` : '—';
+const spotCategory = featured ? (featured.tags[0] ?? 'ARCHIVE') : 'EMPTY';
 
 const postSlots: Record<string, string> = {
   POST_QUEUE: queueHtml,
@@ -142,11 +165,15 @@ const postSlots: Record<string, string> = {
   SPOT_DATE: esc(spotDate),
   SPOT_TAGS: esc(spotTags),
   SPOT_COVER: esc(spotCover),
+  SPOT_COVER_MODE: spotCover ? '16:9' : 'locked',
   SPOT_IMG_HIDDEN: spotCover ? '' : 'hidden',
   SPOT_SVG_HIDDEN: spotCover ? 'hidden' : '',
   SPOT_COVER_SVG: THEME_COVER_SVG_HTML,
   SPOT_COVER_CAPTION: esc(spotCoverCaption),
   SPOT_EXCERPT: esc(spotExcerpt),
+  SPOT_WORDS: esc(spotWords),
+  SPOT_READING: esc(spotReading),
+  SPOT_CATEGORY: esc(spotCategory),
   POST_COUNT: String(posts.length),
   HOME_POSTS_NOTE: esc(c('home.posts.note')),
 };
@@ -386,9 +413,11 @@ const peerCardsHtml = links.length
       .map((link) => {
         const monogram = (link.name || link.url || '友').trim().slice(0, 1);
         const avatarHtml = link.avatar?.trim()
-          ? `<span class="peer-avatar"><img src="${esc(
-              link.avatar
-            )}" alt="" style="width:100%;height:100%;border-radius:50%;object-fit:cover;" /></span>`
+          ? /^(\/|https?:\/\/|data:)/i.test(link.avatar.trim())
+            ? `<span class="peer-avatar"><img src="${esc(
+                link.avatar
+              )}" alt="" style="width:100%;height:100%;border-radius:50%;object-fit:cover;" /></span>`
+            : `<span class="peer-avatar">${esc(link.avatar.trim().slice(0, 1))}</span>`
           : `<span class="peer-avatar">${esc(monogram)}</span>`;
         return `<article class="peer-card">
                   <div>
@@ -405,7 +434,7 @@ const peerCardsHtml = links.length
                     <p class="peer-bio">${esc(link.description?.trim() ?? '')}</p>
                   </div>
                   <div class="peer-foot">
-                    <span>站长：${esc(link.owner?.trim() || '—')}</span>
+                    <span>${esc(link.owner?.trim().startsWith('站长') ? link.owner.trim() : `站长：${link.owner?.trim() || '—'}`)}</span>
                     <a class="peer-link-action" href="${esc(
                       link.url
                     )}" target="_blank" rel="noopener noreferrer">访问站点 -&gt;</a>

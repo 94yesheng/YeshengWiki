@@ -3,7 +3,8 @@
  * 文章页 —— SSR 版。
  *
  * 数据来自 SQLite；Markdown 用 markdown-it 渲染，右侧信息悬浮窗使用同构渲染器
- * `renderArticleRailSlots`，与后台实时伴读预览和全屏预览保持 100% 一致。
+ * `renderArticleRailSlots`，左侧目录使用 `renderHierarchicalTocHtml`（支持 H2 一级与 H3 二级默认折叠），
+ * 与后台实时伴读预览和全屏预览保持 100% 一致。
  */
 export const prerender = false;
 
@@ -15,7 +16,7 @@ import { applyArtifactSite, getSiteConfig } from '../../server/site';
 import { renderMarkdown } from '../../server/markdown';
 import { chineseFullDate, readingTime } from '../../utils/date';
 import { cjkSpacing } from '../../utils/typography';
-import { renderArticleRailSlots } from '../../utils/article-rail';
+import { renderArticleRailSlots, renderHierarchicalTocHtml } from '../../utils/article-rail';
 import { articleRail as staticArticleRail, type ArticleRailConfig } from '../../site.config';
 import '../../styles/artifact-prose.css';
 
@@ -65,19 +66,8 @@ const entryBadge = post.entryBadge?.trim()
 const esc = (s: string) =>
   s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
-/* ---------- TOC ---------- */
-const toc = headings.filter((h) => h.depth >= 2 && h.depth <= 3);
-const tocHtml = toc.length
-  ? `<ul class="toc-list" id="article-toc-list">${toc
-      .map(
-        (h, i) =>
-          `<li><a href="#${h.slug}"><span class="toc-num">${String(i + 1).padStart(
-            2,
-            '0'
-          )}</span><span>${esc(h.text)}</span></a></li>`
-      )
-      .join('')}</ul>`
-  : `<p class="toc-empty">本文未设置小节标题</p>`;
+/* ---------- TOC（H2 一级标题 + H3 二级标题默认折叠） ---------- */
+const tocHtml = renderHierarchicalTocHtml(headings);
 
 /* ---------- 上一篇 / 下一篇 ---------- */
 const pagerCell = (p: typeof newer, dir: 'prev' | 'next') => {

@@ -4,7 +4,7 @@
  * 彻底解决旧版预览与前台不一致的问题：
  *   1. 直接使用与前台 `/posts/<slug>/` 完全相同的 `article.html` 模板、`artifact.css`、`artifact-prose.css` 与 `artifact.js`；
  *   2. 无论是未保存的新建草稿、草稿状态文章还是已发布文章，均实时注入当前编辑的标题、导语、标签、坐标徽标、三体铭牌、
- *      正文 HTML（含 H2/H3 锚点与 TOC 目录）以及右侧信息悬浮窗（`renderArticleRailSlots`）；
+ *      正文 HTML（含 H2/H3 锚点与多级折叠 TOC 目录）以及右侧信息悬浮窗（`renderArticleRailSlots`，含音乐播放模块）；
  *   3. 保留前台《三体》三维引力轨迹 Canvas 动画、阅读进度遥测、目录平滑定位与昼夜模式同步；
  *   4. 预览顶栏支持桌面宽屏 / 笔记本 / 平板 / 手机视口宽度切换与页内昼夜模式切换。
  */
@@ -18,6 +18,7 @@ import { cjkSpacing } from '../utils/typography';
 import { isDark } from '../utils/theme';
 import {
   renderArticleRailSlots,
+  renderHierarchicalTocHtml,
   type RailKvItem,
   type RelatedPostSummary,
 } from '../utils/article-rail';
@@ -54,15 +55,18 @@ const esc = (s: unknown): string =>
     .replace(/"/g, '&quot;');
 
 function fixImagePaths(html: string): string {
-  return html.replace(/(<img\b[^>]*\bsrc=")([^"]+)(")/g, (_whole, head: string, src: string, tail: string) => {
+  return html.replace(/(<(?:img|audio|source)\b[^>]*\bsrc=")([^"]+)(")/g, (_whole, head: string, src: string, tail: string) => {
     if (/^(https?:|data:|blob:)/.test(src)) return `${head}${src}${tail}`;
     const fixed = src
       .replace(/^\.\.\/\.\.\/assets\/posts\//, '/uploads/posts/')
       .replace(/^\.\.\/\.\.\/assets\/photos\//, '/uploads/photos/')
+      .replace(/^\.\.\/\.\.\/assets\/audio\//, '/uploads/audio/')
       .replace(/^\/src\/assets\/posts\//, '/uploads/posts/')
       .replace(/^\/src\/assets\/photos\//, '/uploads/photos/')
+      .replace(/^\/src\/assets\/audio\//, '/uploads/audio/')
       .replace(/^assets\/posts\//, '/uploads/posts/')
-      .replace(/^assets\/photos\//, '/uploads/photos/');
+      .replace(/^assets\/photos\//, '/uploads/photos/')
+      .replace(/^assets\/audio\//, '/uploads/audio/');
     return `${head}${fixed}${tail}`;
   });
 }
@@ -99,17 +103,7 @@ function attachHeadingIdsAndExtractToc(rawHtml: string): {
     headings.push({ slug, text, depth });
   });
 
-  const tocHtml = headings.length
-    ? `<ul class="toc-list" id="article-toc-list">${headings
-        .map(
-          (h, i) =>
-            `<li><a href="#${esc(h.slug)}"><span class="toc-num">${String(i + 1).padStart(
-              2,
-              '0'
-            )}</span><span>${esc(h.text)}</span></a></li>`
-        )
-        .join('')}</ul>`
-    : `<p class="toc-empty">本文未设置小节标题</p>`;
+  const tocHtml = renderHierarchicalTocHtml(headings);
 
   return {
     proseHtml: root.innerHTML,
@@ -282,7 +276,6 @@ function buildFullArticlePreviewDoc(input: PreviewInput, theme: 'light' | 'dark'
           return;
         }
         if (a.hasAttribute('data-lightbox')) return;
-        // 预览内点击站内链接阻止直接跳离编辑器，改为提示
         if (href.startsWith('/')) {
           e.preventDefault();
         }
@@ -395,7 +388,6 @@ export async function openPreview(input: PreviewInput): Promise<void> {
 
   mountDoc();
 
-  // 视口宽度切换
   overlay.querySelectorAll<HTMLButtonElement>('[data-vp]').forEach((btn) => {
     btn.addEventListener('click', () => {
       const vp = btn.dataset.vp ?? '100%';
@@ -406,7 +398,6 @@ export async function openPreview(input: PreviewInput): Promise<void> {
     });
   });
 
-  // 昼夜模式实时切换
   const themeBtn = overlay.querySelector<HTMLButtonElement>('#pv-toggle-theme');
   themeBtn?.addEventListener('click', () => {
     previewTheme = previewTheme === 'dark' ? 'light' : 'dark';

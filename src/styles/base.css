@@ -514,7 +514,6 @@ a { color: inherit; text-decoration: none; }
   .section-head h1 { font-size: var(--text-xl); }
 }
 
-
 /* ==========================================================================
    2026-10-20 Round 4 昼夜切换 0ms 同帧同步 & 无封面文章平面线条 Logo
    ========================================================================== */
@@ -557,3 +556,319 @@ html[data-theme-switching="true"] *::after {
 .cover-theme-fallback .planar-wm--blackhole { display: none; }
 :root[data-theme="dark"] .cover-theme-fallback .planar-wm--infinity { display: none; }
 :root[data-theme="dark"] .cover-theme-fallback .planar-wm--blackhole { display: block; }
+
+/* 昼夜切换动画：大背景 veil 与下方文字框 badge 同速同步 */
+.theme-transition-stage,
+.theme-transition-stage[data-active="true"],
+.theme-transition-veil,
+.theme-transition-badge {
+  transition: none !important;
+}
+
+/* ==========================================================================
+   2026-10-20 Round 2 专项打磨与交互升级（需求 3 / 4 / 5 / 6）
+   ========================================================================== */
+
+/* --- 需求 4b：主页 01 文章栏右侧三个基本信息栏（字数 / 预计阅读 / 象限归档）字体加大 --- */
+.spot-telemetry-grid {
+  gap: 0.58rem !important;
+}
+.spot-telemetry-item {
+  padding: 0.48rem 0.72rem !important;
+  font-size: 0.88rem !important;
+}
+.spot-telemetry-item span {
+  font-size: 0.75rem !important;
+  letter-spacing: 0.05em !important;
+  margin-bottom: 0.16rem !important;
+  color: var(--muted) !important;
+}
+.spot-telemetry-item strong {
+  font-size: 0.98rem !important;
+  line-height: 1.35 !important;
+  font-weight: 600 !important;
+}
+
+.cover-locked-kicker {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.38rem;
+}
+.locked-kicker-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 8px var(--accent);
+  animation: locked-dot-pulse 3.2s ease-in-out infinite;
+}
+@keyframes locked-dot-pulse {
+  0%, 100% { opacity: 0.45; transform: scale(0.88); }
+  50% { opacity: 1; transform: scale(1.15); }
+}
+
+.cover-locked-title-stage {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  padding: 0.28rem 0.85rem;
+  margin: 0.1rem 0;
+}
+
+.locked-bracket {
+  font-family: var(--kai);
+  font-size: clamp(1.45rem, 2vw, 1.85rem);
+  color: var(--accent);
+  opacity: 0.72;
+  user-select: none;
+  transition: transform 420ms var(--ease), opacity 420ms ease;
+}
+
+/* 移除旧版电子闪烁切片特效，改用契合博客纸墨与流形美学的双版本特效 */
+.cover-locked-glitch {
+  position: relative;
+  display: inline-block;
+  font-family: var(--kai);
+  font-size: clamp(1.52rem, 2.15vw, 1.92rem);
+  letter-spacing: 0.16em;
+  color: var(--ink);
+  animation: none !important;
+}
+.cover-locked-glitch::before,
+.cover-locked-glitch::after {
+  display: none !important;
+  content: none !important;
+  animation: none !important;
+}
+
+.locked-char-layer {
+  position: relative;
+  z-index: 1;
+  display: inline-block;
+}
+
+@keyframes unlock-v1-ink-breathe {
+  0%, 100% {
+    text-shadow: 0 0 0 transparent;
+    transform: translateY(0);
+  }
+  50% {
+    text-shadow: 0 2px 18px color-mix(in srgb, var(--accent) 28%, transparent);
+    transform: translateY(-1px);
+  }
+}
+@keyframes unlock-v1-shimmer {
+  0%, 15% { background-position: 135% 50%; opacity: 0; }
+  30% { opacity: 0.95; }
+  65% { background-position: -35% 50%; opacity: 0.95; }
+  80%, 100% { background-position: -35% 50%; opacity: 0; }
+}
+@keyframes unlock-v1-bracket-l {
+  0%, 100% { transform: translateX(0); opacity: 0.55; }
+  50% { transform: translateX(-3px); opacity: 0.95; }
+}
+@keyframes unlock-v1-bracket-r {
+  0%, 100% { transform: translateX(0); opacity: 0.55; }
+  50% { transform: translateX(3px); opacity: 0.95; }
+}
+
+@keyframes unlock-v2-aperture-focus {
+  0%, 100% {
+    filter: blur(0px);
+    letter-spacing: 0.16em;
+    opacity: 0.98;
+    text-shadow: 0 0 12px color-mix(in srgb, var(--accent) 22%, transparent);
+  }
+  42% {
+    filter: blur(0px);
+    letter-spacing: 0.18em;
+    opacity: 1;
+  }
+  58% {
+    filter: blur(1.35px);
+    letter-spacing: 0.25em;
+    opacity: 0.68;
+    color: var(--accent);
+    text-shadow: 0 0 20px color-mix(in srgb, var(--accent) 45%, transparent);
+  }
+  76% {
+    filter: blur(0px);
+    letter-spacing: 0.16em;
+    opacity: 0.98;
+  }
+}
+@keyframes unlock-v2-horizon-scan {
+  0%, 28%, 82%, 100% { top: 12%; opacity: 0; transform: scaleX(0.72); }
+  42% { top: 18%; opacity: 0.85; transform: scaleX(1); }
+  66% { top: 84%; opacity: 0.85; transform: scaleX(1); }
+  78% { top: 90%; opacity: 0; transform: scaleX(0.72); }
+}
+@keyframes unlock-v2-bracket-l {
+  0%, 100% { transform: translateX(0) scale(1); opacity: 0.65; }
+  58% { transform: translateX(-6px) scale(1.06); opacity: 1; }
+}
+@keyframes unlock-v2-bracket-r {
+  0%, 100% { transform: translateX(0) scale(1); opacity: 0.65; }
+  58% { transform: translateX(6px) scale(1.06); opacity: 1; }
+}
+
+/* --- 需求 5：主页 02 照片栏图片墙紧凑排布（消除上下交错偏移、缩小间隔、提升照片占空比） --- */
+.photos-q-stage {
+  padding: 0.48rem 0.68rem !important;
+}
+.wall-photos-strip {
+  gap: 0.58rem !important;
+  align-items: center !important;
+  justify-content: center !important;
+}
+.wall-photos-strip .wf-item {
+  padding: 0.28rem !important;
+  gap: 0.24rem !important;
+  transform: none !important;
+}
+.wall-photos-strip .wf-item:nth-child(odd),
+.wall-photos-strip .wf-item:nth-child(even) {
+  transform: none !important;
+}
+.wall-photos-strip .wf-item:hover {
+  transform: translateY(-0.24rem) !important;
+}
+.wall-photos-strip img {
+  height: clamp(14.5rem, 42vh, 23.5rem);
+  object-fit: cover !important;
+}
+
+/* --- 需求 6：页脚内容全面居中 + 白天状态下三套页脚动效 --- */
+.site-foot .wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+.site-foot-inner {
+  justify-content: center !important;
+  align-items: center !important;
+  text-align: center !important;
+  flex-direction: column;
+  gap: 0.35rem !important;
+  width: 100%;
+}
+.site-foot-inner > span {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+}
+.site-foot .planar-divider-bar {
+  margin: 0.85rem auto 0.2rem !important;
+  max-width: 24rem;
+}
+
+/* 白天页脚动效容器（仅在白天模式显示；夜间模式展示世界线变动率探测仪 .dm--dark-only） */
+.foot-day-kinetic {
+  margin: 0.72rem auto 0.2rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+}
+:root[data-theme="dark"] .foot-day-kinetic {
+  display: none !important;
+}
+
+.foot-day-stage {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  padding: 0.36rem 0.95rem;
+  border: 1px solid color-mix(in srgb, var(--accent) 30%, var(--rule));
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--paper) 90%, var(--canvas));
+  box-shadow: 0 6px 18px -12px rgba(20, 20, 19, 0.14);
+  color: var(--muted);
+}
+
+.foot-day-tag {
+  font-family: var(--mono);
+  font-size: 0.64rem;
+  letter-spacing: 0.08em;
+  color: var(--faint);
+  white-space: nowrap;
+}
+
+/* 白天页脚方案三 (v3)：纸墨律动 · 谐振波谱 */
+.foot-v3-wave-box {
+  position: relative;
+  width: 11.5rem;
+  height: 1.95rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.foot-v3-bars {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  height: 100%;
+  z-index: 2;
+}
+.foot-v3-bars i {
+  display: inline-block;
+  width: 2px;
+  height: 6px;
+  border-radius: 2px;
+  background: var(--accent);
+  opacity: 0.78;
+  animation: foot-v3-bar-wave 2.4s ease-in-out infinite;
+  animation-delay: calc(var(--b, 0) * -0.14s);
+}
+.foot-v3-sine {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 1;
+}
+.foot-v3-path-a {
+  stroke-dasharray: 60 20;
+  animation: foot-v3-sine-flow 3.6s linear infinite;
+}
+.foot-v3-path-b {
+  animation: foot-v3-sine-flow 4.8s linear infinite reverse;
+}
+@keyframes foot-v3-bar-wave {
+  0%, 100% { height: 5px; opacity: 0.38; }
+  50% { height: 20px; opacity: 0.95; }
+}
+@keyframes foot-v3-sine-flow {
+  0% { stroke-dashoffset: 160; }
+  100% { stroke-dashoffset: 0; }
+}
+
+@media (max-width: 48rem) {
+  .foot-day-tag { display: none; }
+}
+
+/* --- 全站无限符号 Logo 三版变形切换（同步自方案四） --- */
+.inf-logo-v1,
+.inf-logo-v2,
+.inf-logo-v3 {
+  display: none;
+}
+:root:not([data-inf-logo]) .inf-logo-v1,
+:root[data-inf-logo="v1"] .inf-logo-v1 {
+  display: inline;
+}
+:root[data-inf-logo="v2"] .inf-logo-v2 {
+  display: inline;
+}
+:root[data-inf-logo="v3"] .inf-logo-v3 {
+  display: inline;
+}

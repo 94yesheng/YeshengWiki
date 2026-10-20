@@ -51,16 +51,17 @@ const cardInfoJson = JSON.stringify(
     <div class="section-head">
       <h1>
         <span class="section-planar-badge" aria-hidden="true">
-          <svg class="planar-icon planar-icon--infinity" viewBox="0 0 28 14">
-            <path d="M8.2 1.7C5.3 1.7 2.9 4.1 2.9 7C2.9 9.9 5.3 12.3 8.2 12.3C11.8 12.3 16.2 1.7 19.8 1.7C22.7 1.7 25.1 4.1 25.1 7C25.1 9.9 22.7 12.3 19.8 12.3C16.2 12.3 11.8 1.7 8.2 1.7Z" fill="none" stroke="currentColor" stroke-width="1.6"/>
-            <circle cx="7" cy="7" r="1" fill="currentColor"/>
-            <circle cx="21" cy="7" r="1" fill="currentColor"/>
-          </svg>
-          <svg class="planar-icon planar-icon--blackhole" viewBox="0 0 28 14">
-            <path d="M6.5 6.4C8.8 1.8 19.2 1.8 21.5 6.4" fill="none" stroke="currentColor" stroke-width="1.2"/>
-            <circle cx="14" cy="7" r="3.2" fill="currentColor"/>
-            <ellipse cx="14" cy="7.2" rx="11.2" ry="2.4" transform="rotate(-11 14 7.2)" fill="none" stroke="currentColor" stroke-width="1.35"/>
-          </svg>
+          <svg class="planar-icon planar-icon--infinity" viewBox="0 0 28 14" aria-hidden="true">
+<path d="M10.58 3.58A4.84 4.84 0 1 0 10.58 10.42L17.42 3.58A4.84 4.84 0 1 1 17.42 10.42" fill="none" stroke="currentColor" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round"/>
+                  <path d="M10.58 3.58L12.2 5.2M15.8 8.8L17.42 10.42" fill="none" stroke="currentColor" stroke-width="1.85" stroke-linecap="butt"/>
+                  <path d="M11.8 5.9L13.2 4.5M14.8 9.5L16.2 8.1" fill="none" stroke="currentColor" stroke-width="0.8" stroke-opacity="0.58" stroke-linecap="round"/>
+                </svg>
+          <svg class="planar-icon planar-icon--blackhole" viewBox="0 0 28 14" aria-hidden="true">
+                  <path d="M6.0 6.2C8.5 1.2 19.5 1.2 22.0 6.2" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
+                  <path d="M2.5 7A11.5 3.5 0 0 1 25.5 7" transform="rotate(-11 14 7)" fill="none" stroke="currentColor" stroke-width="0.95" stroke-opacity="0.42"/>
+                  <circle cx="14" cy="7" r="3.5" fill="currentColor"/>
+                  <path d="M2.5 7A11.5 3.5 0 0 0 25.5 7" transform="rotate(-11 14 7)" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
+                </svg>
         </span>
         <span>{c('links.title')}</span>
       </h1>
@@ -71,7 +72,10 @@ const cardInfoJson = JSON.stringify(
     <section class="links-block" aria-labelledby="heading-peers">
       <div class="sub-head">
         <h2 id="heading-peers">{c('links.peersTitle')}</h2>
-        <span class="sub-note">{links.length > 0 ? c('links.peersCount', { count: links.length }) : c('links.peersEmpty')}</span>
+        <div class="sub-head-right">
+          <span class="sub-note">{links.length > 0 ? c('links.peersCount', { count: links.length }) : c('links.peersEmpty')}</span>
+          <button type="button" class="action-btn action-btn--compact" data-open-link-apply>＋ 申请友链</button>
+        </div>
       </div>
 
       {
@@ -130,6 +134,7 @@ const cardInfoJson = JSON.stringify(
         </div>
         <div class="site-card-actions">
           <button type="button" class="action-btn" id="copy-site-card-btn">{c('links.copyBtn')}</button>
+          <button type="button" class="action-btn" data-open-link-apply>＋ 申请友链</button>
           <a class="action-btn action-btn--secondary" href="/rss.xml">{c('links.rssBtn')}</a>
         </div>
       </div>
@@ -161,6 +166,66 @@ const cardInfoJson = JSON.stringify(
       </div>
     </section>
   </div>
+
+  <!-- 友链互换申请悬浮窗（带流畅进出场过渡） -->
+  <div class="link-apply-backdrop" id="link-apply-modal" aria-hidden="true">
+    <div class="link-apply-dialog" role="dialog" aria-modal="true" aria-labelledby="link-apply-title">
+      <span class="la-corner la-corner--tl"></span>
+      <span class="la-corner la-corner--tr"></span>
+      <span class="la-corner la-corner--bl"></span>
+      <span class="la-corner la-corner--br"></span>
+
+      <div class="link-apply-topbar">
+        <div class="link-apply-topbar-left">
+          <span class="site-card-badge">PEER NODE // APPLY</span>
+          <span>FRIEND LINK APPLICATION · 友链互换申请表</span>
+        </div>
+        <button type="button" class="link-apply-close" data-close-link-apply aria-label="关闭弹窗">关闭 ×</button>
+      </div>
+
+      <form class="link-apply-form" id="link-apply-form" novalidate>
+        <div class="link-apply-head">
+          <h3 id="link-apply-title">申请加入独立博客友链矩阵</h3>
+          <p>填写下方站点信息提交后，站长可在后台「友链」管理页查看并一键添加至友链列表。</p>
+        </div>
+
+        <div class="link-apply-grid">
+          <label class="link-apply-field">
+            <span class="link-apply-label"><span>01 // 站长称呼</span><em>必填</em></span>
+            <input type="text" name="owner" required maxlength="48" placeholder="如：夜笙" autocomplete="nickname" />
+          </label>
+
+          <label class="link-apply-field">
+            <span class="link-apply-label"><span>02 // 站点标题</span><em>必填</em></span>
+            <input type="text" name="name" required maxlength="64" placeholder="如：夜笙的小世界" />
+          </label>
+
+          <label class="link-apply-field">
+            <span class="link-apply-label"><span>03 // 站点链接</span><em>必填</em></span>
+            <input type="url" name="url" required maxlength="256" placeholder="https://www.example.com" />
+          </label>
+
+          <label class="link-apply-field">
+            <span class="link-apply-label"><span>04 // 领域标签</span><em>选填</em></span>
+            <input type="text" name="tag" maxlength="32" placeholder="如：技术 · 随笔（默认：独立博客）" />
+          </label>
+        </div>
+
+        <label class="link-apply-field">
+          <span class="link-apply-label"><span>05 // 自我介绍 / 站点简介</span><em>必填</em></span>
+          <textarea name="description" rows="3" required maxlength="320" placeholder="一句话介绍你的站点特色、记录方向或自我介绍…"></textarea>
+        </label>
+
+        <div class="link-apply-status" id="link-apply-status" role="status" aria-live="polite"></div>
+
+        <div class="link-apply-foot">
+          <button type="button" class="action-btn action-btn--secondary" data-close-link-apply>取消</button>
+          <button type="submit" class="action-btn" id="link-apply-submit-btn">提交友链申请 -&gt;</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
   <script
     is:inline
     set:html={`(() => {
@@ -173,6 +238,103 @@ const cardInfoJson = JSON.stringify(
     setTimeout(() => {
       copyBtn.textContent = orig;
     }, 2200);
+  });
+
+  const modal = document.getElementById('link-apply-modal');
+  const form = document.getElementById('link-apply-form');
+  const statusEl = document.getElementById('link-apply-status');
+  const submitBtn = document.getElementById('link-apply-submit-btn');
+
+  function setModalOpen(open) {
+    if (!modal) return;
+    if (open) {
+      modal.dataset.open = 'true';
+      modal.setAttribute('aria-hidden', 'false');
+      if (statusEl) {
+        statusEl.textContent = '';
+        statusEl.removeAttribute('data-type');
+      }
+      setTimeout(() => {
+        const first = form?.querySelector('input[name="owner"]');
+        if (first) first.focus();
+      }, 60);
+    } else {
+      delete modal.dataset.open;
+      modal.setAttribute('aria-hidden', 'true');
+    }
+  }
+
+  document.querySelectorAll('[data-open-link-apply]').forEach((btn) => {
+    btn.addEventListener('click', () => setModalOpen(true));
+  });
+
+  document.querySelectorAll('[data-close-link-apply]').forEach((btn) => {
+    btn.addEventListener('click', () => setModalOpen(false));
+  });
+
+  modal?.addEventListener('click', (e) => {
+    if (e.target === modal) setModalOpen(false);
+  });
+
+  window.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && modal?.dataset.open === 'true') {
+      setModalOpen(false);
+    }
+  });
+
+  form?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    if (!form || !submitBtn) return;
+    const fd = new FormData(form);
+    const payload = {
+      owner: String(fd.get('owner') || '').trim(),
+      name: String(fd.get('name') || '').trim(),
+      url: String(fd.get('url') || '').trim(),
+      tag: String(fd.get('tag') || '').trim(),
+      description: String(fd.get('description') || '').trim(),
+    };
+    if (!payload.owner || !payload.name || !payload.url || !payload.description) {
+      if (statusEl) {
+        statusEl.dataset.type = 'error';
+        statusEl.textContent = '请完整填写站长称呼、站点标题、站点链接与自我介绍。';
+      }
+      return;
+    }
+    if (!/^https?:\\/\\//i.test(payload.url)) {
+      payload.url = 'https://' + payload.url;
+    }
+
+    submitBtn.disabled = true;
+    const origText = submitBtn.textContent;
+    submitBtn.textContent = '正在提交…';
+    if (statusEl) {
+      statusEl.dataset.type = 'info';
+      statusEl.textContent = '正在向站点后台发送申请…';
+    }
+
+    try {
+      const res = await fetch('/api/links/apply', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || '提交失败');
+      if (statusEl) {
+        statusEl.dataset.type = 'ok';
+        statusEl.textContent = '✓ 友链申请已成功提交！站长审核通过后将展示在友链列表中。';
+      }
+      form.reset();
+      setTimeout(() => setModalOpen(false), 1200);
+    } catch (err) {
+      if (statusEl) {
+        statusEl.dataset.type = 'error';
+        statusEl.textContent = (err && err.message) || '提交友链申请失败，请稍后重试。';
+      }
+    } finally {
+      submitBtn.disabled = false;
+      submitBtn.textContent = origText;
+    }
   });
 })();`}
   ></script>
@@ -187,11 +349,18 @@ const cardInfoJson = JSON.stringify(
 
   .sub-head {
     display: flex;
-    align-items: baseline;
+    align-items: center;
     justify-content: space-between;
     flex-wrap: wrap;
     gap: var(--space-3);
     margin-bottom: var(--space-5);
+  }
+
+  .sub-head-right {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    flex-wrap: wrap;
   }
 
   .sub-head h2 {
@@ -333,9 +502,19 @@ const cardInfoJson = JSON.stringify(
     transition: all var(--dur-fast) ease;
   }
 
-  .action-btn:hover {
+  .action-btn--compact {
+    padding: 0.3rem 0.82rem;
+    font-size: 0.82rem;
+  }
+
+  .action-btn:hover:not(:disabled) {
     background: var(--accent);
     color: #fff;
+  }
+
+  .action-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
   }
 
   .action-btn--secondary {
@@ -344,7 +523,7 @@ const cardInfoJson = JSON.stringify(
     color: var(--ink);
   }
 
-  .action-btn--secondary:hover {
+  .action-btn--secondary:hover:not(:disabled) {
     border-color: var(--accent);
     background: color-mix(in srgb, var(--accent) 10%, var(--paper));
     color: var(--accent);
@@ -394,9 +573,207 @@ const cardInfoJson = JSON.stringify(
     color: var(--muted);
   }
 
+  /* 友链申请弹窗样式 */
+  .link-apply-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 95;
+    background: rgba(20, 20, 19, 0.48);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1.25rem;
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    transition:
+      opacity 260ms cubic-bezier(0.22, 0.61, 0.36, 1),
+      visibility 0s linear 260ms;
+  }
+
+  .link-apply-backdrop[data-open='true'] {
+    opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
+    transition:
+      opacity 260ms cubic-bezier(0.22, 0.61, 0.36, 1),
+      visibility 0s;
+  }
+
+  .link-apply-dialog {
+    position: relative;
+    width: min(40rem, 100%);
+    background: var(--paper);
+    border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--rule));
+    border-radius: 4px;
+    box-shadow: 0 24px 64px -16px rgba(0, 0, 0, 0.38);
+    transform: translateY(14px) scale(0.96);
+    opacity: 0;
+    transition:
+      transform 300ms cubic-bezier(0.22, 1, 0.36, 1),
+      opacity 260ms cubic-bezier(0.22, 0.61, 0.36, 1);
+  }
+
+  .link-apply-backdrop[data-open='true'] .link-apply-dialog {
+    transform: translateY(0) scale(1);
+    opacity: 1;
+  }
+
+  .la-corner {
+    position: absolute;
+    width: 12px;
+    height: 12px;
+    pointer-events: none;
+  }
+  .la-corner::before,
+  .la-corner::after {
+    content: '';
+    position: absolute;
+    background: var(--accent);
+  }
+  .la-corner::before { width: 12px; height: 1.2px; top: 5.4px; left: 0; }
+  .la-corner::after  { width: 1.2px; height: 12px; top: 0; left: 5.4px; }
+  .la-corner--tl { top: -6px; left: -6px; }
+  .la-corner--tr { top: -6px; right: -6px; }
+  .la-corner--bl { bottom: -6px; left: -6px; }
+  .la-corner--br { bottom: -6px; right: -6px; }
+
+  .link-apply-topbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    padding: 0.55rem 1.25rem;
+    border-bottom: 1px solid var(--rule);
+    background: color-mix(in srgb, var(--paper) 90%, var(--canvas));
+    font-family: var(--mono);
+    font-size: 0.74rem;
+    letter-spacing: 0.08em;
+    color: var(--faint);
+  }
+
+  .link-apply-topbar-left {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    min-width: 0;
+  }
+
+  .link-apply-close {
+    border: 1px solid var(--rule);
+    background: var(--paper);
+    color: var(--muted);
+    font-family: var(--mono);
+    font-size: 0.74rem;
+    padding: 0.18rem 0.6rem;
+    border-radius: 2px;
+    cursor: pointer;
+    transition: all var(--dur-fast) ease;
+  }
+  .link-apply-close:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+
+  .link-apply-form {
+    padding: 1.35rem 1.5rem 1.4rem;
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+  }
+
+  .link-apply-head h3 {
+    margin: 0;
+    font-family: var(--kai);
+    font-size: var(--text-lg);
+    font-weight: 400;
+    color: var(--ink);
+    letter-spacing: 0.06em;
+  }
+
+  .link-apply-head p {
+    margin: 0.3rem 0 0;
+    font-size: 0.94rem;
+    line-height: 1.65;
+    color: var(--muted);
+  }
+
+  .link-apply-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.85rem 1rem;
+  }
+
+  .link-apply-field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+  }
+
+  .link-apply-label {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    font-family: var(--mono);
+    font-size: 0.74rem;
+    letter-spacing: 0.06em;
+    color: var(--muted);
+  }
+
+  .link-apply-label em {
+    font-style: normal;
+    font-size: 0.68rem;
+    color: var(--accent);
+  }
+
+  .link-apply-field input,
+  .link-apply-field textarea {
+    width: 100%;
+    padding: 0.48rem 0.72rem;
+    border: 1px solid var(--rule);
+    border-radius: 3px;
+    background: color-mix(in srgb, var(--paper) 96%, var(--canvas));
+    color: var(--ink);
+    font-family: var(--song);
+    font-size: 0.96rem;
+    line-height: 1.5;
+    transition: border-color var(--dur-fast) ease, box-shadow var(--dur-fast) ease;
+  }
+
+  .link-apply-field input:focus,
+  .link-apply-field textarea:focus {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 16%, transparent);
+  }
+
+  .link-apply-status {
+    font-size: 0.88rem;
+    min-height: 1.3rem;
+    color: var(--muted);
+  }
+  .link-apply-status[data-type='error'] {
+    color: #d9534f;
+  }
+  .link-apply-status[data-type='ok'] {
+    color: var(--pine);
+    font-weight: 600;
+  }
+
+  .link-apply-foot {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.65rem;
+    padding-top: 0.6rem;
+    border-top: 1px dashed var(--rule);
+  }
+
   @media (max-width: 44rem) {
     .site-spec-dl,
-    .colophon-grid {
+    .colophon-grid,
+    .link-apply-grid {
       grid-template-columns: minmax(0, 1fr);
     }
   }

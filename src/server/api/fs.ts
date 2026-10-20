@@ -11,6 +11,8 @@
  *   src/assets/posts/<slug>/<file>   → uploads/posts/<slug>/<file>   （按文章归档）
  *   src/assets/photos/<file>         → uploads/photos/<file>
  *   src/assets/photos/<dir>/<file>   → uploads/photos/<dir>/<file>   （一层子目录）
+ *   src/assets/audio/<file>          → uploads/audio/<file>          （音频媒体库）
+ *   src/assets/audio/<slug>/<file>   → uploads/audio/<slug>/<file>   （按文章归档音频）
  */
 import { createHash } from 'node:crypto';
 import { readFile, readdir, unlink, writeFile } from 'node:fs/promises';
@@ -120,15 +122,15 @@ async function listDir(dir: string): Promise<Response> {
     return json({ entries });
   }
 
-  if (dir === 'src/assets/posts' || dir === 'src/assets/photos') {
-    const kind = dir.endsWith('posts') ? 'posts' : 'photos';
+  if (dir === 'src/assets/posts' || dir === 'src/assets/photos' || dir === 'src/assets/audio') {
+    const kind = dir.endsWith('posts') ? 'posts' : dir.endsWith('photos') ? 'photos' : 'audio';
     return listAssets(kind, dir);
   }
 
   return fail('目录不存在', 404);
 }
 
-async function listAssets(kind: 'posts' | 'photos', dir: string): Promise<Response> {
+async function listAssets(kind: 'posts' | 'photos' | 'audio', dir: string): Promise<Response> {
   const root = path.join(uploadRoot(), kind);
   const entries: FsEntry[] = [];
 
@@ -291,12 +293,12 @@ function putWall(slug: string, text: string, sha?: string): Response {
    -------------------------------------------------------------------------- */
 
 interface AssetTarget {
-  kind: 'posts' | 'photos';
+  kind: 'posts' | 'photos' | 'audio';
   /** 文章归档目录（一层子目录）；旧版扁平资源为空字符串 */
   dir: string;
   name: string;
   file: string;
-  /** 写进 media.path 的公开路径，例如 /uploads/posts/<slug>/<file> */
+  /** 写进 media.path 的公开路径，例如 /uploads/posts/<slug>/<file> 或 /uploads/audio/<slug>/<file> */
   publicPath: string;
 }
 
@@ -317,22 +319,31 @@ function mimeForAsset(name: string): string {
   if (ext === '.gif') return 'image/gif';
   if (ext === '.avif') return 'image/avif';
   if (ext === '.svg') return 'image/svg+xml';
+  if (ext === '.mp3') return 'audio/mpeg';
+  if (ext === '.wav') return 'audio/wav';
+  if (ext === '.ogg') return 'audio/ogg';
+  if (ext === '.m4a') return 'audio/mp4';
+  if (ext === '.flac') return 'audio/flac';
+  if (ext === '.aac') return 'audio/aac';
+  if (ext === '.opus') return 'audio/opus';
+  if (ext === '.webm') return 'audio/webm';
   return 'image/jpeg';
 }
 
 /**
  * 虚拟资源路径 → uploads 下的真实文件。
  *
- * 支持两种写法（老文章继续可用）：
+ * 支持写法（老文章继续可用）：
  *   src/assets/posts/<file>              旧版扁平资源 → uploads/posts/<file>
  *   src/assets/posts/<slug>/<file>       文章归档资源 → uploads/posts/<slug>/<file>
- * photos 同理。只允许一层子目录；`..`、空段、绝对路径、反斜杠一律拒绝，
- * 最终路径必须仍落在 uploadRoot()/<kind> 下。
+ *   src/assets/photos/<file>             照片墙资源   → uploads/photos/<file>
+ *   src/assets/audio/<file>              音频库资源   → uploads/audio/<file>
+ *   src/assets/audio/<slug>/<file>       文章归档音频 → uploads/audio/<slug>/<file>
  */
 function assetTarget(filePath: string): AssetTarget | null {
-  const m = /^src\/assets\/(posts|photos)\/([^/]+)(?:\/([^/]+))?$/.exec(filePath);
+  const m = /^src\/assets\/(posts|photos|audio)\/([^/]+)(?:\/([^/]+))?$/.exec(filePath);
   if (!m) return null;
-  const kind = m[1] as 'posts' | 'photos';
+  const kind = m[1] as 'posts' | 'photos' | 'audio';
   const dir = m[3] ? m[2]! : '';
   const name = m[3] ?? m[2]!;
   if (!safeAssetSegment(name)) return null;
@@ -400,14 +411,14 @@ async function putBinary(filePath: string, base64: string, sha?: string): Promis
   db.prepare(
     `INSERT INTO media (filename, path, mime, size)
      VALUES (@name, @p, @mime, @size)
-     ON CONFLICT(path) DO UPDATE SET filename = excluded.filename, size = excluded.size`
+     ON CONFLICT(path) DO UPDATE SET filename = excluded.filename, mime = excluded.mime, size = excluded.size`
   ).run({
     name: target.name,
     p: target.publicPath,
     mime: mimeForAsset(target.name),
     size: bytes.length,
   });
-  return json({ ok: true, sha: digest });
+  return json({ ok: true, sha: digest, path: target.publicPath });
 }
 
 async function deleteFile(filePath: string, sha?: string): Promise<Response> {

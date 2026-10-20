@@ -10,6 +10,8 @@
  * 网页端 agent 读取 GitHub 仓库时会被它撑爆上下文，反复列目录。
  * 现在 HTML 每个 partial 不超过 13KB，图片单独放在 public/artifact/home/images/。
  */
+export const prerender = false;
+
 import ArtifactLayout from '../layouts/ArtifactLayout.astro';
 import HomeArtifact from '../components/HomeArtifact.astro';
 ---

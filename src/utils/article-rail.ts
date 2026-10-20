@@ -1,5 +1,6 @@
+import { isDefaultAudioArtist, isDefaultAudioTitle, parseAudioMetadataFromFilename } from './audio-meta';
 /**
- * 文章右侧信息悬浮窗（Article Right Rail）通用数据结构与同构渲染器。
+ * 文章右侧信息悬浮窗（Article Right Rail）与左侧多级折叠章节目录通用数据结构与同构渲染器。
  *
  * 同时供以下三处调用，确保前台、后台伴读预览、后台全屏实景预览 100% 一致：
  *   1. 前台 SSR 文章页：`src/pages/posts/[...slug].astro`
@@ -20,7 +21,7 @@ export interface RailLinkItem {
   note?: string;
 }
 
-export type RailWidgetType = 'kv' | 'note' | 'links' | 'list';
+export type RailWidgetType = 'kv' | 'note' | 'links' | 'list' | 'music';
 
 export interface RailWidgetCard {
   id: string;
@@ -36,6 +37,13 @@ export interface RailWidgetCard {
   links?: RailLinkItem[];
   /** type === 'list' 的要点列表 */
   bullets?: string[];
+  /** type === 'music' 的音乐播放模块字段 */
+  audioUrl?: string;
+  audioTitle?: string;
+  audioArtist?: string;
+  audioCover?: string;
+  autoplay?: boolean;
+  loop?: boolean;
 }
 
 export interface PostRailConfig {
@@ -97,6 +105,106 @@ const esc = (s: unknown): string =>
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;');
 
+export function normalizeMediaAssetUrl(raw: string): string {
+  const s = String(raw ?? '').trim();
+  if (!s) return '';
+  return s
+    .replace(/^\.\.\/\.\.\/assets\/posts\//, '/uploads/posts/')
+    .replace(/^\.\.\/\.\.\/assets\/photos\//, '/uploads/photos/')
+    .replace(/^\.\.\/\.\.\/assets\/audio\//, '/uploads/audio/')
+    .replace(/^\/?src\/assets\/posts\//, '/uploads/posts/')
+    .replace(/^\/?src\/assets\/photos\//, '/uploads/photos/')
+    .replace(/^\/?src\/assets\/audio\//, '/uploads/audio/');
+}
+
+/**
+ * 构建支持 H2 一级标题 + H3 二级标题（默认折叠）的层级章节坐标导览 HTML。
+ */
+export function renderHierarchicalTocHtml(
+  headings: Array<{ slug: string; text: string; depth: number }>
+): string {
+  const valid = headings.filter((h) => h.text.trim() && h.depth >= 2 && h.depth <= 3);
+  if (!valid.length) {
+    return `<p class="toc-empty">本文未设置小节标题</p>`;
+  }
+
+  interface TocGroup {
+    slug: string;
+    text: string;
+    num: string;
+    children: Array<{ slug: string; text: string; num: string }>;
+  }
+
+  const groups: TocGroup[] = [];
+  let h2Counter = 0;
+
+  for (const h of valid) {
+    if (h.depth === 2 || groups.length === 0) {
+      h2Counter += 1;
+      groups.push({
+        slug: h.slug,
+        text: h.text,
+        num: String(h2Counter).padStart(2, '0'),
+        children: [],
+      });
+    } else {
+      const currentGroup = groups[groups.length - 1]!;
+      const subIdx = currentGroup.children.length + 1;
+      currentGroup.children.push({
+        slug: h.slug,
+        text: h.text,
+        num: `${currentGroup.num}.${subIdx}`,
+      });
+    }
+  }
+
+  const itemsHtml = groups
+    .map((g, gIdx) => {
+      const hasSub = g.children.length > 0;
+      const activeAttr = gIdx === 0 ? ' data-active="true"' : '';
+      if (!hasSub) {
+        return `<li class="toc-item toc-item--h2">
+          <div class="toc-row">
+            <a href="#${esc(g.slug)}" data-toc-link data-toc-level="2"${activeAttr}>
+              <span class="toc-num">${g.num}</span>
+              <span class="toc-text">${esc(g.text)}</span>
+            </a>
+          </div>
+        </li>`;
+      }
+
+      const subItemsHtml = g.children
+        .map(
+          (sub) => `<li class="toc-subitem">
+            <a href="#${esc(sub.slug)}" data-toc-link data-toc-level="3" class="toc-link--h3">
+              <span class="toc-num">${sub.num}</span>
+              <span class="toc-text">${esc(sub.text)}</span>
+            </a>
+          </li>`
+        )
+        .join('');
+
+      return `<li class="toc-item toc-item--h2 toc-item--has-children" data-toc-group data-collapsed="true">
+        <div class="toc-row">
+          <a href="#${esc(g.slug)}" data-toc-link data-toc-level="2"${activeAttr}>
+            <span class="toc-num">${g.num}</span>
+            <span class="toc-text">${esc(g.text)}</span>
+          </a>
+          <button type="button" class="toc-fold-btn" data-toc-toggle aria-expanded="false" title="展开/折叠二级标题 (${g.children.length})">
+            <span class="toc-sub-count">${g.children.length}</span>
+            <span class="toc-fold-chevron" aria-hidden="true">▸</span>
+          </button>
+        </div>
+        <div class="toc-sublist-wrap">
+          <ul class="toc-sublist">${subItemsHtml}</ul>
+        </div>
+      </li>`;
+    })
+    .join('');
+
+  return `<ul class="toc-list" id="article-toc-list">${itemsHtml}</ul>`;
+}
+
 /**
  * 将数据库/frontmatter 中的 railTopology 对象安全归一化为 PostRailConfig。
  */
@@ -109,7 +217,7 @@ export function normalizePostRailConfig(raw: unknown): PostRailConfig {
     .map((c, idx) => {
       const t = String(c.type ?? 'note');
       const type: RailWidgetType =
-        t === 'kv' || t === 'links' || t === 'list' || t === 'note' ? t : 'note';
+        t === 'kv' || t === 'links' || t === 'list' || t === 'note' || t === 'music' ? t : 'note';
       const items = Array.isArray(c.items)
         ? c.items
             .filter((it): it is Record<string, unknown> => Boolean(it && typeof it === 'object'))
@@ -135,12 +243,20 @@ export function normalizePostRailConfig(raw: unknown): PostRailConfig {
         id: String(c.id ?? `card-${idx + 1}`),
         enabled: c.enabled !== false,
         type,
-        kicker: String(c.kicker ?? 'INFO CARD // 伴读卡片'),
-        badge: String(c.badge ?? 'INFO'),
+        kicker: String(
+          c.kicker ?? (type === 'music' ? 'AUDIO PLAYER // 伴读音乐盒' : 'INFO CARD // 伴读卡片')
+        ),
+        badge: String(c.badge ?? (type === 'music' ? 'AUDIO' : 'INFO')),
         content: String(c.content ?? ''),
         items,
         links,
         bullets,
+        audioUrl: typeof c.audioUrl === 'string' ? c.audioUrl : '',
+        audioTitle: typeof c.audioTitle === 'string' ? c.audioTitle : '',
+        audioArtist: typeof c.audioArtist === 'string' ? c.audioArtist : '',
+        audioCover: typeof c.audioCover === 'string' ? c.audioCover : '',
+        autoplay: Boolean(c.autoplay),
+        loop: c.loop !== false,
       };
     });
 
@@ -162,7 +278,7 @@ export function normalizePostRailConfig(raw: unknown): PostRailConfig {
 }
 
 /**
- * 渲染单张通用悬浮窗卡片（支持 kv / note / links / list 四种高可用类型）
+ * 渲染单张通用悬浮窗卡片（支持 kv / note / links / list / music 五种高可用类型）
  */
 export function renderWidgetCardHtml(
   card: RailWidgetCard | RailCustomCard,
@@ -172,6 +288,83 @@ export function renderWidgetCardHtml(
   const kicker = esc(card.kicker || 'INFO CARD // 信息卡');
   const badge = esc(card.badge || 'NOTE');
   const type = card.type || 'note';
+
+  if (type === 'music') {
+    const mc = card as RailWidgetCard;
+    const audioSrc = normalizeMediaAssetUrl(mc.audioUrl ?? '');
+    const parsedFromUrl = parseAudioMetadataFromFilename(mc.audioUrl ?? '');
+    const rawTitle = (mc.audioTitle ?? '').trim();
+    const rawArtist = (mc.audioArtist ?? '').trim();
+    const titleIsDefault = isDefaultAudioTitle(rawTitle);
+    const artistIsDefault = isDefaultAudioArtist(rawArtist);
+    const trackTitle =
+      (!titleIsDefault ? rawTitle : parsedFromUrl.title) || rawTitle || '未命名伴读曲目';
+    const trackArtist =
+      (!artistIsDefault ? rawArtist : parsedFromUrl.artist) || rawArtist || 'ACOUSTIC STREAM // 伴读声轨';
+    const coverSrc = normalizeMediaAssetUrl(mc.audioCover ?? '');
+    const loop = mc.loop !== false;
+    const autoplay = Boolean(mc.autoplay) && !isStudioDockPreview;
+
+    return `<div class="rail-blueprint-card rail-music-card" data-rail-music-player data-playing="false" data-loop="${loop ? 'true' : 'false'}" data-title-is-default="${titleIsDefault ? 'true' : 'false'}" data-artist-is-default="${artistIsDefault ? 'true' : 'false'}">
+      <div class="rail-card-kicker">
+        <span>${kicker}</span>
+        <span class="rail-music-status-badge" data-music-badge>${badge}</span>
+      </div>
+      <div class="rail-music-stage">
+        <div class="rail-music-disc-wrap" data-music-disc>
+          ${
+            coverSrc
+              ? `<img class="rail-music-cover-img" src="${esc(coverSrc)}" alt="${esc(trackTitle)}" loading="lazy" />`
+              : `<svg class="rail-music-disc-svg" viewBox="0 0 64 64" aria-hidden="true">
+                  <circle cx="32" cy="32" r="29" fill="none" stroke="currentColor" stroke-width="1.2" stroke-opacity="0.45"/>
+                  <circle cx="32" cy="32" r="23" fill="none" stroke="currentColor" stroke-width="0.75" stroke-dasharray="3 3" stroke-opacity="0.35"/>
+                  <circle cx="32" cy="32" r="17" fill="none" stroke="currentColor" stroke-width="0.75" stroke-opacity="0.26"/>
+                  <path d="M39.6 25.5A8.5 8.5 0 1 1 38 38L26 26A8.5 8.5 0 1 0 26 38L29.2 34.8M34.8 29.2L36.8 27.2" fill="none" stroke="var(--accent)" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round"/>
+                  <path d="M17.8 32H22.2M20 29.8V34.2M41.8 32H46.2" fill="none" stroke="var(--accent)" stroke-width="1.45" stroke-linecap="round"/>
+                  <circle cx="32" cy="32" r="3.6" fill="var(--paper)" stroke="var(--accent)" stroke-width="1.2"/>
+                  <circle cx="32" cy="32" r="1.3" fill="var(--accent)"/>
+                </svg>`
+          }
+          <span class="rail-music-center-dot" aria-hidden="true"></span>
+        </div>
+        <div class="rail-music-info">
+          <div class="rail-music-title-row">
+            <strong class="rail-music-title" data-music-title-el title="${esc(trackTitle)}">${esc(trackTitle)}</strong>
+            <span class="rail-music-eq" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
+          </div>
+          <div class="rail-music-artist" data-music-artist-el title="${esc(trackArtist)}">${esc(trackArtist)}</div>
+          <div class="rail-music-time-row">
+            <span data-music-cur>00:00</span>
+            <span class="rail-music-sep">/</span>
+            <span data-music-dur>00:00</span>
+          </div>
+        </div>
+      </div>
+      ${
+        audioSrc
+          ? `<div class="rail-music-controls">
+              <button type="button" class="rail-music-play-btn" data-music-toggle aria-label="播放或暂停音乐" title="播放 / 暂停">
+                <svg class="icon-play" viewBox="0 0 20 20" width="14" height="14" fill="currentColor" aria-hidden="true"><polygon points="6,4 16,10 6,16"/></svg>
+                <svg class="icon-pause" viewBox="0 0 20 20" width="14" height="14" fill="currentColor" aria-hidden="true"><rect x="5" y="4" width="3.5" height="12"/><rect x="11.5" y="4" width="3.5" height="12"/></svg>
+              </button>
+              <div class="rail-music-bar-wrap">
+                <input type="range" class="rail-music-seek" data-music-seek min="0" max="100" step="0.1" value="0" aria-label="调整播放进度" />
+                <div class="rail-music-bar-track">
+                  <div class="rail-music-bar-fill" data-music-fill style="width:0%;"></div>
+                </div>
+              </div>
+              <button type="button" class="rail-music-aux-btn" data-music-loop aria-pressed="${loop ? 'true' : 'false'}" title="循环播放">
+                <svg viewBox="0 0 20 20" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3l3 3-3 3"/><path d="M3 10V8a2 2 0 0 1 2-2h12"/><path d="M6 17l-3-3 3-3"/><path d="M17 10v2a2 2 0 0 1-2 2H3"/></svg>
+              </button>
+              <button type="button" class="rail-music-aux-btn" data-music-mute aria-pressed="false" title="静音切换">
+                <svg viewBox="0 0 20 20" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="9,5 5,8 2,8 2,12 5,12 9,15" fill="currentColor"/><path d="M13 7.5a3.5 3.5 0 0 1 0 5"/><path d="M15.5 5a7 7 0 0 1 0 10"/></svg>
+              </button>
+            </div>
+            <audio class="rail-music-audio" data-music-audio preload="metadata" src="${esc(audioSrc)}"${loop ? ' loop' : ''}${autoplay ? ' autoplay' : ''}></audio>`
+          : `<div class="rail-music-empty-hint">尚未选择音频文件 · 可在后台从媒体库选择或本地上传音频</div>`
+      }
+    </div>`;
+  }
 
   if (type === 'kv') {
     const items = Array.isArray(card.items) ? card.items.filter((r) => r.label || r.value) : [];

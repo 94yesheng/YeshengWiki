@@ -10,6 +10,7 @@ import {
   POST_FIELDS,
   prepareImage,
   savePost,
+  uploadAudioAsset,
   uploadPostAsset,
   type PostEntry,
 } from '../content';
@@ -19,6 +20,7 @@ import { normalizeHtml, renderMarkdown } from '../md';
 import { openPreview } from '../preview';
 import { chineseFullDate, isoDate, readingTime } from '../../utils/date';
 import {
+  normalizeMediaAssetUrl,
   normalizePostRailConfig,
   renderArticleRailSlots,
   type PostRailConfig,
@@ -27,6 +29,13 @@ import {
   type RailWidgetType,
 } from '../../utils/article-rail';
 import { THEME_COVER_SVG_HTML } from '../../utils/cover-svg';
+import {
+  extractAudioMetadataFromFile,
+  extractAudioMetadataFromUrl,
+  isDefaultAudioArtist,
+  isDefaultAudioTitle,
+  parseAudioMetadataFromFilename,
+} from '../../utils/audio-meta';
 import type { ArticleRailConfig, SiteConfig } from '../../site.config';
 import { $, $$, esc, reportError, setBusy, showConfirm, toast } from '../ui';
 import { isV2Layout } from '../layout';
@@ -104,6 +113,20 @@ function extractAutoLeadFromMarkdown(mdText: string): string {
 
 function createDefaultWidget(type: RailWidgetType): RailWidgetCard {
   const id = `card-${Date.now().toString(36).slice(-4)}-${Math.random().toString(36).slice(2, 5)}`;
+  if (type === 'music') {
+    return {
+      id,
+      enabled: true,
+      type: 'music',
+      kicker: 'AUDIO PLAYER // 伴读音乐盒',
+      badge: 'AUDIO',
+      audioUrl: '',
+      audioTitle: '伴读音乐 · 未命名曲目',
+      audioArtist: '夜笙 · ACOUSTIC BGM',
+      loop: true,
+      autoplay: false,
+    };
+  }
   if (type === 'kv') {
     return {
       id,
@@ -207,7 +230,41 @@ function renderRailCustomCardsEditor(cards: RailWidgetCard[]): string {
       const bulletsText = (card.bullets ?? []).join('\n');
 
       let bodyEditorHtml = '';
-      if (type === 'kv') {
+      if (type === 'music') {
+        const previewAudioSrc = normalizeMediaAssetUrl(card.audioUrl ?? '');
+        bodyEditorHtml = `
+          <div class="st-grid-2" style="margin-top:0.55rem;">
+            <div class="st-field">
+              <label>曲目名称</label>
+              <div><input class="st-input" data-rc-audio-title="${cIdx}" value="${esc(card.audioTitle ?? '')}" placeholder="如：Cornfield Chase" /></div>
+            </div>
+            <div class="st-field">
+              <label>艺术家 / 副标</label>
+              <div><input class="st-input" data-rc-audio-artist="${cIdx}" value="${esc(card.audioArtist ?? '')}" placeholder="如：Hans Zimmer · 伴读声轨" /></div>
+            </div>
+          </div>
+          <div class="st-field" style="margin-top:0.55rem;">
+            <label>音频文件源</label>
+            <div style="display:flex;flex-direction:column;gap:0.45rem;">
+              <div style="display:flex;gap:0.45rem;align-items:center;flex-wrap:wrap;">
+                <input class="st-input" style="flex:1;min-width:14rem;" data-rc-audio-url="${cIdx}" value="${esc(card.audioUrl ?? '')}" placeholder="/uploads/audio/... 或点击右侧从媒体库选择/上传" />
+                <button type="button" class="stage-mini-btn st-btn--preview" data-rc-pick-audio="${cIdx}">选择 / 上传音频</button>
+              </div>
+              ${
+                previewAudioSrc
+                  ? `<div style="display:flex;align-items:center;gap:0.6rem;padding:0.38rem 0.6rem;border:1px solid var(--rule);border-radius:3px;background:color-mix(in srgb, var(--accent) 5%, var(--paper));">
+                      <span style="font-family:var(--mono);font-size:0.7rem;color:var(--accent);">AUDIO READY</span>
+                      <audio controls preload="metadata" src="${esc(previewAudioSrc)}" style="height:28px;flex:1;"></audio>
+                    </div>`
+                  : `<div class="st-hint">尚未绑定音频文件，点击「选择 / 上传音频」可从媒体库「音频」分类选择或从本地上传。</div>`
+              }
+              <div class="st-check-row" style="margin-top:0.15rem;">
+                <label class="st-check"><input type="checkbox" data-rc-audio-loop="${cIdx}" ${card.loop !== false ? 'checked' : ''} /><span>单曲循环播放 (LOOP)</span></label>
+                <label class="st-check"><input type="checkbox" data-rc-audio-autoplay="${cIdx}" ${card.autoplay === true ? 'checked' : ''} /><span>进入文章尝试自动播放</span></label>
+              </div>
+            </div>
+          </div>`;
+      } else if (type === 'kv') {
         bodyEditorHtml = `
           <div class="st-kv-editor-list" style="margin-top:0.55rem;">
             ${items
@@ -269,6 +326,7 @@ function renderRailCustomCardsEditor(cards: RailWidgetCard[]): string {
               <strong>卡片 #${String(cIdx + 1).padStart(2, '0')}</strong>
             </label>
             <select class="st-select st-rail-type-select" data-rc-type="${cIdx}" aria-label="卡片类型">
+              <option value="music"${type === 'music' ? ' selected' : ''}>音乐播放卡 (Music)</option>
               <option value="kv"${type === 'kv' ? ' selected' : ''}>键值参数表 (KV)</option>
               <option value="note"${type === 'note' ? ' selected' : ''}>伴读便签卡 (Note)</option>
               <option value="links"${type === 'links' ? ' selected' : ''}>参考链接卡 (Links)</option>
@@ -313,6 +371,326 @@ function isImageFile(file: File): boolean {
 
 function isImageMedia(item: StudioMediaItem): boolean {
   return (item.mime ?? '').startsWith('image/') || /\.(jpe?g|png|webp|avif|gif|svg)$/i.test(item.path);
+}
+
+function isAudioFile(file: File): boolean {
+  return file.type.startsWith('audio/') || /\.(mp3|wav|ogg|m4a|flac|aac|opus|webm)$/i.test(file.name);
+}
+
+function isAudioMedia(item: StudioMediaItem): boolean {
+  return (item.mime ?? '').startsWith('audio/') || /\.(mp3|wav|ogg|m4a|flac|aac|opus|webm)$/i.test(item.path);
+}
+
+let activeAudioModal: HTMLElement | null = null;
+let audioModalSeq = 0;
+
+function closeAudioModal(): void {
+  audioModalSeq += 1;
+  if (activeAudioModal) {
+    activeAudioModal.remove();
+    activeAudioModal = null;
+  }
+}
+
+/**
+ * 打开音乐播放模块的音频选择/本地上传悬浮模态框（支持从媒体库「音频」分类选择或本地上传）
+ */
+function openAudioPickerModal(
+  d: PostDraftUi,
+  cardIdx: number,
+  onUpdated: (updatedCfg: PostRailConfig) => void,
+  liveCards?: RailWidgetCard[]
+): void {
+  closeAudioModal();
+  audioModalSeq += 1;
+  const seq = audioModalSeq;
+  const railCfg = normalizePostRailConfig(d.fields.railTopology);
+  const cards = liveCards ?? railCfg.cards ?? [];
+  railCfg.cards = cards;
+  const card = cards[cardIdx];
+  if (!card) return;
+
+  const backdrop = document.createElement('div');
+  backdrop.className = 'ed-img-modal-backdrop';
+  backdrop.id = 'st-audio-modal-backdrop';
+  backdrop.setAttribute('role', 'dialog');
+  backdrop.setAttribute('aria-modal', 'true');
+  backdrop.setAttribute('aria-label', '选择或上传伴读音频');
+
+  backdrop.innerHTML = `
+    <div class="ed-img-modal">
+      <div class="ed-img-modal-head">
+        <div class="ed-img-modal-title-group">
+          <span class="ed-img-modal-kicker">RAIL MUSIC MODULE // 文章右侧悬浮窗 · 伴读音乐配置</span>
+          <h3 class="ed-img-modal-title">从媒体库「音频」分类选择或从本地上传音频</h3>
+        </div>
+        <button type="button" class="stage-mini-btn ed-img-modal-close" id="st-audio-modal-close" aria-label="关闭弹窗">关闭 ×</button>
+      </div>
+
+      <div class="ed-img-modal-body">
+        <section class="ed-img-section">
+          <div class="ed-img-section-head">
+            <span>01 // 从媒体库「音频」分类中选择（点击曲目卡片或「选用此音频」立即自动导入并读取作者与标题）</span>
+            <span class="ed-img-section-count" id="st-audio-media-count">读取中…</span>
+          </div>
+          <div class="ed-media-grid" id="st-audio-media-grid" style="grid-template-columns:repeat(auto-fill,minmax(14rem,1fr));">
+            <p class="ed-media-empty">正在读取媒体库中的音频文件…</p>
+          </div>
+        </section>
+
+        <section class="ed-img-section">
+          <div class="ed-img-section-head">
+            <span>02 // 从本地上传音频文件（自动读取音频作者与标题并归档至媒体库「音频」分类）</span>
+          </div>
+          <div class="ed-dropzone" id="st-audio-dropzone" role="button" tabindex="0" aria-label="上传本地音频文件">
+            <div class="ed-dropzone-content">
+              <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M9 18V5l12-2v13"/>
+                <circle cx="6" cy="18" r="3"/>
+                <circle cx="18" cy="16" r="3"/>
+              </svg>
+              <span>把本地音频文件（MP3 / WAV / OGG / M4A / FLAC）拖到这里，或点击选择上传</span>
+            </div>
+            <input type="file" id="st-audio-modal-upload" accept="audio/*,.mp3,.wav,.ogg,.m4a,.flac,.aac,.opus" hidden />
+          </div>
+        </section>
+
+        <section class="ed-img-section">
+          <div class="ed-img-section-head">
+            <span>03 // 手动核对曲目信息与音频地址</span>
+          </div>
+          <div class="ed-drawer-grid ed-drawer-grid--image" style="grid-template-columns:1fr 1fr;">
+            <input class="st-input" id="st-audio-modal-src" style="grid-column:1 / -1;" value="${esc(card.audioUrl ?? '')}" placeholder="/uploads/audio/... 或 https://... 外部音频直链" />
+            <input class="st-input" id="st-audio-modal-title" value="${esc(card.audioTitle ?? '')}" placeholder="曲目名称（自动读取，失败则保留默认）" />
+            <input class="st-input" id="st-audio-modal-artist" value="${esc(card.audioArtist ?? '')}" placeholder="音频作者 / 艺术家（自动读取，失败则保留默认）" />
+            <div style="grid-column:1 / -1;display:flex;gap:0.45rem;justify-content:flex-end;">
+              <button type="button" class="st-btn st-btn--primary" id="st-audio-modal-confirm">确认设置</button>
+              <button type="button" class="stage-mini-btn st-btn--danger" id="st-audio-modal-clear">清空音频</button>
+            </div>
+          </div>
+        </section>
+      </div>
+    </div>`;
+
+  document.body.appendChild(backdrop);
+  activeAudioModal = backdrop;
+
+  const onEsc = (e: KeyboardEvent) => {
+    if (e.key === 'Escape') {
+      window.removeEventListener('keydown', onEsc);
+      closeAudioModal();
+    }
+  };
+  window.addEventListener('keydown', onEsc);
+
+  backdrop.addEventListener('click', (e) => {
+    if (e.target === backdrop) {
+      window.removeEventListener('keydown', onEsc);
+      closeAudioModal();
+    }
+  });
+
+  backdrop.querySelector('#st-audio-modal-close')?.addEventListener('click', () => {
+    window.removeEventListener('keydown', onEsc);
+    closeAudioModal();
+  });
+
+  const applyAudio = (nextUrl: string, nextTitle?: string, nextArtist?: string) => {
+    card.audioUrl = nextUrl.trim();
+    if (nextTitle !== undefined && nextTitle.trim()) {
+      card.audioTitle = nextTitle.trim();
+    } else if (!card.audioTitle || !card.audioTitle.trim()) {
+      card.audioTitle = '伴读音乐 · 未命名曲目';
+    }
+    if (nextArtist !== undefined && nextArtist.trim()) {
+      card.audioArtist = nextArtist.trim();
+    } else if (!card.audioArtist || !card.audioArtist.trim()) {
+      card.audioArtist = '夜笙 · ACOUSTIC BGM';
+    }
+    railCfg.cards = cards;
+    d.fields.railTopology = railCfg;
+    markDirty();
+    window.removeEventListener('keydown', onEsc);
+    closeAudioModal();
+    onUpdated(railCfg);
+  };
+
+  const grid = backdrop.querySelector<HTMLElement>('#st-audio-media-grid');
+  const countLabel = backdrop.querySelector<HTMLElement>('#st-audio-media-count');
+  if (grid) {
+    void (async () => {
+      try {
+        const res = await fetch('/api/media', {
+          credentials: 'same-origin',
+          headers: { Accept: 'application/json' },
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = (await res.json()) as { media?: StudioMediaItem[] };
+        if (seq >= audioModalSeq && activeAudioModal === backdrop) {
+          const list = (Array.isArray(data.media) ? data.media : []).filter(isAudioMedia);
+          if (countLabel) countLabel.textContent = `共 ${list.length} 首音频`;
+          if (!list.length) {
+            grid.innerHTML = `<p class="ed-media-empty">媒体库「音频」分类下还没有文件，请使用下方上传区上传本地音频。</p>`;
+          } else {
+            grid.innerHTML = list
+              .map((item) => {
+                const cleanName = item.filename.replace(/\.[^.]+$/, '');
+                const parsedGuess = parseAudioMetadataFromFilename(item.filename);
+                const subHint = parsedGuess.artist
+                  ? `${parsedGuess.artist} · ${parsedGuess.title || cleanName}`
+                  : item.postTitle || '媒体库 · 音频分类（点击选用）';
+                return `
+                <div class="ed-media-item" data-pick-audio-card="${esc(item.path)}" data-pick-audio-filename="${esc(item.filename)}" data-pick-audio-name="${esc(cleanName)}" style="display:flex;flex-direction:column;justify-content:space-between;padding:0.65rem;gap:0.45rem;cursor:pointer;">
+                  <div style="display:flex;align-items:center;gap:0.5rem;">
+                    <svg viewBox="0 0 32 32" width="24" height="24" fill="none" stroke="var(--accent)" stroke-width="1.5" aria-hidden="true" style="flex-shrink:0;">
+                      <circle cx="16" cy="16" r="13"/>
+                      <circle cx="16" cy="16" r="3.5" fill="var(--accent)"/>
+                    </svg>
+                    <div style="min-width:0;flex:1;">
+                      <div class="ed-media-name" style="font-weight:600;" title="${esc(item.filename)}">${esc(item.filename)}</div>
+                      <div class="ed-media-owner">${esc(subHint)}</div>
+                    </div>
+                  </div>
+                  <audio controls preload="metadata" src="${esc(item.path)}" style="width:100%;height:26px;"></audio>
+                  <button type="button" class="stage-mini-btn st-btn--primary" data-pick-audio-path="${esc(item.path)}" data-pick-audio-filename="${esc(item.filename)}" data-pick-audio-name="${esc(cleanName)}" style="width:100%;justify-content:center;background:var(--accent);color:#fff;border-color:var(--accent);">
+                    ✓ 选用此音频（自动导入）
+                  </button>
+                </div>`;
+              })
+              .join('');
+          }
+        }
+      } catch (error) {
+        if (seq >= audioModalSeq && activeAudioModal === backdrop) {
+          if (countLabel) countLabel.textContent = '读取失败';
+          grid.innerHTML = `<p class="ed-media-empty ed-media-empty--error">媒体库读取失败（${esc(
+            (error as Error).message
+          )}），请使用下方上传区或手动填写路径。</p>`;
+        }
+      }
+    })();
+
+    grid.addEventListener('click', (e) => {
+      const target = e.target as HTMLElement;
+      // 若点击的是 <audio> 控件本身，则仅试听不触发关闭
+      if (target.closest('audio')) return;
+      const trigger =
+        target.closest<HTMLElement>('[data-pick-audio-path]') ??
+        target.closest<HTMLElement>('[data-pick-audio-card]');
+      if (!trigger) return;
+      const pickedPath =
+        trigger.dataset.pickAudioPath ?? trigger.dataset.pickAudioCard ?? '';
+      const pickedFilename =
+        trigger.dataset.pickAudioFilename ?? trigger.dataset.pickAudioName ?? '';
+      if (!pickedPath) return;
+
+      // 先从文件名快速提取兜底，立即导入地址并渲染 UI
+      const fallbackMeta = parseAudioMetadataFromFilename(pickedFilename || pickedPath);
+      const initialTitle = fallbackMeta.title || card.audioTitle || '伴读音乐 · 未命名曲目';
+      const initialArtist = fallbackMeta.artist || card.audioArtist || '夜笙 · ACOUSTIC BGM';
+      applyAudio(pickedPath, initialTitle, initialArtist);
+      toast(`已自动导入音频：${initialTitle}`);
+
+      // 再异步读取音频文件内置 ID3 / FLAC / Vorbis / M4A 标签，读取成功则更新作者与标题，失败则保留默认
+      void extractAudioMetadataFromUrl(pickedPath, pickedFilename).then((meta) => {
+        let changed = false;
+        if (meta.title && meta.title.trim()) {
+          card.audioTitle = meta.title.trim();
+          changed = true;
+        }
+        if (meta.artist && meta.artist.trim()) {
+          card.audioArtist = meta.artist.trim();
+          changed = true;
+        }
+        if (changed) {
+          railCfg.cards = cards;
+          d.fields.railTopology = railCfg;
+          markDirty();
+          onUpdated(railCfg);
+          toast(`已自动读取音频信息：${card.audioArtist} - ${card.audioTitle}`);
+        }
+      });
+    });
+  }
+
+  const uploadInput = backdrop.querySelector<HTMLInputElement>('#st-audio-modal-upload');
+  const dropzone = backdrop.querySelector<HTMLElement>('#st-audio-dropzone');
+
+  const handleUploadAudio = async (file: File | undefined) => {
+    if (!file) return;
+    if (!isAudioFile(file)) {
+      toast('请选择音频格式文件（MP3 / WAV / OGG / M4A / FLAC）', true);
+      return;
+    }
+    dropzone?.classList.add('is-dragover');
+    try {
+      // 自动读取本地音频文件的 ID3/Vorbis/MP4 作者与标题标签，若读取失败则保留默认
+      const meta = await extractAudioMetadataFromFile(file);
+      const nextTitle = meta.title || card.audioTitle || '伴读音乐 · 未命名曲目';
+      const nextArtist = meta.artist || card.audioArtist || '夜笙 · ACOUSTIC BGM';
+
+      if (state.gh) {
+        setBusy(true, '正在读取音频标签并上传至媒体库…');
+        const publicUrl = await uploadAudioAsset(state.gh, file, d.entry.id);
+        state.mediaLoaded = false;
+        applyAudio(publicUrl, nextTitle, nextArtist);
+        toast(`音频已上传并自动导入：${nextArtist} - ${nextTitle}`);
+      } else {
+        const fallbackUrl = `/uploads/audio/${file.name.replace(/\s+/g, '-')}`;
+        applyAudio(fallbackUrl, nextTitle, nextArtist);
+        toast(`已自动导入音频：${nextArtist} - ${nextTitle}`);
+      }
+    } catch (err) {
+      dropzone?.classList.remove('is-dragover');
+      reportError(err);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  dropzone?.addEventListener('click', (e) => {
+    if ((e.target as HTMLElement).closest('input')) return;
+    uploadInput?.click();
+  });
+  dropzone?.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter' && e.key !== ' ') return;
+    e.preventDefault();
+    uploadInput?.click();
+  });
+  uploadInput?.addEventListener('change', () => {
+    const file = uploadInput.files?.[0];
+    uploadInput.value = '';
+    void handleUploadAudio(file);
+  });
+  dropzone?.addEventListener('dragover', (e) => {
+    if (!e.dataTransfer || !Array.from(e.dataTransfer.types).includes('Files')) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'copy';
+    dropzone.classList.add('is-dragover');
+  });
+  dropzone?.addEventListener('dragleave', (e) => {
+    if (e.relatedTarget && dropzone.contains(e.relatedTarget as Node)) return;
+    dropzone.classList.remove('is-dragover');
+  });
+  dropzone?.addEventListener('drop', (e) => {
+    if (!e.dataTransfer) return;
+    e.preventDefault();
+    dropzone.classList.remove('is-dragover');
+    void handleUploadAudio(e.dataTransfer.files?.[0]);
+  });
+
+  backdrop.querySelector('#st-audio-modal-confirm')?.addEventListener('click', () => {
+    const src = backdrop.querySelector<HTMLInputElement>('#st-audio-modal-src')?.value ?? '';
+    const title = backdrop.querySelector<HTMLInputElement>('#st-audio-modal-title')?.value ?? '';
+    const artist = backdrop.querySelector<HTMLInputElement>('#st-audio-modal-artist')?.value ?? '';
+    applyAudio(src, title, artist);
+    toast(src.trim() ? '已更新音乐播放模块配置' : '已清空音频路径');
+  });
+
+  backdrop.querySelector('#st-audio-modal-clear')?.addEventListener('click', () => {
+    applyAudio('');
+    toast('已清除当前音乐播放模块的音频源');
+  });
 }
 
 function syncCoverUi(d: PostDraftUi): void {
@@ -637,6 +1015,14 @@ export function renderPostView(): void {
             <h2 id="st-live-title">${esc(d.fields.title || '（未填标题）')}</h2>
           </div>
           <div class="st-head-btns">
+            <button type="button" class="st-btn" id="st-quick-add-music-btn" title="在文章右侧悬浮窗中快速调用/插入音乐播放模块">
+              <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true" style="vertical-align:-2px;margin-right:4px;">
+                <path d="M6 12.5V3.5l8-1.5v9"/>
+                <circle cx="4" cy="12.5" r="2"/>
+                <circle cx="12" cy="11" r="2"/>
+              </svg>
+              <span>调用音乐播放模块</span>
+            </button>
             <button type="button" class="st-btn st-btn--preview" id="st-btn-preview-post">
               <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true" style="vertical-align:-2px;margin-right:4px;">
                 <path d="M1.5 8s2.4-4.5 6.5-4.5S14.5 8 14.5 8s-2.4 4.5-6.5 4.5S1.5 8 1.5 8Z"/>
@@ -976,6 +1362,7 @@ export function renderPostView(): void {
                 <div class="st-pages-subhead">
                   <div class="st-sub-kicker">B // 本文专属悬浮卡片（支持多卡片自由组合与排序）</div>
                   <div class="st-rail-add-bar">
+                    <button type="button" class="stage-mini-btn st-btn--preview" data-add-widget="music">♫ ＋ 音乐播放卡</button>
                     <button type="button" class="stage-mini-btn" data-add-widget="kv">＋ 参数表卡</button>
                     <button type="button" class="stage-mini-btn" data-add-widget="note">＋ 伴读便签卡</button>
                     <button type="button" class="stage-mini-btn" data-add-widget="links">＋ 参考链接卡</button>
@@ -1182,6 +1569,35 @@ export function renderPostView(): void {
   // 信息悬浮窗：事件绑定
   wireRailEditorEvents(edit, d, railCfg, railSpecs, customCards);
 
+  $('#st-quick-add-music-btn')?.addEventListener('click', () => {
+    let musicIdx = customCards.findIndex((c) => c.type === 'music');
+    if (musicIdx === -1) {
+      customCards.unshift(createDefaultWidget('music'));
+      musicIdx = 0;
+    }
+    railCfg.cards = customCards;
+    d.fields.railTopology = railCfg;
+    if (d.fields.railMode === 'follow') d.fields.railMode = 'custom';
+    d.railOpen = true;
+    d.rightTab = 'rail';
+    markDirty();
+    renderPostView();
+    const sec = $('#st-rail-section');
+    sec?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    openAudioPickerModal(
+      d,
+      musicIdx,
+      (updatedCfg) => {
+        customCards.splice(0, customCards.length, ...(updatedCfg.cards ?? []));
+        railCfg.cards = customCards;
+        d.fields.railTopology = railCfg;
+        d.railOpen = true;
+        renderPostView();
+      },
+      customCards
+    );
+  });
+
   $('#st-btn-preview-post')?.addEventListener('click', () => previewCurrentPost());
   $('#st-del-post')?.addEventListener('click', () => {
     if (!isV2Layout()) {
@@ -1311,7 +1727,13 @@ function wireRailEditorEvents(
       if (!card) return;
       const nextType = sel.value as RailWidgetType;
       card.type = nextType;
-      if (nextType === 'kv' && (!card.items || !card.items.length)) {
+      if (nextType === 'music') {
+        card.kicker = 'AUDIO PLAYER // 伴读音乐盒';
+        card.badge = 'AUDIO';
+        if (!card.audioTitle) card.audioTitle = '伴读音乐 · 未命名曲目';
+        if (!card.audioArtist) card.audioArtist = '夜笙 · ACOUSTIC BGM';
+        if (card.loop === undefined) card.loop = true;
+      } else if (nextType === 'kv' && (!card.items || !card.items.length)) {
         card.items = [{ label: '参数名', value: '参数值' }];
       } else if (nextType === 'links' && (!card.links || !card.links.length)) {
         card.links = [{ label: '相关链接', url: 'https://', note: '参考' }];
@@ -1468,6 +1890,94 @@ function wireRailEditorEvents(
       syncRail(true);
     })
   );
+
+  root.querySelectorAll<HTMLInputElement>('[data-rc-audio-title]').forEach((inp) =>
+    inp.addEventListener('input', () => {
+      const card = customCards[Number(inp.dataset.rcAudioTitle)];
+      if (card) {
+        card.audioTitle = inp.value;
+        syncRail(false);
+      }
+    })
+  );
+
+  root.querySelectorAll<HTMLInputElement>('[data-rc-audio-artist]').forEach((inp) =>
+    inp.addEventListener('input', () => {
+      const card = customCards[Number(inp.dataset.rcAudioArtist)];
+      if (card) {
+        card.audioArtist = inp.value;
+        syncRail(false);
+      }
+    })
+  );
+
+  root.querySelectorAll<HTMLInputElement>('[data-rc-audio-url]').forEach((inp) => {
+    inp.addEventListener('input', () => {
+      const card = customCards[Number(inp.dataset.rcAudioUrl)];
+      if (card) {
+        card.audioUrl = inp.value.trim();
+        syncRail(false);
+      }
+    });
+    inp.addEventListener('change', () => {
+      const card = customCards[Number(inp.dataset.rcAudioUrl)];
+      if (!card) return;
+      const nextUrl = inp.value.trim();
+      card.audioUrl = nextUrl;
+      syncRail(true);
+      if (nextUrl) {
+        void extractAudioMetadataFromUrl(nextUrl).then((meta) => {
+          let updated = false;
+          if (meta.title && isDefaultAudioTitle(card.audioTitle)) {
+            card.audioTitle = meta.title;
+            updated = true;
+          }
+          if (meta.artist && isDefaultAudioArtist(card.audioArtist)) {
+            card.audioArtist = meta.artist;
+            updated = true;
+          }
+          if (updated) syncRail(true);
+        });
+      }
+    });
+  });
+
+  root.querySelectorAll<HTMLInputElement>('[data-rc-audio-loop]').forEach((inp) =>
+    inp.addEventListener('change', () => {
+      const card = customCards[Number(inp.dataset.rcAudioLoop)];
+      if (card) {
+        card.loop = inp.checked;
+        syncRail(false);
+      }
+    })
+  );
+
+  root.querySelectorAll<HTMLInputElement>('[data-rc-audio-autoplay]').forEach((inp) =>
+    inp.addEventListener('change', () => {
+      const card = customCards[Number(inp.dataset.rcAudioAutoplay)];
+      if (card) {
+        card.autoplay = inp.checked;
+        syncRail(false);
+      }
+    })
+  );
+
+  root.querySelectorAll<HTMLButtonElement>('[data-rc-pick-audio]').forEach((btn) =>
+    btn.addEventListener('click', () => {
+      const cIdx = Number(btn.dataset.rcPickAudio);
+      openAudioPickerModal(
+        d,
+        cIdx,
+        (updatedCfg) => {
+          if (updatedCfg && Array.isArray(updatedCfg.cards)) {
+            customCards.splice(0, customCards.length, ...updatedCfg.cards);
+          }
+          syncRail(true);
+        },
+        customCards
+      );
+    })
+  );
 }
 
 function renderRightDock(d: PostDraftUi): void {
@@ -1598,6 +2108,7 @@ function renderRightRailPreview(d: PostDraftUi): void {
           <button type="button" class="stage-mini-btn" data-dock-rail-mode="minimal" aria-pressed="${railMode === 'minimal'}">极简</button>
         </div>
         <div class="st-rail-dock-add-grid">
+          <button type="button" class="ed-btn" data-dock-add-card="music" style="grid-column:1 / -1;border-color:color-mix(in srgb, var(--accent) 55%, var(--rule));color:var(--accent);font-weight:600;">♫ ＋ 调用音乐播放模块 (Music Player)</button>
           <button type="button" class="ed-btn" data-dock-add-card="kv">＋ 参数速查卡</button>
           <button type="button" class="ed-btn" data-dock-add-card="note">＋ 伴读便签卡</button>
           <button type="button" class="ed-btn" data-dock-add-card="links">＋ 参考链接卡</button>
@@ -1642,9 +2153,77 @@ function renderRightRailPreview(d: PostDraftUi): void {
       renderPostView();
       const sec = $('#st-rail-section');
       sec?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      toast('已添加悬浮卡片并展开左侧配置区');
+      const addedIdx = cfg.cards.length - 1;
+      if (type === 'music') {
+        openAudioPickerModal(d, addedIdx, () => {
+          d.railOpen = true;
+          renderPostView();
+        });
+      } else {
+        toast('已添加悬浮卡片并展开左侧配置区');
+      }
     })
   );
+
+  // 为右侧实时预览中的音乐播放卡绑定播放/暂停交互
+  host.querySelectorAll<HTMLElement>('[data-rail-music-player]').forEach((cardEl) => {
+    const audio = cardEl.querySelector<HTMLAudioElement>('[data-music-audio]');
+    const playBtn = cardEl.querySelector<HTMLButtonElement>('[data-music-toggle]');
+    const seek = cardEl.querySelector<HTMLInputElement>('[data-music-seek]');
+    const fill = cardEl.querySelector<HTMLElement>('[data-music-fill]');
+    const curEl = cardEl.querySelector<HTMLElement>('[data-music-cur]');
+    const durEl = cardEl.querySelector<HTMLElement>('[data-music-dur]');
+    const badgeEl = cardEl.querySelector<HTMLElement>('[data-music-badge]');
+    const loopBtn = cardEl.querySelector<HTMLButtonElement>('[data-music-loop]');
+    const muteBtn = cardEl.querySelector<HTMLButtonElement>('[data-music-mute]');
+    if (!audio) return;
+
+    const fmt = (sec: number) => {
+      if (!Number.isFinite(sec) || sec < 0) return '00:00';
+      const m = Math.floor(sec / 60);
+      const sSec = Math.floor(sec % 60);
+      return `${String(m).padStart(2, '0')}:${String(sSec).padStart(2, '0')}`;
+    };
+
+    audio.addEventListener('loadedmetadata', () => {
+      if (durEl) durEl.textContent = fmt(audio.duration);
+    });
+    audio.addEventListener('timeupdate', () => {
+      if (curEl) curEl.textContent = fmt(audio.currentTime);
+      const pct = audio.duration > 0 ? Math.min(100, (audio.currentTime / audio.duration) * 100) : 0;
+      if (fill) fill.style.width = `${pct.toFixed(1)}%`;
+      if (seek) seek.value = String(pct);
+    });
+    audio.addEventListener('play', () => {
+      cardEl.dataset.playing = 'true';
+      if (badgeEl) badgeEl.textContent = 'PLAYING';
+    });
+    audio.addEventListener('pause', () => {
+      cardEl.dataset.playing = 'false';
+      if (badgeEl) badgeEl.textContent = 'PAUSED';
+    });
+    audio.addEventListener('ended', () => {
+      cardEl.dataset.playing = 'false';
+      if (badgeEl) badgeEl.textContent = 'AUDIO';
+    });
+    playBtn?.addEventListener('click', () => {
+      if (audio.paused) void audio.play().catch(() => {});
+      else audio.pause();
+    });
+    seek?.addEventListener('input', () => {
+      if (audio.duration > 0) {
+        audio.currentTime = (Number(seek.value) / 100) * audio.duration;
+      }
+    });
+    loopBtn?.addEventListener('click', () => {
+      audio.loop = !audio.loop;
+      loopBtn.setAttribute('aria-pressed', String(audio.loop));
+    });
+    muteBtn?.addEventListener('click', () => {
+      audio.muted = !audio.muted;
+      muteBtn.setAttribute('aria-pressed', String(audio.muted));
+    });
+  });
 }
 
 export function previewCurrentPost(): void {

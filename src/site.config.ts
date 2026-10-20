@@ -52,11 +52,17 @@ export interface RailCustomCard {
   enabled: boolean;
   kicker: string;
   badge: string;
-  type: 'text' | 'note' | 'kv' | 'links' | 'list';
+  type: 'text' | 'note' | 'kv' | 'links' | 'list' | 'music';
   content?: string;
   items?: Array<{ label: string; value: string }>;
   links?: Array<{ label: string; url: string; note?: string }>;
   bullets?: string[];
+  audioUrl?: string;
+  audioTitle?: string;
+  audioArtist?: string;
+  audioCover?: string;
+  autoplay?: boolean;
+  loop?: boolean;
 }
 
 export interface ArticleRailConfig {

@@ -14,6 +14,7 @@ export const DIRS = {
   walls: 'src/content/photos',
   photos: 'src/assets/photos',
   postAssets: 'src/assets/posts',
+  audio: 'src/assets/audio',
 } as const;
 
 export const FILES = {
@@ -515,4 +516,32 @@ export async function uploadPostAsset(
   }
   await gh.putBinary(`${DIRS.postAssets}/${folder}/${name}`, prepared.bytes, `content: 上传文章配图 ${folder}/${name}`);
   return `../../assets/posts/${folder}/${name}`;
+}
+
+/**
+ * 上传音频文件：归档到 `src/assets/audio/<slug>/<file>` 或 `src/assets/audio/<file>`，
+ * 返回可直接用于音乐播放模块的公开路径 `/uploads/audio/...`。
+ */
+export async function uploadAudioAsset(
+  gh: Github,
+  file: File,
+  postSlug?: string
+): Promise<string> {
+  const extMatch = /\.(mp3|wav|ogg|m4a|flac|aac|opus|webm)$/i.exec(file.name);
+  const ext = extMatch ? extMatch[0].toLowerCase() : '.mp3';
+  const baseName = safeFilename(file.name) || 'track';
+  const stamp = Date.now().toString(36).slice(-4);
+  const fileName = `${baseName}-${stamp}${ext}`;
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  if (!bytes.length) throw new Error('音频文件为空');
+
+  if (postSlug && postSlug.trim()) {
+    const safeSlug = safeFilename(postSlug);
+    const folder = safeSlug && safeSlug !== '.' && safeSlug !== '..' ? safeSlug : 'post';
+    await gh.putBinary(`${DIRS.audio}/${folder}/${fileName}`, bytes, `content: 上传文章伴读音频 ${folder}/${fileName}`);
+    return `/uploads/audio/${folder}/${fileName}`;
+  }
+
+  await gh.putBinary(`${DIRS.audio}/${fileName}`, bytes, `content: 上传媒体库音频 ${fileName}`);
+  return `/uploads/audio/${fileName}`;
 }

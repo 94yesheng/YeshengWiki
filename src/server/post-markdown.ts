@@ -26,8 +26,23 @@ function rewriteAssetPaths(markdown: string): string {
   return markdown
     .replaceAll('../../assets/posts/', '/uploads/posts/')
     .replaceAll('../../assets/photos/', '/uploads/photos/')
+    .replaceAll('../../assets/audio/', '/uploads/audio/')
     .replaceAll('/src/assets/posts/', '/uploads/posts/')
-    .replaceAll('/src/assets/photos/', '/uploads/photos/');
+    .replaceAll('/src/assets/photos/', '/uploads/photos/')
+    .replaceAll('/src/assets/audio/', '/uploads/audio/');
+}
+
+function rewriteUnknownAssets<T>(val: T): T {
+  if (typeof val === 'string') return rewriteAssetPaths(val) as unknown as T;
+  if (Array.isArray(val)) return val.map(rewriteUnknownAssets) as unknown as T;
+  if (val && typeof val === 'object') {
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(val as Record<string, unknown>)) {
+      out[k] = rewriteUnknownAssets(v);
+    }
+    return out as T;
+  }
+  return val;
 }
 
 export function parsePostMarkdown(raw: string, slug: string): ParsedPost {
@@ -72,7 +87,7 @@ export function parsePostMarkdown(raw: string, slug: string): ParsedPost {
       : null,
     railTopology:
       data.railTopology && typeof data.railTopology === 'object'
-        ? (data.railTopology as Record<string, unknown>)
+        ? (rewriteUnknownAssets(data.railTopology) as Record<string, unknown>)
         : null,
     tags,
     autoUpdated: typeof data.autoUpdated === 'boolean' ? data.autoUpdated : null,

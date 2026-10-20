@@ -330,13 +330,47 @@ export function createEditor(
       tocBox.innerHTML = `${tocTitle}<p class="toc-empty">尚未检测到 H2/H3 章节标题（点击上方「检测章节」可智能识别正文小节）</p>`;
       return;
     }
-    tocBox.innerHTML = `${tocTitle}<ul class="toc-list">${headings
-      .map(
-        (h, idx) =>
-          `<li><a href="#ed-heading-${idx}" data-toc-index="${idx}" class="${h.depth === 3 ? 'is-h3' : ''}"><span class="toc-num">${String(
-            idx + 1
-          ).padStart(2, '0')}</span><span>${esc(h.text)}</span></a></li>`
-      )
+    interface EdTocGroup {
+      idx: number;
+      text: string;
+      num: string;
+      children: Array<{ idx: number; text: string; num: string }>;
+    }
+    const groups: EdTocGroup[] = [];
+    let h2Count = 0;
+    headings.forEach((h, idx) => {
+      if (h.depth === 2 || groups.length === 0) {
+        h2Count += 1;
+        groups.push({
+          idx,
+          text: h.text,
+          num: String(h2Count).padStart(2, '0'),
+          children: [],
+        });
+      } else {
+        const parent = groups[groups.length - 1]!;
+        const subNo = parent.children.length + 1;
+        parent.children.push({
+          idx,
+          text: h.text,
+          num: `${parent.num}.${subNo}`,
+        });
+      }
+    });
+
+    tocBox.innerHTML = `${tocTitle}<ul class="toc-list">${groups
+      .map((g) => {
+        if (!g.children.length) {
+          return `<li class="toc-item toc-item--h2"><div class="toc-row"><a href="#ed-heading-${g.idx}" data-toc-index="${g.idx}" data-toc-level="2"><span class="toc-num">${g.num}</span><span class="toc-text">${esc(g.text)}</span></a></div></li>`;
+        }
+        const subHtml = g.children
+          .map(
+            (sub) =>
+              `<li class="toc-subitem"><a href="#ed-heading-${sub.idx}" data-toc-index="${sub.idx}" data-toc-level="3" class="is-h3 toc-link--h3"><span class="toc-num">${sub.num}</span><span class="toc-text">${esc(sub.text)}</span></a></li>`
+          )
+          .join('');
+        return `<li class="toc-item toc-item--h2 toc-item--has-children" data-toc-group data-collapsed="true"><div class="toc-row"><a href="#ed-heading-${g.idx}" data-toc-index="${g.idx}" data-toc-level="2"><span class="toc-num">${g.num}</span><span class="toc-text">${esc(g.text)}</span></a><button type="button" class="toc-fold-btn" data-ed-toc-toggle aria-expanded="false" title="展开/收起二级标题 (${g.children.length})"><span class="toc-sub-count">${g.children.length}</span><span class="toc-fold-chevron" aria-hidden="true">▸</span></button></div><div class="toc-sublist-wrap"><ul class="toc-sublist">${subHtml}</ul></div></li>`;
+      })
       .join('')}</ul>`;
   }
 
@@ -450,6 +484,7 @@ export function createEditor(
     const curMd = mode === 'markdown' ? sourceArea.value : htmlToMarkdown(editorHtmlForMarkdown(), raws);
     let promotedCount = 0;
     let inFence = false;
+    let hasSeenH2 = false;
 
     const converted = curMd
       .split('\n')
@@ -464,10 +499,42 @@ export function createEditor(
         const h1Match = /^#\s+(.+)$/.exec(trimmed);
         if (h1Match) {
           promotedCount++;
+          hasSeenH2 = true;
           return `## ${h1Match[1]!.trim()}`;
         }
 
-        if (/^#{2,6}\s+/.test(trimmed)) return line;
+        if (/^##\s+/.test(trimmed)) {
+          hasSeenH2 = true;
+          return line;
+        }
+        if (/^#{3,6}\s+/.test(trimmed)) {
+          return line;
+        }
+
+        const cleanLine = trimmed.replace(/^\*\*([^*]+)\*\*$/, '$1').replace(/^<strong>([^<]+)<\/strong>$/i, '$1').trim();
+
+        // 二级标题模式（如 1.1 / 2.3 / （一） / (1) / 步骤一）
+        const h3Pattern =
+          /^(?:\d+\.\d+(?:\.\d+)?\s+|[（(][一二三四五六七八九十0-9]+[)）]\s*|步骤[一二三四五六七八九十0-9]+[：:\s]*|[0-9]{1,2}[、.．]\s*)([^\n]{1,38})$/.exec(
+            cleanLine
+          );
+        if (h3Pattern && hasSeenH2 && !/[。！？；]$/.test(cleanLine) && !cleanLine.includes('http')) {
+          const cleanTitle = cleanLine.replace(/[：:]$/, '').trim();
+          promotedCount++;
+          return `### ${cleanTitle}`;
+        }
+
+        // 一级标题模式（如 第一章/节/部分 / 一、二、）
+        const h2Pattern =
+          /^(?:第[一二三四五六七八九十百0-9]+[章节篇天部分]|[一二三四五六七八九十]+[、，.．])\s*([^\n]{1,38})$/.exec(
+            cleanLine
+          );
+        if (h2Pattern && !/[。！？；]$/.test(cleanLine) && !cleanLine.includes('http')) {
+          const cleanTitle = cleanLine.replace(/[：:]$/, '').trim();
+          promotedCount++;
+          hasSeenH2 = true;
+          return `## ${cleanTitle}`;
+        }
 
         const boldMatch = /^(?:\*\*([^*]{2,52})\*\*|<strong>([^<]{2,52})<\/strong>)$/i.exec(trimmed);
         if (boldMatch) {
@@ -476,18 +543,12 @@ export function createEditor(
           const isPureIntroLabel = rawInner === '前言';
           if (rawInner && !isSignoff && !isPureIntroLabel && !/[。！？]$/.test(rawInner)) {
             promotedCount++;
+            if (hasSeenH2 && /^(?:\d+\.\d+|[（(]|[a-zA-Z0-9]{1,2}[.、）)])/.test(rawInner)) {
+              return `### ${rawInner}`;
+            }
+            hasSeenH2 = true;
             return `## ${rawInner}`;
           }
-        }
-
-        const cnHeadingMatch =
-          /^(?:第[一二三四五六七八九十百0-9]+[章节步篇天部分]|[一二三四五六七八九十]+[、，.．]|步骤[一二三四五六七八九十0-9]+|[（(][一二三四五六七八九十0-9]+[)）])\s*([^\n]{1,36})$/.exec(
-            trimmed
-          );
-        if (cnHeadingMatch && !/[。！？；]$/.test(trimmed) && !trimmed.includes('http')) {
-          const cleanTitle = trimmed.replace(/[：:]$/, '').trim();
-          promotedCount++;
-          return `## ${cleanTitle}`;
         }
 
         return line;
@@ -1417,9 +1478,26 @@ export function createEditor(
   bar.addEventListener('click', (e) => {
     const target = e.target as HTMLElement;
 
+    const tocToggle = target.closest<HTMLButtonElement>('[data-ed-toc-toggle]');
+    if (tocToggle) {
+      e.preventDefault();
+      const group = tocToggle.closest<HTMLElement>('[data-toc-group]');
+      if (group) {
+        const isCollapsed = group.dataset.collapsed !== 'false';
+        group.dataset.collapsed = isCollapsed ? 'false' : 'true';
+        tocToggle.setAttribute('aria-expanded', isCollapsed ? 'true' : 'false');
+      }
+      return;
+    }
+
     const tocLink = target.closest<HTMLAnchorElement>('.ed-toc-preview .toc-list a');
     if (tocLink) {
       e.preventDefault();
+      const parentGroup = tocLink.closest<HTMLElement>('[data-toc-group]');
+      if (parentGroup && parentGroup.dataset.collapsed !== 'false') {
+        parentGroup.dataset.collapsed = 'false';
+        parentGroup.querySelector('[data-ed-toc-toggle]')?.setAttribute('aria-expanded', 'true');
+      }
       const idx = tocLink.dataset.tocIndex;
       if (idx !== undefined && /^\d+$/.test(idx)) jumpToHeading(Number(idx), tocLink);
       return;

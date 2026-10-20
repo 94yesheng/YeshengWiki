@@ -53,16 +53,18 @@ export function renderMarkdown(source: string): RenderResult {
     if (token.type !== 'heading_open') continue;
 
     const inline = tokens[i + 1];
-    const text = inline ? plainText(inline as never) : '';
-    const depth = Number(token.tag.slice(1));
+    const text = (inline ? plainText(inline as never) : '').trim();
+    if (!text) continue;
+    const rawDepth = Number(token.tag.slice(1));
     const base = slugify(text);
     const count = (used.get(base) ?? 0) + 1;
     used.set(base, count);
     const slug = count === 1 ? base : `${base}-${count}`;
 
     token.attrSet('id', slug);
-    if (depth >= 2 && depth <= 3) {
-      headings.push({ depth, text, slug });
+    if (rawDepth >= 1 && rawDepth <= 3) {
+      // h1/h2 统一作为一级章节标题 (depth=2)，h3 作为二级章节标题 (depth=3)
+      headings.push({ depth: rawDepth === 3 ? 3 : 2, text, slug });
     }
   }
 

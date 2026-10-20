@@ -29,6 +29,7 @@ export function getDb(): Db {
   migrate(db);
   ensureColumn(db, 'posts', 'raw_markdown', "raw_markdown TEXT NOT NULL DEFAULT ''");
   ensureColumn(db, 'photo_walls', 'version', 'version INTEGER NOT NULL DEFAULT 1');
+  ensureLinkApplicationsTable(db);
   globalForDb.__blogDb = db;
   return db;
 }
@@ -39,6 +40,24 @@ function ensureColumn(db: Db, table: string, column: string, ddl: string): void 
   if (!cols.some((c) => c.name === column)) {
     db.exec(`ALTER TABLE ${table} ADD COLUMN ${ddl}`);
   }
+}
+
+/** 确保已有数据库也能自动创建友链申请表 */
+function ensureLinkApplicationsTable(db: Db): void {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS link_applications (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      owner       TEXT NOT NULL,
+      name        TEXT NOT NULL,
+      url         TEXT NOT NULL,
+      description TEXT NOT NULL DEFAULT '',
+      avatar      TEXT,
+      tag         TEXT,
+      status      TEXT NOT NULL DEFAULT 'pending',
+      created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS link_applications_status_idx ON link_applications(status, id DESC);
+  `);
 }
 
 /** 测试/脚本用：关掉单例，下次 getDb() 重新打开 */

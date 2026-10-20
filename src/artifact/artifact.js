@@ -297,9 +297,11 @@
 
     cancelAnimationFrame(transAnimId);
     var toDark = targetTheme === 'dark';
+    document.documentElement.dataset.themeSwitching = 'true';
+    clearTimeout(themeSwitchTimer);
     transStage.dataset.active = 'true';
     if (transVeil) {
-      /* 预先锁定遮罩底色为目标主题纯色，避免 p=0.42 切换 --paper 时遮罩自身发生颜色跳变引起闪烁 */
+      /* 预先锁定遮罩底色为目标主题纯色，避免切换 --paper 时遮罩自身发生颜色跳变 */
       transVeil.style.backgroundColor = toDark ? THEME_COLOR.dark : THEME_COLOR.light;
       transVeil.style.opacity = '0';
     }
@@ -307,6 +309,9 @@
       transBadge.textContent = toDark
         ? 'SINGULARITY COLLAPSE // 无限流形 ∞ 坍缩至卡冈图雅黑洞'
         : 'MANIFOLD UNFOLD // 黑洞奇点展开至立体无限环 ∞';
+      transBadge.style.backgroundColor = toDark ? 'rgba(18, 18, 17, 0.92)' : 'rgba(250, 249, 245, 0.92)';
+      transBadge.style.borderColor = toDark ? 'rgba(217, 119, 87, 0.58)' : 'rgba(217, 119, 87, 0.52)';
+      transBadge.style.opacity = '0';
     }
 
     var startTs = performance.now();
@@ -318,7 +323,7 @@
       var p = Math.min(1, elapsed / duration);
       var ease = 1 - Math.pow(1 - p, 3);
 
-      // 计算全屏遮盖层的平滑透明度曲线：在 p = 0.40 达到 1.0 完全覆盖，使底层内容框与纯色背景在同一帧 0ms 无感切换
+      // 全屏大背景与下方文字框共用完全相同的 veilAlpha 曲线，在 p = 0.40 达到 1.0 峰值
       var veilAlpha = 0;
       if (p < 0.40) {
         veilAlpha = Math.sin((p / 0.40) * (Math.PI / 2));
@@ -329,6 +334,9 @@
 
       if (transVeil) {
         transVeil.style.opacity = veilAlpha.toFixed(3);
+      }
+      if (transBadge) {
+        transBadge.style.opacity = veilAlpha.toFixed(3);
       }
 
       if (p >= 0.40 && !themeSwapped) {
@@ -356,12 +364,6 @@
       ctx.save();
       ctx.scale(dpr, dpr);
       ctx.clearRect(0, 0, W, H);
-
-      // 全屏均匀底色 + 中心柔和氛围光晕，保证屏幕边缘与中心内容框完全同步过渡
-      ctx.fillStyle = toDark
-        ? 'rgba(18, 18, 17, ' + (veilAlpha * 0.96).toFixed(3) + ')'
-        : 'rgba(250, 249, 245, ' + (veilAlpha * 0.96).toFixed(3) + ')';
-      ctx.fillRect(0, 0, W, H);
 
       var coverGrad = ctx.createRadialGradient(cx, cy, 0, cx, cy, Math.hypot(W, H) * 0.55);
       if (toDark) {
@@ -457,9 +459,18 @@
       } else {
         transStage.dataset.active = 'false';
         if (transVeil) transVeil.style.opacity = '0';
+        if (transBadge) {
+          transBadge.style.opacity = '0';
+          transBadge.style.backgroundColor = '';
+          transBadge.style.borderColor = '';
+        }
         if (!themeSwapped && typeof onPeakCoverage === 'function') {
           onPeakCoverage();
         }
+        clearTimeout(themeSwitchTimer);
+        themeSwitchTimer = window.setTimeout(function () {
+          delete document.documentElement.dataset.themeSwitching;
+        }, 60);
       }
     }
 
@@ -548,57 +559,116 @@
     var items = Array.from(homePhotosStrip.querySelectorAll('.wf-item'));
     if (!items.length) return;
 
-    // 1. 先全部恢复显示以测量真实宽度
+    // 1. 先全部恢复显示并清除内联尺寸以测量真实宽高比
     items.forEach(function (item) {
       item.style.display = '';
+      item.style.width = '';
+      item.style.flex = '';
       delete item.dataset.boundaryHidden;
+      var imgEl = item.querySelector('img');
+      if (imgEl) {
+        imgEl.style.height = '';
+        imgEl.style.width = '';
+      }
     });
 
     var stageStyle = window.getComputedStyle(homePhotosStage);
     var padLeft = parseFloat(stageStyle.paddingLeft) || 0;
     var padRight = parseFloat(stageStyle.paddingRight) || 0;
+    var padTop = parseFloat(stageStyle.paddingTop) || 0;
+    var padBottom = parseFloat(stageStyle.paddingBottom) || 0;
     var maxStageWidth = homePhotosStage.clientWidth - padLeft - padRight;
+    var stageInnerH = homePhotosStage.clientHeight - padTop - padBottom;
     if (maxStageWidth <= 40) return;
 
     var stripStyle = window.getComputedStyle(homePhotosStrip);
-    var gap = parseFloat(stripStyle.columnGap || stripStyle.gap) || 16.8;
+    var gap = parseFloat(stripStyle.columnGap || stripStyle.gap) || 9.5;
 
-    var usedWidth = 0;
-    var shownCount = 0;
+    // 每个卡片的边框+内边距+底部参数栏开销
+    var cardPadX = 10;
+    var cardPadY = 34;
+    var minImgH = 210;
+    var maxImgH = stageInnerH > 160 ? Math.min(480, Math.max(260, stageInnerH - cardPadY - 4)) : 370;
+
+    // 读取每张图片真实宽高比（兼容横向/竖向 16:9 与 4:3）
+    var ars = items.map(function (item) {
+      var img = item.querySelector('img');
+      if (img && img.naturalWidth > 0 && img.naturalHeight > 0) {
+        var realAr = img.naturalWidth / img.naturalHeight;
+        item.dataset.ar = realAr.toFixed(3);
+        item.style.setProperty('--ar', realAr.toFixed(3));
+        return realAr;
+      }
+      var dataAr = parseFloat(item.dataset.ar);
+      return dataAr && dataAr > 0.2 ? dataAr : 1.333;
+    });
+
+    // 2. 搜索最优展示张数 bestCount 与最优行高 bestImgH，使照片占满画幅且空隙最小
+    var bestCount = 1;
+    var bestImgH = maxImgH;
+    var bestScore = -1e9;
+    var sumAr = 0;
+
+    for (var k = 1; k <= items.length; k++) {
+      sumAr += ars[k - 1];
+      var availImgW = maxStageWidth - k * cardPadX - (k - 1) * gap;
+      if (availImgW <= 60) break;
+
+      // 若完全铺满宽度所需的理想高度
+      var hToFillW = availImgW / sumAr;
+      // 限制在合理高度区间 [minImgH, maxImgH]
+      var clampedH = Math.max(minImgH, Math.min(maxImgH, hToFillW));
+      var usedW = clampedH * sumAr + k * cardPadX + (k - 1) * gap;
+
+      // 若超出右边界且 k > 1，则该张数在 minImgH 下仍放不下，停止继续增加
+      if (usedW > maxStageWidth + 2 && k > 1) {
+        break;
+      }
+
+      var widthFillRatio = Math.min(1, usedW / maxStageWidth);
+      var heightFillRatio = Math.min(1, clampedH / maxImgH);
+      // 综合面积占空比评分（优先让水平宽度与垂直高度同时最饱满，消除大空隙）
+      var areaScore = widthFillRatio * 0.68 + heightFillRatio * 0.32;
+      if (areaScore > bestScore) {
+        bestScore = areaScore;
+        bestCount = k;
+        bestImgH = clampedH;
+      }
+    }
+
+    // 若选中张数在 bestImgH 下仍有少量水平余量（< 14%），允许卡片等比微调宽度铺满整行，彻底消除两侧空隙
+    var chosenArSum = 0;
+    for (var m = 0; m < bestCount; m++) chosenArSum += ars[m];
+    var totalFixedX = bestCount * cardPadX + Math.max(0, bestCount - 1) * gap;
+    var naturalRowW = bestImgH * chosenArSum + totalFixedX;
+    var stretchFactor = 1;
+    if (naturalRowW < maxStageWidth && naturalRowW > maxStageWidth * 0.82) {
+      stretchFactor = (maxStageWidth - totalFixedX) / Math.max(1, bestImgH * chosenArSum);
+    }
 
     items.forEach(function (item, idx) {
-      var rect = item.getBoundingClientRect();
-      var itemW = rect.width;
-      // 若还没有加载完图片则根据高宽比估算宽度
-      if (itemW < 20) {
-        var ar = parseFloat(item.dataset.ar) || 1.5;
-        itemW = 240 * ar + 14;
-      }
-      var nextWidth = shownCount === 0 ? itemW : (usedWidth + gap + itemW);
-
-      // 若单张图片宽度已超过该栏边界，或加上该张图片后超出该栏右边界，则不显示
-      if (itemW > maxStageWidth || nextWidth > maxStageWidth) {
-        // 若第一张图因极端窄屏略超，仅在 idx > 0 时隐藏，保证至少不会空屏；若正常视口则严格按边界裁剪
-        if (idx === 0 && maxStageWidth < 260) {
-          usedWidth = itemW;
-          shownCount = 1;
-        } else {
-          item.style.display = 'none';
-          item.dataset.boundaryHidden = 'true';
+      if (idx < bestCount) {
+        item.style.display = '';
+        delete item.dataset.boundaryHidden;
+        var imgEl = item.querySelector('img');
+        var itemImgW = Math.round(bestImgH * ars[idx] * stretchFactor);
+        if (imgEl) {
+          imgEl.style.height = Math.round(bestImgH) + 'px';
+          imgEl.style.width = itemImgW + 'px';
         }
       } else {
-        usedWidth = nextWidth;
-        shownCount++;
+        item.style.display = 'none';
+        item.dataset.boundaryHidden = 'true';
       }
     });
 
     if (homePhotoFitStatus) {
       homePhotoFitStatus.innerHTML =
-        '最新一组共 ' + items.length + ' 张照片 · 当前栏宽内完整展示 <strong class="telemetry-accent">' +
-        shownCount + ' 张</strong>（超出该栏边界的 ' + (items.length - shownCount) + ' 张已自动隐藏）';
+        '最新一组共 ' + items.length + ' 张照片 · 紧凑自适应排布 <strong class="telemetry-accent">' +
+        bestCount + ' 张</strong>（已自动拟合 16:9 / 4:3 画幅以最小化空隙）';
     }
     if (photoBoundaryBadge) {
-      photoBoundaryBadge.textContent = 'SHOWING ' + shownCount + ' / ' + items.length + ' IN BOUNDS';
+      photoBoundaryBadge.textContent = 'COMPACT FIT · ' + bestCount + ' / ' + items.length + ' SHOWN';
     }
   }
 
@@ -899,6 +969,9 @@
           card.dataset.ratio === filter;
         card.hidden = !match;
       });
+      if (typeof layoutPhotosArchiveMasonry === 'function') {
+        layoutPhotosArchiveMasonry();
+      }
     });
   });
 
@@ -1542,6 +1615,10 @@
     var dateEl = document.getElementById('spot-date');
     var tagsEl = document.getElementById('spot-tags');
     var coordEl = document.getElementById('spot-coord-badge');
+    var wordsEl = document.getElementById('spot-meta-words');
+    var readingEl = document.getElementById('spot-meta-reading');
+    var catEl = document.getElementById('spot-meta-category');
+    var capEl = document.getElementById('spot-cover-caption-text');
     var href = titleEl ? titleEl.getAttribute('href') || '' : '';
     var idMatch = /\/posts\/([^/]+)\//.exec(href);
     var coverHidden = !coverEl || coverEl.hidden || coverEl.style.display === 'none';
@@ -1553,11 +1630,72 @@
       tags: tagsEl ? tagsEl.textContent : '',
       coord: coordEl ? coordEl.textContent : '',
       cover: !coverHidden && coverEl ? coverEl.getAttribute('src') || '' : '',
+      caption: capEl ? capEl.textContent.trim() : 'ADAPTIVE COVER',
+      words: wordsEl ? wordsEl.textContent.trim() : '—',
+      reading: readingEl ? readingEl.textContent.trim() : '—',
+      category: catEl ? catEl.textContent.trim() : 'ARCHIVE',
       excerpt: leadEl ? leadEl.textContent.trim() : ''
     };
   }
 
   var defaultSpot = readSpotlightSnapshot();
+
+  function classifyCoverRatio(ar) {
+    if (!ar || !isFinite(ar) || ar <= 0) {
+      return { mode: '16:9', pill: '16:9 HORIZONTAL', fig: 'FIG 01.1 · 16:9 HORIZONTAL COVER', tag: '16:9 ADAPTIVE VIEW' };
+    }
+    if (ar >= 1.52) {
+      return { mode: '16:9', pill: '16:9 HORIZONTAL', fig: 'FIG 01.1 · 16:9 HORIZONTAL COVER', tag: '16:9 ADAPTIVE VIEW' };
+    }
+    if (ar >= 1.0) {
+      return { mode: '4:3', pill: '4:3 HORIZONTAL', fig: 'FIG 01.1 · 4:3 HORIZONTAL COVER', tag: '4:3 ADAPTIVE VIEW' };
+    }
+    if (ar >= 0.65) {
+      return { mode: '3:4', pill: '4:3 VERTICAL', fig: 'FIG 01.1 · 4:3 VERTICAL COVER', tag: '4:3 PORTRAIT ADAPTED' };
+    }
+    return { mode: '9:16', pill: '16:9 VERTICAL', fig: 'FIG 01.1 · 16:9 VERTICAL COVER', tag: '16:9 PORTRAIT ADAPTED' };
+  }
+
+  function syncSpotCoverGeometry() {
+    var spotMain = document.getElementById('posts-q-spot-main') || document.querySelector('.posts-q-spot-main');
+    var spotCoverImg = document.getElementById('spot-cover-img');
+    var spotPill = document.getElementById('spot-cover-ratio-pill') || document.querySelector('.posts-spot-cover .cover-ratio-pill');
+    var spotFig = document.getElementById('spot-cover-fig-label');
+    var spotExTag = document.getElementById('spot-excerpt-ratio-tag');
+    var topbarRatio = document.getElementById('posts-topbar-ratio');
+    if (!spotMain) return;
+
+    var hasCover = Boolean(
+      spotCoverImg &&
+      !spotCoverImg.hidden &&
+      spotCoverImg.style.display !== 'none' &&
+      spotCoverImg.getAttribute('src')
+    );
+
+    if (!hasCover) {
+      spotMain.dataset.coverMode = 'locked';
+      if (spotExTag) spotExTag.textContent = 'LOCKED // 未解锁状态';
+      if (topbarRatio) topbarRatio.textContent = 'LOCKED // SIGNAL ENCRYPTED';
+      return;
+    }
+
+    var applyRatio = function () {
+      var nw = spotCoverImg.naturalWidth || 16;
+      var nh = spotCoverImg.naturalHeight || 9;
+      var info = classifyCoverRatio(nw / nh);
+      spotMain.dataset.coverMode = info.mode;
+      if (spotPill) spotPill.textContent = info.pill;
+      if (spotFig) spotFig.textContent = info.fig;
+      if (spotExTag) spotExTag.textContent = info.tag;
+      if (topbarRatio) topbarRatio.textContent = info.pill;
+    };
+
+    if (spotCoverImg.complete && spotCoverImg.naturalWidth > 0) {
+      applyRatio();
+    } else {
+      spotCoverImg.addEventListener('load', applyRatio, { once: true });
+    }
+  }
 
   function applyPostSpotlight(data, activeLink) {
     var spotTitle = document.getElementById('spot-title-link');
@@ -1568,9 +1706,13 @@
     var spotReadBtn = document.getElementById('spot-read-btn');
     var spotCoverFrame = document.getElementById('spot-cover-frame');
     var spotCoverCaptionBar = document.getElementById('spot-cover-caption-bar');
+    var spotCoverCaptionText = document.getElementById('spot-cover-caption-text');
     var spotCoverImg = document.getElementById('spot-cover-img');
     var spotCoverSvg = document.getElementById('spot-cover-svg');
     var spotCoverLink = document.getElementById('spot-cover-link');
+    var spotWords = document.getElementById('spot-meta-words');
+    var spotReading = document.getElementById('spot-meta-reading');
+    var spotCat = document.getElementById('spot-meta-category');
     var spotPath =
       data.url ||
       (activeLink && activeLink.getAttribute('href')) ||
@@ -1588,6 +1730,11 @@
     if (spotTags) spotTags.textContent = data.tags;
     if (spotCoord) spotCoord.textContent = data.coord;
     if (spotLead) spotLead.textContent = data.excerpt;
+    if (spotWords && data.words) spotWords.textContent = data.words;
+    if (spotReading && data.reading) spotReading.textContent = data.reading;
+    if (spotCat && data.category) spotCat.textContent = data.category;
+    if (spotCoverCaptionText && data.caption) spotCoverCaptionText.textContent = data.caption;
+
     var hasCover = Boolean(data.cover && String(data.cover).trim());
     if (spotCoverFrame) {
       spotCoverFrame.hidden = !hasCover;
@@ -1612,6 +1759,8 @@
       spotCoverSvg.hidden = hasCover;
       spotCoverSvg.style.display = hasCover ? 'none' : '';
     }
+
+    syncSpotCoverGeometry();
 
     var allLinks = document.querySelectorAll('#posts-recent-list a');
     allLinks.forEach(function (a) {
@@ -1704,9 +1853,13 @@
         tags: postLink.dataset.postTags || 'ARCHIVE',
         coord: postLink.dataset.postCoord || 'ARCHIVE ENTRY',
         cover: postLink.dataset.postCover !== undefined ? postLink.dataset.postCover : defaultSpot.cover,
+        caption: postLink.dataset.postCaption || defaultSpot.caption,
+        words: postLink.dataset.postWords || defaultSpot.words,
+        reading: postLink.dataset.postReading || defaultSpot.reading,
+        category: postLink.dataset.postCategory || defaultSpot.category,
         excerpt: postLink.dataset.postExcerpt || defaultSpot.excerpt
       }, postLink);
-      showToast('已在右侧预览《' + postLink.dataset.postTitle + '》（16:9 横幅封面），点击「阅读全文」进入详细页');
+      showToast('已在右侧预览《' + postLink.dataset.postTitle + '》，点击标题或「阅读全文」进入详细页');
       return;
     }
 
@@ -1754,6 +1907,9 @@
       if (pBar) pBar.style.width = pct + '%';
       if (pText) pText.textContent = pct + '%';
       if (topProg) topProg.textContent = pct + '%';
+      if (typeof syncArticleTocScrollSpy === 'function') {
+        syncArticleTocScrollSpy();
+      }
     }
   }
   window.addEventListener('scroll', onScrollUpdate, { passive: true });
@@ -2049,21 +2205,23 @@
     var rotY = 0.24 * Math.cos(state.time * 0.28) + mouse.snx * 0.17;
     var rotZ = -0.06 + 0.075 * Math.sin(state.time * 0.22);
 
-    // 1. 左右双叶焦点几何靶标与椭圆轨道参考准星
+    // 1. 左右双叶双极焦点靶标（左叶 + 正极坐标十字，右叶 — 视界负轴横杠，呼应全站双极流形无限 Logo）
     var focusX = a * 0.62;
-    [-focusX, focusX].forEach(function (fx3) {
+    [-focusX, focusX].forEach(function (fx3, poleIdx) {
       var fp = project3D(fx3, 0, 0, rotX, rotY, rotZ, cx, cy, fov);
       ctx.save();
-      ctx.strokeStyle = 'rgba(217, 119, 87, 0.32)';
-      ctx.lineWidth = 0.85;
+      ctx.strokeStyle = 'rgba(217, 119, 87, 0.42)';
+      ctx.lineWidth = 1.1;
       ctx.beginPath();
-      ctx.arc(fp.sx, fp.sy, 10, 0, Math.PI * 2);
+      ctx.arc(fp.sx, fp.sy, 11.5, 0, Math.PI * 2);
       ctx.stroke();
       ctx.beginPath();
-      ctx.moveTo(fp.sx - 4.5, fp.sy);
-      ctx.lineTo(fp.sx + 4.5, fp.sy);
-      ctx.moveTo(fp.sx, fp.sy - 4.5);
-      ctx.lineTo(fp.sx, fp.sy + 4.5);
+      ctx.moveTo(fp.sx - 5.2, fp.sy);
+      ctx.lineTo(fp.sx + 5.2, fp.sy);
+      if (poleIdx === 0) {
+        ctx.moveTo(fp.sx, fp.sy - 5.2);
+        ctx.lineTo(fp.sx, fp.sy + 5.2);
+      }
       ctx.stroke();
       ctx.restore();
     });
@@ -2167,13 +2325,12 @@
      ---------------------------------------------------------------------- */
   function drawGargantuaParticleModel(ctx, cx, cy, W, H, dt) {
     var minDim = Math.min(W, H);
-    var Rs = minDim * 0.136;
-    var tiltRad = 1.335 + Math.sin(state.time * 0.22) * 0.018 + mouse.sny * 0.045;
-    var rollRad = -0.21 + Math.cos(state.time * 0.16) * 0.016 + mouse.snx * 0.045;
+    var Rs = minDim * 0.142;
+    var rollRad = -0.19 + Math.cos(state.time * 0.16) * 0.015 + mouse.snx * 0.04;
     var cr = Math.cos(rollRad), sr = Math.sin(rollRad);
 
-    var rInner = Rs * 1.08;
-    var rOuter = Math.min(W * 0.46, minDim * 0.50);
+    var rInner = Rs * 1.10;
+    var rOuter = Math.min(W * 0.45, minDim * 0.49);
 
     function toScreen(lx, ly) {
       return {
@@ -2184,57 +2341,79 @@
 
     // 1. 背景深空引力场柔和光晕
     ctx.save();
-    var ambientHalo = ctx.createRadialGradient(cx, cy, Rs * 0.88, cx, cy, rOuter * 0.95);
-    ambientHalo.addColorStop(0, 'rgba(217, 119, 87, 0.22)');
-    ambientHalo.addColorStop(0.32, 'rgba(235, 148, 110, 0.09)');
-    ambientHalo.addColorStop(0.68, 'rgba(180, 95, 65, 0.025)');
+    var ambientHalo = ctx.createRadialGradient(cx, cy, Rs * 0.85, cx, cy, rOuter * 0.96);
+    ambientHalo.addColorStop(0, 'rgba(217, 119, 87, 0.24)');
+    ambientHalo.addColorStop(0.35, 'rgba(235, 148, 110, 0.10)');
+    ambientHalo.addColorStop(0.70, 'rgba(180, 95, 65, 0.028)');
     ambientHalo.addColorStop(1, 'rgba(20, 20, 19, 0)');
     ctx.fillStyle = ambientHalo;
     ctx.beginPath();
-    ctx.arc(cx, cy, rOuter * 0.95, 0, Math.PI * 2);
+    ctx.arc(cx, cy, rOuter * 0.96, 0, Math.PI * 2);
     ctx.fill();
     ctx.restore();
 
-    // 2. 绘制黑洞后半盘（phi ∈ [π, 2π]）的上下引力透镜椭圆拱桥流线（位于黑球底层，被黑球自然遮挡）
-    ctx.save();
     var diskRingNorms = [0.06, 0.18, 0.34, 0.52, 0.72, 0.90];
-    for (var bArch = 0; bArch < 2; bArch++) {
-      for (var rnIdx = 0; rnIdx < diskRingNorms.length; rnIdx++) {
-        var rn = diskRingNorms[rnIdx];
-        var rVal = rInner + rn * (rOuter - rInner);
-        // 保持饱满的偏椭圆短半轴，使外侧光环自然呈椭圆弧而非生硬直线
-        var ellipRy = rVal * (0.235 + 0.045 * (1 - rn));
-        var topArchH = Rs * (1.08 + 0.76 * Math.pow(rn, 0.88)) + rVal * 0.14 * (1 - rn);
-        var botArchH = Rs * (1.04 + 0.64 * Math.pow(rn, 0.90)) + rVal * 0.12 * (1 - rn);
+
+    // 2. 第一层（位于黑洞事件视界后方，将被中央黑洞遮挡）：
+    //    2a) 吸积盘主圆环的后半部分（phi ∈ [π, 2π]，即 sinP <= 0），横穿黑洞后侧并被黑球自然遮挡
+    //    2b) 上下引力透镜椭圆拱桥流线（饱满弧度，消除两侧扁平感）
+    ctx.save();
+    for (var rnIdx = 0; rnIdx < diskRingNorms.length; rnIdx++) {
+      var rn = diskRingNorms[rnIdx];
+      var rVal = rInner + rn * (rOuter - rInner);
+      // 增大短半轴比例 (0.34 ~ 0.42)，让左右两侧回旋曲线饱满圆润、不再扁平
+      var ellipRy = rVal * (0.34 + 0.08 * (1 - rn));
+
+      // 2a: 中央圆环的后半弧（位于黑洞后方，穿过黑洞中心区将被步骤 4 的黑球本体完整遮挡）
+      ctx.beginPath();
+      for (var bst = 0; bst <= 72; bst++) {
+        var bPhi = Math.PI + (bst / 72) * Math.PI; // sin(bPhi) <= 0
+        var bCos = Math.cos(bPhi), bSin = Math.sin(bPhi);
+        var blx = rVal * bCos;
+        var bly = ellipRy * bSin;
+        var bsp = toScreen(blx, bly);
+        if (bst === 0) ctx.moveTo(bsp.x, bsp.y);
+        else ctx.lineTo(bsp.x, bsp.y);
+      }
+      var backDiskAlpha = (1 - rn * 0.58) * 0.25;
+      ctx.strokeStyle = 'rgba(236, 165, 112, ' + backDiskAlpha.toFixed(3) + ')';
+      ctx.lineWidth = 1.05;
+      ctx.stroke();
+
+      // 2b: 上下引力透镜拱桥（使用更圆润的幂指数 0.46 与更饱满的侧翼曲率）
+      var topArchH = Rs * (1.20 + 0.84 * Math.pow(rn, 0.82)) + rVal * 0.22 * (1 - rn);
+      var botArchH = Rs * (1.14 + 0.72 * Math.pow(rn, 0.85)) + rVal * 0.19 * (1 - rn);
+      for (var bArch = 0; bArch < 2; bArch++) {
         ctx.beginPath();
         for (var st = 0; st <= 72; st++) {
           var phi = Math.PI + (st / 72) * Math.PI;
           var cosP = Math.cos(phi), sinP = Math.sin(phi);
           var s = Math.max(0, -sinP);
-          // sin(s * π/2) 在 s=0 处一阶导数有限且饱满，消除 s^0.84 导数无穷大造成的右侧断层，同时保留偏椭圆曲率
-          var sEllip = Math.sin(s * Math.PI * 0.5);
+          var sRound = Math.pow(s, 0.52);
           var lx = rVal * cosP;
           var ly;
           if (bArch === 0) {
-            var archH0 = ellipRy + (topArchH - ellipRy) * Math.pow(s, 0.65);
-            ly = -sEllip * archH0;
+            var archH0 = ellipRy + (topArchH - ellipRy) * Math.pow(s, 0.48);
+            ly = -sRound * archH0;
           } else {
-            var archH1 = ellipRy * 0.72 + (botArchH - ellipRy * 0.72) * Math.pow(s, 0.65);
-            ly = sEllip * archH1;
+            var archH1 = ellipRy * 0.85 + (botArchH - ellipRy * 0.85) * Math.pow(s, 0.48);
+            ly = sRound * archH1;
           }
           var sp = toScreen(lx, ly);
           if (st === 0) ctx.moveTo(sp.x, sp.y);
           else ctx.lineTo(sp.x, sp.y);
         }
-        var archAlpha = (1 - rn * 0.65) * (bArch === 0 ? 0.28 : 0.20);
+        var archAlpha = (1 - rn * 0.62) * (bArch === 0 ? 0.27 : 0.19);
         ctx.strokeStyle = 'rgba(242, 179, 126, ' + archAlpha.toFixed(3) + ')';
-        ctx.lineWidth = bArch === 0 ? 1.15 : 0.85;
+        ctx.lineWidth = bArch === 0 ? 1.12 : 0.85;
         ctx.stroke();
       }
     }
     ctx.restore();
 
-    // 3. 计算全部黑洞纯粒子的连续三维投影位置（分为黑球后方 backParticles 与黑球正前方 frontParticles）
+    // 3. 计算全部黑洞纯粒子的三维投影位置，严格按前后深度分为：
+    //    - backParticles（后半盘 sinP < 0 及透镜拱桥粒子，位于黑洞后方，经过黑洞视界内部时被黑洞遮挡）
+    //    - frontParticles（仅前半赤道盘 sinP >= 0 的前景粒子，横跨黑洞正前方）
     var count = Math.min(state.particleCount, MAX_PARTICLES);
     var backParticles = [];
     var frontParticles = [];
@@ -2251,44 +2430,41 @@
       var isFrontDisk = false;
 
       if (pt.branch === 2) {
-        var rHalo = Rs * (1.04 + 0.50 * Math.pow(pt.rNorm, 1.45));
-        lx = rHalo * cosP * (1.12 + 0.22 * pt.rNorm);
-        ly = rHalo * sinP * (1.02 + 0.10 * pt.rNorm) + pt.cz * 2.0;
+        // 内圈光子晕：后半圈 (sinP < 0) 位于黑洞后方被遮挡，前半圈位于前景
+        var rHalo = Rs * (1.03 + 0.46 * Math.pow(pt.rNorm, 1.4));
+        lx = rHalo * cosP * (1.16 + 0.22 * pt.rNorm);
+        ly = rHalo * sinP * (0.42 + 0.12 * pt.rNorm) + pt.cz * 1.8;
         isFrontDisk = sinP >= 0;
       } else {
-        var r = Math.max(Rs * 1.06, rInner + pt.rNorm * (rOuter - rInner) + pt.bhJitter * Rs * 0.035);
+        var r = Math.max(Rs * 1.08, rInner + pt.rNorm * (rOuter - rInner) + pt.bhJitter * Rs * 0.035);
         lx = r * cosP;
-        var pEllipRy = r * (0.235 + 0.045 * (1 - pt.rNorm));
+        // 饱满的椭圆短半轴，使两侧回旋弯折处圆润立体
+        var pEllipRy = r * (0.34 + 0.08 * (1 - pt.rNorm));
 
         if (sinP >= 0) {
+          // 仅前半盘（ly >= 0，下方前侧圆环）作为前景横跨黑洞正前方！
           isFrontDisk = true;
-          var frontDip = sinP * Math.exp(-(lx * lx) / (2 * (Rs * 1.25) * (Rs * 1.25)));
-          if (pt.branch === 0) {
-            ly = pEllipRy * sinP + frontDip * Rs * 0.06 + pt.cz * 2.05;
-          } else {
-            // 下拱桥分支在前半盘沿赤道盘内侧偏椭圆轨迹平滑过渡，保持速度方向连续且横跨黑球正前方
-            ly = -pEllipRy * 0.42 * sinP + frontDip * Rs * 0.08 + pt.cz * 2.05;
-          }
+          var frontDip = sinP * Math.exp(-(lx * lx) / (2 * (Rs * 1.35) * (Rs * 1.35)));
+          var bandSpread = (pt.branch === 0 ? 1.0 : 0.78);
+          ly = pEllipRy * bandSpread * sinP + frontDip * Rs * 0.07 + pt.cz * 2.0;
         } else {
+          // 后半盘（sinP < 0）：严格归入后景 backParticles，绝不覆盖在中央黑洞上方！
           isFrontDisk = false;
           var s = -sinP;
-          var sEllip = Math.sin(s * Math.PI * 0.5);
-          if (pt.branch === 0) {
-            var pTopArchH = Rs * (1.08 + 0.76 * Math.pow(pt.rNorm, 0.88)) + r * 0.14 * (1 - pt.rNorm);
-            var pArchH0 = pEllipRy + (pTopArchH - pEllipRy) * Math.pow(s, 0.65);
-            ly = -sEllip * pArchH0 + pt.cz * 2.05;
+          var sRound = Math.pow(s, 0.52);
+          if (pt.branch === 0 && (i % 3 !== 0)) {
+            // 上引力透镜拱桥分支
+            var pTopArchH = Rs * (1.20 + 0.84 * Math.pow(pt.rNorm, 0.82)) + r * 0.22 * (1 - pt.rNorm);
+            var pArchH0 = pEllipRy + (pTopArchH - pEllipRy) * Math.pow(s, 0.48);
+            ly = -sRound * pArchH0 + pt.cz * 2.0;
+          } else if (pt.branch === 1 && (i % 2 === 0)) {
+            // 下引力透镜拱桥分支
+            var pBotArchH = Rs * (1.14 + 0.72 * Math.pow(pt.rNorm, 0.85)) + r * 0.19 * (1 - pt.rNorm);
+            var pArchH1 = pEllipRy * 0.85 + (pBotArchH - pEllipRy * 0.85) * Math.pow(s, 0.48);
+            ly = sRound * pArchH1 + pt.cz * 2.0;
           } else {
-            var pBotArchH = Rs * (1.04 + 0.64 * Math.pow(pt.rNorm, 0.90)) + r * 0.12 * (1 - pt.rNorm);
-            var pArchH1 = pEllipRy * 0.72 + (pBotArchH - pEllipRy * 0.72) * Math.pow(s, 0.65);
-            ly = sEllip * pArchH1 + pt.cz * 2.05;
-          }
-
-          var dCenter = Math.hypot(lx, ly);
-          var minR = Rs * (1.02 + 0.03 * sEllip);
-          if (dCenter < minR && dCenter > 0.001) {
-            var pushScale = 1 + ((minR / dCenter) - 1) * sEllip;
-            lx *= pushScale;
-            ly *= pushScale;
+            // 主吸积盘圆环的后半部分（直接穿过黑洞后方，在 r < Rs 处被中央黑洞自然遮挡）
+            ly = pEllipRy * sinP + pt.cz * 1.85;
           }
         }
       }
@@ -2314,7 +2490,7 @@
         y: sp.y + pt.dy,
         r: pt.size * (0.82 + 0.28 * innerHeat) + pt.glow * 0.4,
         colorRGB: colorRGB,
-        alpha: alpha,
+        alpha: isFrontDisk ? alpha : alpha * 0.86,
         innerHeat: innerHeat
       };
 
@@ -2338,57 +2514,73 @@
       }
     }
 
-    // 先绘制后半盘粒子（被中央黑洞视界遮挡）
+    // 先绘制后半盘粒子（位于黑洞底层）
     renderPureParticles(backParticles);
 
-    // 4. 中央事件视界黑球本体 + 紧贴视界边缘的连续光子环亮线（位于后半盘之上、前半盘之下）
+    // 4. 第二层：中央事件视界黑洞本体（不透明纯黑球体，彻底遮挡后方圆环与后半盘粒子！）
     ctx.save();
-    var photonGlow = ctx.createRadialGradient(cx - Rs * 0.08, cy, Rs * 0.94, cx, cy, Rs * 1.26);
-    photonGlow.addColorStop(0, 'rgba(255, 225, 185, 0.44)');
-    photonGlow.addColorStop(0.35, 'rgba(217, 119, 87, 0.18)');
+    var photonGlow = ctx.createRadialGradient(cx - Rs * 0.06, cy, Rs * 0.95, cx, cy, Rs * 1.28);
+    photonGlow.addColorStop(0, 'rgba(255, 225, 185, 0.42)');
+    photonGlow.addColorStop(0.38, 'rgba(217, 119, 87, 0.16)');
     photonGlow.addColorStop(1, 'rgba(217, 119, 87, 0)');
     ctx.fillStyle = photonGlow;
     ctx.beginPath();
-    ctx.arc(cx, cy, Rs * 1.26, 0, Math.PI * 2);
+    ctx.arc(cx, cy, Rs * 1.28, 0, Math.PI * 2);
     ctx.fill();
 
-    var abyssGrad = ctx.createRadialGradient(cx - Rs * 0.22, cy - Rs * 0.20, Rs * 0.05, cx, cy, Rs);
-    abyssGrad.addColorStop(0, '#100f0e');
-    abyssGrad.addColorStop(0.55, '#070706');
-    abyssGrad.addColorStop(0.92, '#020202');
+    // 纯黑视界遮挡层：严格擦除并遮挡所有经过黑洞后方的吸积环线条与粒子
+    var abyssGrad = ctx.createRadialGradient(cx - Rs * 0.20, cy - Rs * 0.18, Rs * 0.04, cx, cy, Rs * 1.03);
+    abyssGrad.addColorStop(0, '#0c0b0a');
+    abyssGrad.addColorStop(0.55, '#050504');
+    abyssGrad.addColorStop(0.90, '#010101');
     abyssGrad.addColorStop(1, '#000000');
     ctx.beginPath();
-    ctx.arc(cx, cy, Rs, 0, Math.PI * 2);
+    ctx.arc(cx, cy, Rs * 1.03, 0, Math.PI * 2);
     ctx.fillStyle = abyssGrad;
     ctx.fill();
 
+    // 视界边缘光子环细亮线
     ctx.beginPath();
-    ctx.arc(cx, cy, Rs * 1.03, 0, Math.PI * 2);
-    ctx.strokeStyle = 'rgba(255, 232, 198, 0.52)';
-    ctx.lineWidth = 1.25;
+    ctx.arc(cx, cy, Rs * 1.035, 0, Math.PI * 2);
+    ctx.strokeStyle = 'rgba(255, 232, 198, 0.46)';
+    ctx.lineWidth = 1.15;
     ctx.stroke();
     ctx.restore();
 
-    // 5. 横跨黑球正前方的偏椭圆赤道吸积盘连续流线 + 前景纯粒子流
+    // 5. 第三层（前景层）：仅绘制前半赤道盘（fPhi ∈ [0, π]，sin(fPhi) >= 0）的连续椭圆流线与前景粒子
+    //    先画一道极细的深色内缘遮挡衬线，强化前环横跨黑球正前方、后环被黑洞遮挡的空间层次
     ctx.save();
+    var innerFrontR = rInner;
+    var innerFrontRy = innerFrontR * 0.42;
+    ctx.beginPath();
+    for (var est = 8; est <= 64; est++) {
+      var ePhi = (est / 72) * Math.PI;
+      var esp = toScreen(innerFrontR * Math.cos(ePhi), innerFrontRy * Math.sin(ePhi) * 0.88);
+      if (est === 8) ctx.moveTo(esp.x, esp.y);
+      else ctx.lineTo(esp.x, esp.y);
+    }
+    ctx.strokeStyle = 'rgba(10, 10, 9, 0.82)';
+    ctx.lineWidth = 3.2;
+    ctx.stroke();
+
     for (var fnIdx = 0; fnIdx < diskRingNorms.length; fnIdx++) {
       var fn = diskRingNorms[fnIdx];
       var rFront = rInner + fn * (rOuter - rInner);
-      var fEllipRy = rFront * (0.235 + 0.045 * (1 - fn));
+      var fEllipRy = rFront * (0.34 + 0.08 * (1 - fn));
       ctx.beginPath();
       for (var fst = 0; fst <= 72; fst++) {
-        var fPhi = (fst / 72) * Math.PI;
+        var fPhi = (fst / 72) * Math.PI; // 仅前半圈 [0, π]
         var fCos = Math.cos(fPhi), fSin = Math.sin(fPhi);
         var flx = rFront * fCos;
-        var fDip = fSin * Math.exp(-(flx * flx) / (2 * (Rs * 1.25) * (Rs * 1.25)));
-        var fly = fEllipRy * fSin + fDip * Rs * 0.06;
+        var fDip = fSin * Math.exp(-(flx * flx) / (2 * (Rs * 1.35) * (Rs * 1.35)));
+        var fly = fEllipRy * fSin + fDip * Rs * 0.07;
         var fsp = toScreen(flx, fly);
         if (fst === 0) ctx.moveTo(fsp.x, fsp.y);
         else ctx.lineTo(fsp.x, fsp.y);
       }
-      var fAlpha = (1 - fn * 0.62) * 0.31;
-      ctx.strokeStyle = 'rgba(244, 182, 124, ' + fAlpha.toFixed(3) + ')';
-      ctx.lineWidth = 1.15;
+      var fAlpha = (1 - fn * 0.56) * 0.36;
+      ctx.strokeStyle = 'rgba(248, 190, 134, ' + fAlpha.toFixed(3) + ')';
+      ctx.lineWidth = 1.25;
       ctx.stroke();
     }
     ctx.restore();
@@ -2907,7 +3099,573 @@
       if (showcase) showcase.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
   });
+  /* ========================================================================
+     需求 4：相册子页照片墙自由紧凑排列算法（等间距 + 最小化排列空间面积浪费）
+     ======================================================================== */
+  var photosArchiveGrid = document.getElementById('photos-detail-archive-grid');
+
+  function layoutPhotosArchiveMasonry() {
+    if (!photosArchiveGrid) return;
+    var allCards = Array.from(photosArchiveGrid.querySelectorAll('.photo-detail-card'));
+    var visibleCards = allCards.filter(function (c) {
+      return !c.hidden && c.style.display !== 'none';
+    });
+    if (!visibleCards.length) {
+      photosArchiveGrid.removeAttribute('data-masonry-ready');
+      photosArchiveGrid.style.height = '';
+      return;
+    }
+
+    var containerW = photosArchiveGrid.clientWidth;
+    if (containerW <= 40) return;
+
+    var vw = window.innerWidth;
+    var cols = vw <= 704 ? 1 : (vw <= 1152 ? 2 : 3);
+    if (cols === 1 || visibleCards.length <= 1) {
+      photosArchiveGrid.removeAttribute('data-masonry-ready');
+      photosArchiveGrid.style.height = '';
+      allCards.forEach(function (c) {
+        c.style.position = '';
+        c.style.width = '';
+        c.style.left = '';
+        c.style.top = '';
+      });
+      return;
+    }
+
+    var pad = 21.6; // 1.35rem
+    var gap = 18;   // 统一等间距
+    var innerW = Math.max(200, containerW - pad * 2);
+    var colW = (innerW - gap * (cols - 1)) / cols;
+
+    photosArchiveGrid.dataset.masonryReady = 'true';
+
+    // 先赋予统一列宽，以准确测量每张卡片的真实高度
+    visibleCards.forEach(function (card) {
+      card.style.width = colW + 'px';
+    });
+
+    // 为最小化整体排列空间面积（即让各列总高度极差最小、最高列最矮），
+    // 采用「最短列优先（Shortest-Column Best-Fit）」自由排列
+    var colHeights = new Array(cols).fill(0);
+    visibleCards.forEach(function (card) {
+      var minCol = 0;
+      for (var c = 1; c < cols; c++) {
+        if (colHeights[c] < colHeights[minCol]) {
+          minCol = c;
+        }
+      }
+      var x = pad + minCol * (colW + gap);
+      var y = pad + colHeights[minCol];
+      card.style.left = Math.round(x) + 'px';
+      card.style.top = Math.round(y) + 'px';
+      var cardH = card.offsetHeight || 260;
+      colHeights[minCol] += cardH + gap;
+    });
+
+    var maxH = Math.max.apply(null, colHeights);
+    photosArchiveGrid.style.height = Math.ceil(Math.max(0, maxH - gap) + pad * 2) + 'px';
+  }
+
+  if (photosArchiveGrid) {
+    photosArchiveGrid.querySelectorAll('img').forEach(function (img) {
+      if (!img.complete) {
+        img.addEventListener('load', layoutPhotosArchiveMasonry);
+      }
+    });
+    window.addEventListener('resize', layoutPhotosArchiveMasonry);
+  }
+
+  /* ========================================================================
+     需求 6 & 7：文章详细页左侧章节目录 H2/H3 折叠交互与无滚动条自动跟随
+     ======================================================================== */
+  var articleTocList = document.getElementById('article-toc-list');
+
+  function setTocGroupCollapsed(groupEl, collapsed) {
+    if (!groupEl) return;
+    groupEl.dataset.collapsed = collapsed ? 'true' : 'false';
+    var btn = groupEl.querySelector('[data-toc-toggle]');
+    if (btn) btn.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+  }
+
+  if (articleTocList) {
+    articleTocList.addEventListener('click', function (e) {
+      var toggleBtn = e.target.closest('[data-toc-toggle]');
+      if (toggleBtn) {
+        e.preventDefault();
+        e.stopPropagation();
+        var group = toggleBtn.closest('[data-toc-group]');
+        if (group) {
+          var isCollapsed = group.dataset.collapsed !== 'false';
+          group.dataset.userToggled = 'true';
+          setTocGroupCollapsed(group, !isCollapsed);
+        }
+        return;
+      }
+
+      var link = e.target.closest('a[data-toc-link]');
+      if (link) {
+        var parentGroup = link.closest('[data-toc-group]');
+        if (parentGroup && link.dataset.tocLevel === '2') {
+          var wasActive = link.dataset.active === 'true';
+          var currentlyCollapsed = parentGroup.dataset.collapsed !== 'false';
+          if (currentlyCollapsed) {
+            parentGroup.dataset.userToggled = 'true';
+            setTocGroupCollapsed(parentGroup, false);
+          } else if (wasActive) {
+            parentGroup.dataset.userToggled = 'true';
+            setTocGroupCollapsed(parentGroup, true);
+          }
+        }
+      }
+    });
+  }
+
+  function syncArticleTocScrollSpy() {
+    if (!articleTocList) return;
+    var links = Array.from(articleTocList.querySelectorAll('a[href^="#"]'));
+    if (!links.length) return;
+
+    var scrollLine = window.scrollY + 130;
+    var activeLink = links[0];
+
+    for (var i = 0; i < links.length; i++) {
+      var href = links[i].getAttribute('href') || '';
+      var id = decodeURIComponent(href.slice(1));
+      var target = id ? document.getElementById(id) : null;
+      if (target) {
+        var top = target.getBoundingClientRect().top + window.scrollY;
+        if (top <= scrollLine) {
+          activeLink = links[i];
+        }
+      }
+    }
+
+    var activeGroup = activeLink ? activeLink.closest('[data-toc-group]') : null;
+
+    links.forEach(function (a) {
+      if (a === activeLink) a.dataset.active = 'true';
+      else delete a.dataset.active;
+    });
+
+    if (activeGroup) {
+      var h2Link = activeGroup.querySelector(':scope > .toc-row > a[data-toc-level="2"]');
+      if (h2Link && activeLink !== h2Link) {
+        h2Link.dataset.active = 'true';
+      }
+    }
+
+    Array.from(articleTocList.querySelectorAll('[data-toc-group]')).forEach(function (grp) {
+      if (grp === activeGroup) {
+        setTocGroupCollapsed(grp, false);
+      } else if (grp.dataset.userToggled !== 'true') {
+        setTocGroupCollapsed(grp, true);
+      }
+    });
+
+    // 让当前激活项在限制高度的目录框内平滑居中可见（不触发外层页面滚动）
+    if (activeLink && articleTocList.scrollHeight > articleTocList.clientHeight) {
+      var listRect = articleTocList.getBoundingClientRect();
+      var linkRect = activeLink.getBoundingClientRect();
+      var offsetInList = linkRect.top - listRect.top + articleTocList.scrollTop;
+      var targetScroll = Math.max(0, offsetInList - articleTocList.clientHeight * 0.45);
+      articleTocList.scrollTo({ top: targetScroll, behavior: 'smooth' });
+    }
+  }
+
+  /* ========================================================================
+     需求 8：主页「友链申请」流畅悬浮窗与提交逻辑
+     ======================================================================== */
+  function ensureFriendLinkApplyModal() {
+    var existing = document.getElementById('link-apply-modal');
+    if (existing) return existing;
+
+    var backdrop = document.createElement('div');
+    backdrop.className = 'link-apply-backdrop';
+    backdrop.id = 'link-apply-modal';
+    backdrop.setAttribute('aria-hidden', 'true');
+    backdrop.innerHTML =
+      '<div class="link-apply-dialog" role="dialog" aria-modal="true" aria-labelledby="link-apply-title">' +
+        '<span class="q-corner q-corner--tl"></span>' +
+        '<span class="q-corner q-corner--tr"></span>' +
+        '<span class="q-corner q-corner--bl"></span>' +
+        '<span class="q-corner q-corner--br"></span>' +
+        '<div class="link-apply-topbar">' +
+          '<div class="link-apply-topbar-left">' +
+            '<span class="q-sec-badge">PEER NODE // APPLY</span>' +
+            '<span>FRIEND LINK APPLICATION · 友链互换申请表</span>' +
+          '</div>' +
+          '<button type="button" class="link-apply-close" data-close-link-apply aria-label="关闭弹窗">关闭 ×</button>' +
+        '</div>' +
+        '<form class="link-apply-form" id="link-apply-form" novalidate>' +
+          '<div class="link-apply-head">' +
+            '<h3 id="link-apply-title">申请加入独立博客友链矩阵</h3>' +
+            '<p>填写下方站点信息提交后，站长可在后台「友链」管理页查看并一键添加至友链列表中。</p>' +
+          '</div>' +
+          '<div class="link-apply-grid">' +
+            '<label class="link-apply-field">' +
+              '<span class="link-apply-label"><span>01 // 站长称呼</span><em>必填</em></span>' +
+              '<input type="text" name="owner" required maxlength="48" placeholder="如：夜笙" autocomplete="nickname" />' +
+            '</label>' +
+            '<label class="link-apply-field">' +
+              '<span class="link-apply-label"><span>02 // 站点标题</span><em>必填</em></span>' +
+              '<input type="text" name="name" required maxlength="64" placeholder="如：夜笙的小世界" />' +
+            '</label>' +
+            '<label class="link-apply-field">' +
+              '<span class="link-apply-label"><span>03 // 站点链接</span><em>必填</em></span>' +
+              '<input type="url" name="url" required maxlength="256" placeholder="https://www.example.com" />' +
+            '</label>' +
+            '<label class="link-apply-field">' +
+              '<span class="link-apply-label"><span>04 // 领域标签</span><em>选填</em></span>' +
+              '<input type="text" name="tag" maxlength="32" placeholder="如：技术 · 随笔（默认：独立博客）" />' +
+            '</label>' +
+          '</div>' +
+          '<label class="link-apply-field">' +
+            '<span class="link-apply-label"><span>05 // 自我介绍 / 站点简介</span><em>必填</em></span>' +
+            '<textarea name="description" rows="3" required maxlength="320" placeholder="一句话介绍你的站点特色、记录方向或自我介绍…"></textarea>' +
+          '</label>' +
+          '<div class="link-apply-status" id="link-apply-status" role="status" aria-live="polite"></div>' +
+          '<div class="link-apply-foot">' +
+            '<button type="button" class="stage-mini-btn" data-close-link-apply>取消</button>' +
+            '<button type="submit" class="q-read-btn" id="link-apply-submit-btn">提交友链申请 -&gt;</button>' +
+          '</div>' +
+        '</form>' +
+      '</div>';
+
+    document.body.appendChild(backdrop);
+
+    var form = backdrop.querySelector('#link-apply-form');
+    var statusEl = backdrop.querySelector('#link-apply-status');
+    var submitBtn = backdrop.querySelector('#link-apply-submit-btn');
+
+    function closeModal() {
+      delete backdrop.dataset.open;
+      backdrop.setAttribute('aria-hidden', 'true');
+    }
+
+    backdrop.querySelectorAll('[data-close-link-apply]').forEach(function (btn) {
+      btn.addEventListener('click', closeModal);
+    });
+
+    backdrop.addEventListener('click', function (e) {
+      if (e.target === backdrop) closeModal();
+    });
+
+    window.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape' && backdrop.dataset.open === 'true') closeModal();
+    });
+
+    if (form) {
+      form.addEventListener('submit', function (e) {
+        e.preventDefault();
+        var fd = new FormData(form);
+        var payload = {
+          owner: String(fd.get('owner') || '').trim(),
+          name: String(fd.get('name') || '').trim(),
+          url: String(fd.get('url') || '').trim(),
+          tag: String(fd.get('tag') || '').trim(),
+          description: String(fd.get('description') || '').trim()
+        };
+        if (!payload.owner || !payload.name || !payload.url || !payload.description) {
+          if (statusEl) {
+            statusEl.dataset.type = 'error';
+            statusEl.textContent = '请完整填写站长称呼、站点标题、站点链接与自我介绍。';
+          }
+          return;
+        }
+        if (!/^https?:\/\//i.test(payload.url)) {
+          payload.url = 'https://' + payload.url;
+        }
+        if (submitBtn) {
+          submitBtn.disabled = true;
+          submitBtn.textContent = '正在提交…';
+        }
+        if (statusEl) {
+          statusEl.dataset.type = 'info';
+          statusEl.textContent = '正在提交友链申请…';
+        }
+        fetch('/api/links/apply', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        })
+          .then(function (res) {
+            return res.json().catch(function () { return {}; }).then(function (data) {
+              if (!res.ok) throw new Error(data.error || '提交失败');
+              return data;
+            });
+          })
+          .then(function () {
+            if (statusEl) {
+              statusEl.dataset.type = 'ok';
+              statusEl.textContent = '✓ 友链申请已提交！站长在后台审核后即可一键添加至友链列表。';
+            }
+            form.reset();
+            showToast('友链申请已成功发送至站点后台');
+            setTimeout(closeModal, 1100);
+          })
+          .catch(function (err) {
+            if (statusEl) {
+              statusEl.dataset.type = 'error';
+              statusEl.textContent = (err && err.message) || '提交友链申请失败，请稍后重试。';
+            }
+          })
+          .finally(function () {
+            if (submitBtn) {
+              submitBtn.disabled = false;
+              submitBtn.textContent = '提交友链申请 ->';
+            }
+          });
+      });
+    }
+
+    return backdrop;
+  }
+
+  document.querySelectorAll('[data-open-link-apply]').forEach(function (btn) {
+    btn.addEventListener('click', function (e) {
+      e.preventDefault();
+      var modal = ensureFriendLinkApplyModal();
+      var statusEl = modal.querySelector('#link-apply-status');
+      if (statusEl) {
+        statusEl.textContent = '';
+        statusEl.removeAttribute('data-type');
+      }
+      modal.dataset.open = 'true';
+      modal.setAttribute('aria-hidden', 'false');
+      setTimeout(function () {
+        var firstInput = modal.querySelector('input[name="owner"]');
+        if (firstInput) firstInput.focus();
+      }, 60);
+    });
+  });
+
+  /* ========================================================================
+     需求 9：文章详细页右侧悬浮窗「音乐播放模块」交互初始化
+     ======================================================================== */
+  function formatAudioTime(sec) {
+    if (!isFinite(sec) || sec < 0) return '00:00';
+    var m = Math.floor(sec / 60);
+    var s = Math.floor(sec % 60);
+    return String(m).padStart(2, '0') + ':' + String(s).padStart(2, '0');
+  }
+
+  /* ----------------------------------------------------------------------
+     音频文件二进制标签（ID3v2 / ID3v1 / FLAC / OGG / MP4）与文件名自动解析
+     当音乐播放器未设置自定义标题/作者时，自动从音频文件读取，读取失败则保留默认值
+     ---------------------------------------------------------------------- */
+  function parseAudioFilenameFallback(urlOrName) {
+    if (!urlOrName) return {};
+    try {
+      var decoded = decodeURIComponent(String(urlOrName));
+      var base = (decoded.split('/').pop() || decoded).split('?')[0] || '';
+      var withoutExt = base.replace(/\.[^.]+$/, '').replace(/^\d{10,14}[-_]/, '').trim();
+      if (!withoutExt) return {};
+      var sepMatch = withoutExt.match(/^(.+?)\s+[-–—]\s+(.+)$/);
+      if (sepMatch && sepMatch[1] && sepMatch[2]) {
+        return { artist: sepMatch[1].trim(), title: sepMatch[2].trim() };
+      }
+      return { title: withoutExt };
+    } catch (e) {
+      return {};
+    }
+  }
+
+  function decodeAudioTagBytes(bytes, encByte) {
+    if (!bytes || !bytes.length) return '';
+    try {
+      if (encByte === 1 || encByte === 2) {
+        var sub = bytes;
+        var dec = encByte === 2 ? 'utf-16be' : 'utf-16le';
+        if (bytes.length >= 2 && bytes[0] === 0xfe && bytes[1] === 0xff) {
+          dec = 'utf-16be';
+          sub = bytes.subarray(2);
+        } else if (bytes.length >= 2 && bytes[0] === 0xff && bytes[1] === 0xfe) {
+          dec = 'utf-16le';
+          sub = bytes.subarray(2);
+        }
+        return new TextDecoder(dec).decode(sub).replace(/\0+/g, '').trim();
+      }
+      if (encByte === 3) {
+        return new TextDecoder('utf-8').decode(bytes).replace(/\0+/g, '').trim();
+      }
+      try {
+        return new TextDecoder('utf-8', { fatal: true }).decode(bytes).replace(/\0+/g, '').trim();
+      } catch (e2) {
+        return new TextDecoder('gb18030').decode(bytes).replace(/\0+/g, '').trim();
+      }
+    } catch (e) {
+      return '';
+    }
+  }
+
+  function parseAudioTagBuffer(buf) {
+    var out = {};
+    if (!buf || buf.length < 10) return out;
+    // ID3v2
+    if (buf[0] === 0x49 && buf[1] === 0x44 && buf[2] === 0x33) {
+      var ver = buf[3];
+      var tagSize = ((buf[6] & 0x7f) << 21) | ((buf[7] & 0x7f) << 14) | ((buf[8] & 0x7f) << 7) | (buf[9] & 0x7f);
+      var limit = Math.min(buf.length, 10 + tagSize);
+      var pos = 10;
+      while (pos + 10 <= limit) {
+        var id = String.fromCharCode(buf[pos], buf[pos + 1], buf[pos + 2], buf[pos + 3]);
+        if (!/^[A-Z0-9]{4}$/.test(id)) break;
+        var fSize = ver === 4
+          ? (((buf[pos + 4] & 0x7f) << 21) | ((buf[pos + 5] & 0x7f) << 14) | ((buf[pos + 6] & 0x7f) << 7) | (buf[pos + 7] & 0x7f))
+          : (((buf[pos + 4] << 24) >>> 0) + ((buf[pos + 5] << 16) >>> 0) + ((buf[pos + 6] << 8) >>> 0) + (buf[pos + 7] >>> 0));
+        pos += 10;
+        if (fSize <= 1 || pos + fSize > limit) break;
+        var enc = buf[pos];
+        var contentBytes = buf.subarray(pos + 1, pos + fSize);
+        if (id === 'TIT2' && !out.title) out.title = decodeAudioTagBytes(contentBytes, enc);
+        else if ((id === 'TPE1' || id === 'TPE2') && !out.artist) out.artist = decodeAudioTagBytes(contentBytes, enc);
+        pos += fSize;
+        if (out.title && out.artist) break;
+      }
+    }
+    return out;
+  }
+
+  function autoReadAudioMetadataForCard(cardEl, audioSrc) {
+    if (!cardEl || !audioSrc) return;
+    var titleEl = cardEl.querySelector('[data-music-title-el], .rail-music-title');
+    var artistEl = cardEl.querySelector('[data-music-artist-el], .rail-music-artist');
+    if (!titleEl && !artistEl) return;
+
+    var curTitle = (titleEl ? titleEl.textContent : '').trim();
+    var curArtist = (artistEl ? artistEl.textContent : '').trim();
+    var needTitle = cardEl.dataset.titleIsDefault === 'true' || !curTitle || curTitle === '未命名伴读曲目' || curTitle === '伴读音乐 · 未命名曲目';
+    var needArtist = cardEl.dataset.artistIsDefault === 'true' || !curArtist || curArtist === 'ACOUSTIC STREAM // 伴读声轨' || curArtist === '夜笙 · ACOUSTIC BGM';
+    if (!needTitle && !needArtist) return;
+
+    var fromFile = parseAudioFilenameFallback(audioSrc);
+    if (needTitle && fromFile.title && titleEl) {
+      titleEl.textContent = fromFile.title;
+      titleEl.title = fromFile.title;
+    }
+    if (needArtist && fromFile.artist && artistEl) {
+      artistEl.textContent = fromFile.artist;
+      artistEl.title = fromFile.artist;
+    }
+
+    fetch(audioSrc, { headers: { Range: 'bytes=0-65535' }, credentials: 'same-origin' })
+      .then(function (res) {
+        if (!res.ok) throw new Error('range fetch failed');
+        return res.arrayBuffer();
+      })
+      .then(function (ab) {
+        var buf = new Uint8Array(ab.byteLength > 65536 ? ab.slice(0, 65536) : ab);
+        var meta = parseAudioTagBuffer(buf);
+        if (needTitle && meta.title && titleEl) {
+          titleEl.textContent = meta.title;
+          titleEl.title = meta.title;
+        }
+        if (needArtist && meta.artist && artistEl) {
+          artistEl.textContent = meta.artist;
+          artistEl.title = meta.artist;
+        }
+      })
+      .catch(function () {
+        // 读取失败则静默保留默认标题和默认作者
+      });
+  }
+
+  function initRailMusicPlayers() {
+    var players = Array.from(document.querySelectorAll('[data-rail-music-player]'));
+    players.forEach(function (cardEl) {
+      if (cardEl.dataset.musicWired === 'true') return;
+      cardEl.dataset.musicWired = 'true';
+
+      var audio = cardEl.querySelector('[data-music-audio]');
+      var playBtn = cardEl.querySelector('[data-music-toggle]');
+      var seek = cardEl.querySelector('[data-music-seek]');
+      var fill = cardEl.querySelector('[data-music-fill]');
+      var curEl = cardEl.querySelector('[data-music-cur]');
+      var durEl = cardEl.querySelector('[data-music-dur]');
+      var badgeEl = cardEl.querySelector('[data-music-badge]');
+      var loopBtn = cardEl.querySelector('[data-music-loop]');
+      var muteBtn = cardEl.querySelector('[data-music-mute]');
+      if (!audio) return;
+
+      // 自动读取音频作者与标题，若读取失败则保留默认值
+      var srcUrl = audio.getAttribute('src') || audio.src || '';
+      if (srcUrl) autoReadAudioMetadataForCard(cardEl, srcUrl);
+
+      audio.addEventListener('loadedmetadata', function () {
+        if (durEl) durEl.textContent = formatAudioTime(audio.duration);
+      });
+
+      audio.addEventListener('timeupdate', function () {
+        if (curEl) curEl.textContent = formatAudioTime(audio.currentTime);
+        var pct = audio.duration > 0 ? Math.min(100, (audio.currentTime / audio.duration) * 100) : 0;
+        if (fill) fill.style.width = pct.toFixed(1) + '%';
+        if (seek) seek.value = String(pct);
+      });
+
+      audio.addEventListener('play', function () {
+        players.forEach(function (other) {
+          if (other !== cardEl) {
+            var otherAudio = other.querySelector('[data-music-audio]');
+            if (otherAudio && !otherAudio.paused) otherAudio.pause();
+          }
+        });
+        cardEl.dataset.playing = 'true';
+        if (badgeEl) badgeEl.textContent = 'PLAYING';
+      });
+
+      audio.addEventListener('pause', function () {
+        cardEl.dataset.playing = 'false';
+        if (badgeEl) badgeEl.textContent = 'PAUSED';
+      });
+
+      audio.addEventListener('ended', function () {
+        cardEl.dataset.playing = 'false';
+        if (badgeEl) badgeEl.textContent = 'AUDIO';
+      });
+
+      if (playBtn) {
+        playBtn.addEventListener('click', function () {
+          if (audio.paused) {
+            audio.play().catch(function () {
+              showToast('音频播放失败，请检查音频文件是否有效');
+            });
+          } else {
+            audio.pause();
+          }
+        });
+      }
+
+      if (seek) {
+        seek.addEventListener('input', function () {
+          if (audio.duration > 0) {
+            audio.currentTime = (parseFloat(seek.value) / 100) * audio.duration;
+          }
+        });
+      }
+
+      if (loopBtn) {
+        loopBtn.addEventListener('click', function () {
+          audio.loop = !audio.loop;
+          loopBtn.setAttribute('aria-pressed', String(audio.loop));
+          showToast(audio.loop ? '已开启单曲循环' : '已关闭单曲循环');
+        });
+      }
+
+      if (muteBtn) {
+        muteBtn.addEventListener('click', function () {
+          audio.muted = !audio.muted;
+          muteBtn.setAttribute('aria-pressed', String(audio.muted));
+        });
+      }
+    });
+  }
+
+
+  syncSpotCoverGeometry();
   setTimeout(fitHomePhotoWallBounds, 60);
+  setTimeout(layoutPhotosArchiveMasonry, 60);
+  initRailMusicPlayers();
   syncTopNavHighlight(state.view);
 
   resizeCanvas();
