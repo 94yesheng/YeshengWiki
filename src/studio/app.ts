@@ -1,8 +1,8 @@
 /**
  * 后台应用（外壳）—— HUD 蓝图画布体系重构版
  *
- * 1. 顶栏与全站 HUD 页面完全统一（.site-nav-bar 风格 + ∞/黑洞平面徽标 + 01..05 编号导航 + 昼夜切换）；
- * 2. 五大板块：01 文章 · 02 照片墙 · 03 程序工坊 · 04 友链矩阵 · 05 站点与右栏；
+ * 1. 顶栏与全站前台展示页（.site-nav-bar）完全统一：.nav-left-cluster + .nav-brand + .site-nav (.site-nav-link 带 00..06 编号与底部 1.5px 理性橙指示条) + .nav-right-cluster；
+ * 2. 七大板块：00 文章 · 01 相册 · 02 项目 · 03 友链 · 04 媒体库 · 05 页面 · 06 设置；
  * 3. 全部读写走 `/api/*`，直接落本地 SQLite 数据库。
  */
 import {
@@ -114,8 +114,8 @@ async function loadAll(): Promise<void> {
 type Col = 'nav' | 'tools';
 
 const COLS: Array<{ key: Col; name: string; handle: string }> = [
-  { key: 'nav', name: '左栏', handle: '#st-nav-handle' },
-  { key: 'tools', name: '右栏伴读与工具面板', handle: '#st-tools-handle' },
+  { key: 'nav', name: '左栏导航面板', handle: '#st-nav-handle' },
+  { key: 'tools', name: '右栏工具与伴读面板', handle: '#st-tools-handle' },
 ];
 
 const colKey = (col: Col) => `studio.col.${col}`;
@@ -133,8 +133,7 @@ function applyCols(): void {
   if (!app) return;
 
   for (const { key, name, handle } of COLS) {
-    // 右侧工具面板常驻显示（用户已要求删除右缘的滑动把手）
-    const hidden = key === 'tools' ? false : colHidden(key);
+    const hidden = colHidden(key);
     app.classList.toggle(key === 'nav' ? 'is-nav-hidden' : 'is-tools-hidden', hidden);
 
     const btn = $(handle);
@@ -162,14 +161,15 @@ function setColHidden(col: Col, hidden: boolean): void {
 }
 
 /* --------------------------------------------------------------------------
-   顶栏（HUD 蓝图导航栏）
+   顶栏（与前台 .site-nav-bar 样式完全统一）
    -------------------------------------------------------------------------- */
 function renderBar(): void {
   const bar = $('#st-bar');
   if (!bar) return;
   const dark = isDark();
+  bar.classList.add('site-nav-bar');
   bar.innerHTML = `
-    <div class="st-bar-left">
+    <div class="st-bar-left nav-left-cluster">
       <a href="/" class="nav-brand" title="返回站点前台主页">
         <span class="nav-brand-mark" aria-hidden="true">
           <svg class="planar-icon planar-icon--infinity" viewBox="0 0 36 18">
@@ -185,21 +185,22 @@ function renderBar(): void {
           </svg>
         </span>
         <span class="nav-brand-text">夜笙</span>
-        <span class="nav-brand-coord">STUDIO</span>
+        <span class="nav-brand-coord">STUDIO // 96REM</span>
       </a>
-      <nav class="st-nav" id="st-nav" aria-label="后台管理板块"></nav>
+      <nav class="st-nav site-nav" id="st-nav" aria-label="后台管理板块"></nav>
     </div>
-    <div class="st-bar-right">
+    <div class="st-bar-right nav-right-cluster">
       ${state.dirty ? '<span class="st-dirty-badge"><span class="st-dirty-dot"></span>有未保存修改</span>' : ''}
-      <span class="st-meta-badge">
-        LOCAL${state.user ? ` · ${esc(state.user)}` : ''}
-      </span>
-      <button type="button" class="st-btn" id="st-theme-btn" title="切换白天 / 夜间模式">
-        ${dark ? '昼' : '夜'}
+      <div class="nav-telemetry-pill st-meta-badge">
+        <span class="nav-dot"></span>
+        <span>LOCAL${state.user ? ` · ${esc(state.user)}` : ''}</span>
+      </div>
+      <button type="button" class="st-btn nav-scale-btn" id="st-theme-btn" title="切换白天 / 夜间模式">
+        ${dark ? 'DAY // 昼' : 'NIGHT // 夜'}
       </button>
-      <button type="button" class="st-btn" id="st-refresh" ${state.busy ? 'disabled' : ''}>刷新</button>
+      <button type="button" class="st-btn nav-scale-btn" id="st-refresh" ${state.busy ? 'disabled' : ''}>刷新</button>
       <button type="button" class="st-btn st-btn--primary" id="st-save" ${state.dirty ? '' : 'disabled'}>保存</button>
-      <button type="button" class="st-btn" id="st-lock">锁定</button>
+      <button type="button" class="st-btn nav-scale-btn" id="st-lock">锁定</button>
     </div>`;
 
   $('#st-theme-btn')?.addEventListener('click', () => {
@@ -226,7 +227,6 @@ function renderBar(): void {
     renderUnlock('已锁定会话');
   });
 
-  // renderBar 会重建整个 #st-bar；不在这里补一次，输入第一个字后顶栏导航就会消失。
   renderNav();
 }
 
@@ -250,15 +250,9 @@ const NAV: Array<{ key: Collection; label: string; count: () => number }> = [
   { key: 'site',  label: '设置', count: () => 2 },
 ];
 
-/**
- * 当前草稿里有没有"真改过"的东西。
- * 不只看 state.dirty：它只在第一次输入时置位，用户把改动撤销回去也仍然是 true。
- */
 function hasUnsavedWork(): boolean {
-  // 「页面」板块的文案与结构化面板由视图缓存，改动同样需要离开确认。
   if (state.collection === 'pages') return pagesDirty() || siteDraftDirty();
   if (!state.dirty) return false;
-  // 媒体库没有草稿，删除是即时生效的，不需要离开确认。
   if (state.collection === 'media') return false;
   if (state.collection === 'posts' && state.draft.post) return postDraftEdited();
   if (state.collection === 'walls' && state.draft.wall) return wallDraftEdited();
@@ -266,19 +260,15 @@ function hasUnsavedWork(): boolean {
 }
 
 function settleLeaving(): boolean {
-  // 先把编辑器里的当前内容折回草稿，再判断有没有真实改动。
   foldStagedPostDraft();
   foldStagedWallDraft();
   if (!hasUnsavedWork()) return true;
-  // 所有离开入口都是同步函数，所以这里用同步 confirm；
-  // 换成页内的 showConfirm 需要把整条导航链改成 async，风险大于收益。
   return window.confirm('有未保存的修改，离开后这些修改会丢失。确定继续吗？');
 }
 
 function selectCollection(c: Collection): void {
   if (c === state.collection) return;
   if (!settleLeaving()) return;
-  // 离开「页面」板块时，用户已经确认放弃未保存的文案改动。
   if (state.collection === 'pages') pagesDiscard();
   state.collection = c;
   state.selected =
@@ -297,13 +287,15 @@ function selectCollection(c: Collection): void {
 function renderNav(): void {
   const nav = $('#st-nav');
   if (!nav) return;
-  nav.innerHTML = NAV.map(
-    (n) =>
-      `<button type="button" data-c="${n.key}" aria-current="${state.collection === n.key}">
-        <span>${n.label}</span>
-        <span class="st-n">${n.count()}</span>
-      </button>`
-  ).join('');
+  nav.innerHTML = NAV.map((n, idx) => {
+    const isCurrent = state.collection === n.key;
+    const idxStr = String(idx).padStart(2, '0');
+    return `<button type="button" class="site-nav-link" data-c="${n.key}" aria-current="${isCurrent ? 'true' : 'false'}">
+      <span class="nav-idx">${idxStr}</span>
+      <span>${n.label}</span>
+      <span class="st-n">${n.count()}</span>
+    </button>`;
+  }).join('');
   nav.querySelectorAll<HTMLButtonElement>('button[data-c]').forEach((b) =>
     b.addEventListener('click', () => selectCollection(b.dataset.c as Collection))
   );
@@ -372,7 +364,7 @@ function renderList(): void {
     title.innerHTML = `<span>MEDIA // 共 ${files} 个文件</span>`;
     box.innerHTML = `<p class="st-media-nav-note">图片按文章 slug 归档，${owners} 个分组；缩略图与删除操作在中间栏。删除立即生效，无需保存。</p>`;
   } else if (state.collection === 'pages') {
-    title.innerHTML = `<span>页面文案 // 5 个子页</span>`;
+    title.innerHTML = `<span>PAGES // 5 个站点页面</span>`;
     box.innerHTML = `<ul class="st-list">${PAGE_GROUPS.map(
       (group, i) => `<li><button type="button" data-id="${group.key}" aria-current="${state.selected === group.key}">
         <span class="st-line"><span class="st-date">${String(i + 1).padStart(2, '0')}</span><span class="st-name">${group.label}</span></span>
@@ -394,7 +386,6 @@ function renderList(): void {
   }
 
   if (state.collection === 'pages') {
-    // 页面分组之间切换不需要离开确认：文案缓存在视图里，切回来还在。
     box.querySelectorAll<HTMLButtonElement>('button[data-id]').forEach((b) =>
       b.addEventListener('click', () => {
         const id = b.dataset.id ?? '';
@@ -439,11 +430,13 @@ function renderShell(): void {
       <div class="st-col st-col--edit" id="st-edit"></div>
       <div class="st-col st-col--preview" id="st-preview"></div>
 
-      <button class="st-col-handle st-col-handle--nav" id="st-nav-handle" aria-pressed="false"><span data-col-icon aria-hidden="true">‹</span></button>
+      <button type="button" class="st-col-handle st-col-handle--nav" id="st-nav-handle" aria-pressed="false"><span data-col-icon aria-hidden="true">‹</span></button>
+      <button type="button" class="st-col-handle st-col-handle--tools" id="st-tools-handle" aria-pressed="false"><span data-col-icon aria-hidden="true">›</span></button>
     </div>
     <div id="st-fab-host"></div>`;
 
   $('#st-nav-handle')?.addEventListener('click', () => setColHidden('nav', !colHidden('nav')));
+  $('#st-tools-handle')?.addEventListener('click', () => setColHidden('tools', !colHidden('tools')));
 
   const fabHost = $('#st-fab-host');
   if (fabHost) {
@@ -499,10 +492,8 @@ async function flushStaged(gh: Github, skip: string[]): Promise<void> {
 
 async function saveCurrent(): Promise<void> {
   if (!state.dirty) return;
-  // 媒体库没有可保存的草稿：删除是即时生效的。
   if (state.collection === 'media') return;
 
-  // 会话失效（没有 gh）时只合并内存草稿并提示，不写入数据库
   if (!state.gh) {
     foldStagedPostDraft();
     foldStagedWallDraft();
@@ -525,7 +516,6 @@ async function saveCurrent(): Promise<void> {
     const written: string[] = [];
 
     if (isPages) {
-      // 「页面」板块：文案走 /api/pages，结构化面板走站点 JSON，同一次保存提交。
       await savePagesValues();
       if (siteDraftDirty() && state.draft.site) {
         await saveSite(gh, { sha: state.site?.sha ?? '', data: state.draft.site });
@@ -574,7 +564,6 @@ async function saveCurrent(): Promise<void> {
    启动
    -------------------------------------------------------------------------- */
 async function boot(): Promise<void> {
-  // 已有会话就直接进工作台；否则显示登录页
   try {
     const res = await fetch('/api/auth/me');
     if (res.ok) {
@@ -593,10 +582,8 @@ async function boot(): Promise<void> {
 
 registerHooks({ render: renderApp, reload: loadAll, settle: settleLeaving, dirty: renderBar });
 
-// 关闭标签页 / 刷新浏览器时的最后一道保险。浏览器只显示通用文案，无法自定义。
 window.addEventListener('beforeunload', (e) => {
   if (!hasUnsavedWork()) return;
-  // 现代浏览器用 preventDefault 即可触发确认框（returnValue 已废弃）。
   e.preventDefault();
 });
 

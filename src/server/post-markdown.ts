@@ -30,17 +30,6 @@ function rewriteAssetPaths(markdown: string): string {
     .replaceAll('/src/assets/photos/', '/uploads/photos/');
 }
 
-function firstImage(markdown: string): string | null {
-  const m = /!\[[^\]]*\]\(\s*([^)\s]+)/.exec(markdown);
-  if (!m) return null;
-  const src = rewriteAssetPaths(m[1]);
-  // 站内路径已经带上了 /uploads/posts/；文章配图现在按 slug 归档（/uploads/posts/<slug>/<file>），
-  // 所以不能只取 basename，否则封面会丢一层目录。
-  const idx = src.indexOf('/uploads/posts/');
-  const rel = idx >= 0 ? src.slice(idx + '/uploads/posts/'.length) : (src.split('/').pop() ?? '');
-  return rel ? `/uploads/posts/${rel}` : null;
-}
-
 export function parsePostMarkdown(raw: string, slug: string): ParsedPost {
   const text = raw.replace(/^\uFEFF/, '').replace(/\r\n/g, '\n');
   const m = /^---\n([\s\S]*?)\n---\n?([\s\S]*)$/.exec(text);
@@ -60,6 +49,8 @@ export function parsePostMarkdown(raw: string, slug: string): ParsedPost {
   const pubDate = isoDate(data.pubDate);
   if (!pubDate) throw new Error('pubDate 必须是 YYYY-MM-DD');
 
+  const rawCover = data.cover !== undefined && data.cover !== null ? String(data.cover).trim() : '';
+
   return {
     slug,
     title,
@@ -67,7 +58,7 @@ export function parsePostMarkdown(raw: string, slug: string): ParsedPost {
     lead: data.lead ? String(data.lead) : null,
     bodyMarkdown,
     rawMarkdown: rewriteAssetPaths(text),
-    cover: data.cover ? rewriteAssetPaths(String(data.cover)) : firstImage(bodyMarkdown),
+    cover: rawCover ? rewriteAssetPaths(rawCover) : null,
     coverCaption: data.coverCaption ? String(data.coverCaption) : null,
     entryBadge: data.entryBadge ? String(data.entryBadge) : null,
     featured: Boolean(data.featured),

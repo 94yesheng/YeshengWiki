@@ -2,8 +2,8 @@
 /**
  * 文章页 —— SSR 版。
  *
- * 数据来自 SQLite；Markdown 用 markdown-it 渲染，模板仍是 article.html 的
- * @@TOKEN@@ 注入。静态版保留在旧分支/线上 dist，这里是动态版专用。
+ * 数据来自 SQLite；Markdown 用 markdown-it 渲染，右侧信息悬浮窗使用同构渲染器
+ * `renderArticleRailSlots`，与后台实时伴读预览和全屏预览保持 100% 一致。
  */
 export const prerender = false;
 
@@ -15,6 +15,7 @@ import { applyArtifactSite, getSiteConfig } from '../../server/site';
 import { renderMarkdown } from '../../server/markdown';
 import { chineseFullDate, readingTime } from '../../utils/date';
 import { cjkSpacing } from '../../utils/typography';
+import { renderArticleRailSlots } from '../../utils/article-rail';
 import { articleRail as staticArticleRail, type ArticleRailConfig } from '../../site.config';
 import '../../styles/artifact-prose.css';
 
@@ -56,7 +57,7 @@ function chineseDate(iso: string): string {
 }
 
 const dateText = chineseDate(post.pubDate);
-const entryNo = String(index + 1).padStart(2, '0');
+const entryNo = String(index >= 0 ? index + 1 : 1).padStart(2, '0');
 const entryBadge = post.entryBadge?.trim()
   ? `ARCHIVE COORDINATE // ENTRY #${entryNo} · ${post.entryBadge.trim()}`
   : `ARCHIVE COORDINATE // ENTRY #${entryNo}`;
@@ -78,19 +79,6 @@ const tocHtml = toc.length
       .join('')}</ul>`
   : `<p class="toc-empty">本文未设置小节标题</p>`;
 
-/* ---------- 相关文章 ---------- */
-const maxRelated = rail.related?.maxCount ?? 4;
-const related = posts.filter((p) => p.slug !== post.slug).slice(0, maxRelated);
-const relatedHtml = `<ul class="rail-related-list">${related
-  .map((p) => {
-    const n = String(posts.findIndex((x) => x.slug === p.slug) + 1).padStart(2, '0');
-    const cat = p.tags[0] ?? 'ARCHIVE';
-    return `<li><a href="/posts/${p.slug}/"><span class="r-idx">ENTRY #${n} // ${esc(
-      cat
-    )}</span><span class="r-tit">${esc(cjkSpacing(p.title))}</span></a></li>`;
-  })
-  .join('')}</ul>`;
-
 /* ---------- 上一篇 / 下一篇 ---------- */
 const pagerCell = (p: typeof newer, dir: 'prev' | 'next') => {
   const label = dir === 'prev' ? '&lt;- PREV ENTRY' : 'NEXT ENTRY -&gt;';
@@ -103,126 +91,30 @@ const pagerHtml = `<div class="article-pager-grid">${pagerCell(newer, 'prev')}${
   'next'
 )}</div>`;
 
-/* ---------- 右侧伴读悬浮栏 ---------- */
-const isMc = post.slug === 'mc-server';
-const pick = (postValue: unknown, fallback: unknown, hard: string): string =>
-  String(postValue ?? fallback ?? hard);
-
-const topoCfg = {
-  kicker: pick(post.railTopology?.kicker, rail.topology?.kicker, 'TOPOLOGY // 穿透链路图解'),
-  badge: pick(post.railTopology?.badge, rail.topology?.badge, 'TCP : 25565'),
-  node1Title: pick(post.railTopology?.node1Title, rail.topology?.node1Title, 'LOCAL HOST'),
-  node1Sub: pick(post.railTopology?.node1Sub, rail.topology?.node1Sub, 'Paper :25565'),
-  node2Title: pick(post.railTopology?.node2Title, rail.topology?.node2Title, 'FRP RELAY'),
-  node2Sub: pick(post.railTopology?.node2Sub, rail.topology?.node2Sub, 'Public :7000'),
-  node3Title: pick(post.railTopology?.node3Title, rail.topology?.node3Title, 'PLAYERS'),
-  node3Sub: pick(post.railTopology?.node3Sub, rail.topology?.node3Sub, 'Clients 1..N'),
-  line1: pick(post.railTopology?.line1, rail.topology?.line1, 'TUNNEL: 127.0.0.1:25565 -> frps:25565'),
-  line2: pick(post.railTopology?.line2, rail.topology?.line2, 'STATUS: NAT BYPASSED · ZERO PUBLIC IP'),
-};
-
-const showTopology =
-  post.railMode === 'topology' ||
-  post.railTopology?.enabled === true ||
-  (post.railMode !== 'custom' &&
-    ((isMc && rail.topology?.enabledForMc !== false) || rail.topology?.globalEnabled === true));
-
-const topologyHtml = showTopology
-  ? `<div class="rail-blueprint-card" id="rail-topology-card">
-      <div class="rail-card-kicker">
-        <span>${esc(topoCfg.kicker)}</span>
-        <span>${esc(topoCfg.badge)}</span>
-      </div>
-      <svg viewBox="0 0 240 130" style="width:100%; height:auto; display:block;" aria-label="技术拓扑图">
-        <rect x="8" y="14" width="66" height="40" rx="2" fill="none" stroke="currentColor" stroke-opacity="0.35"/>
-        <text x="16" y="31" font-family="monospace" font-size="8.5" fill="#d97757">${esc(topoCfg.node1Title)}</text>
-        <text x="16" y="44" font-family="monospace" font-size="8" fill="currentColor" opacity="0.7">${esc(topoCfg.node1Sub)}</text>
-
-        <rect x="87" y="14" width="66" height="40" rx="2" fill="none" stroke="#d97757" stroke-width="1.3"/>
-        <text x="96" y="31" font-family="monospace" font-size="8.5" fill="#d97757">${esc(topoCfg.node2Title)}</text>
-        <text x="96" y="44" font-family="monospace" font-size="8" fill="currentColor" opacity="0.7">${esc(topoCfg.node2Sub)}</text>
-
-        <rect x="166" y="14" width="66" height="40" rx="2" fill="none" stroke="currentColor" stroke-opacity="0.35"/>
-        <text x="175" y="31" font-family="monospace" font-size="8.5" fill="#788c5d">${esc(topoCfg.node3Title)}</text>
-        <text x="175" y="44" font-family="monospace" font-size="8" fill="currentColor" opacity="0.7">${esc(topoCfg.node3Sub)}</text>
-
-        <line x1="74" y1="34" x2="87" y2="34" stroke="#d97757" stroke-width="1.4"/>
-        <line x1="153" y1="34" x2="166" y2="34" stroke="#d97757" stroke-width="1.4"/>
-
-        <rect x="8" y="72" width="224" height="46" rx="2" fill="none" stroke="currentColor" stroke-opacity="0.2" stroke-dasharray="3 3"/>
-        <text x="18" y="90" font-family="monospace" font-size="8.5" fill="currentColor" opacity="0.75">${esc(topoCfg.line1)}</text>
-        <text x="18" y="106" font-family="monospace" font-size="8.5" fill="#d97757">${esc(topoCfg.line2)}</text>
-      </svg>
-    </div>`
-  : '';
-
-const docSpecCfg = rail.docSpec ?? {};
-const hasCustomPostSpecs = Array.isArray(post.railSpecs) && post.railSpecs.length > 0;
-const defaultMcSpecs = [
-  { label: 'JDK RUNTIME', value: 'Temurin 21 LTS' },
-  { label: 'SERVER CORE', value: 'Paper 1.21.x' },
-  { label: 'HEAP MEMORY', value: '-Xms4G -Xmx4G' },
-  { label: 'GC POLICY', value: 'G1GC (Aikars)' },
-  { label: 'DEFAULT PORT', value: 'TCP 25565' },
-];
-
-let specRows: Array<{ label: string; value: string }> = [];
-let specKicker = docSpecCfg.kicker ?? 'DOC SPEC // 文档速查卡';
-let specBadge = docSpecCfg.badge ?? 'BASELINE';
-
-if (hasCustomPostSpecs) {
-  specRows = post.railSpecs!;
-  specKicker = 'SPEC SHEET // 专属速查卡';
-} else if (isMc) {
-  specRows = defaultMcSpecs;
-  specKicker = 'SPEC SHEET // 环境速查卡';
-} else {
-  if (docSpecCfg.showPublished !== false) specRows.push({ label: 'PUBLISHED', value: dateText });
-  if (docSpecCfg.showChars !== false)
-    specRows.push({ label: 'CHARS', value: `${chars.toLocaleString('zh-CN')} 字` });
-  if (docSpecCfg.showReading !== false)
-    specRows.push({ label: 'READING', value: `约 ${minutes} 分钟` });
-  if (docSpecCfg.showTags !== false) specRows.push({ label: 'TAGS', value: tagText });
-  if (Array.isArray(docSpecCfg.customRows)) {
-    for (const r of docSpecCfg.customRows) {
-      if (r.label && r.value) specRows.push(r);
-    }
-  }
-}
-
-const specCardHtml =
-  docSpecCfg.enabled !== false && specRows.length
-    ? `<div class="rail-blueprint-card" id="rail-spec-card">
-        <div class="rail-card-kicker"><span>${esc(specKicker)}</span><span>${esc(specBadge)}</span></div>
-        <ul class="rail-kv-list" id="rail-spec-list">
-          ${specRows.map((r) => `<li><span>${esc(r.label)}</span><strong>${esc(r.value)}</strong></li>`).join('')}
-        </ul>
-      </div>`
-    : '';
-
-const customCardsHtml = (rail.customCards ?? [])
-  .filter((c) => c.enabled)
-  .map((c) => {
-    if (c.type === 'kv' && Array.isArray(c.items)) {
-      return `<div class="rail-blueprint-card">
-        <div class="rail-card-kicker"><span>${esc(c.kicker)}</span><span>${esc(c.badge)}</span></div>
-        <ul class="rail-kv-list">
-          ${c.items.map((it) => `<li><span>${esc(it.label)}</span><strong>${esc(it.value)}</strong></li>`).join('')}
-        </ul>
-      </div>`;
-    }
-    return `<div class="rail-blueprint-card">
-      <div class="rail-card-kicker"><span>${esc(c.kicker)}</span><span>${esc(c.badge)}</span></div>
-      <p style="margin:0; font-size:0.92rem; line-height:1.65; color:var(--muted);">${esc(c.content ?? '')}</p>
-    </div>`;
-  })
-  .join('\n');
+/* ---------- 右侧信息悬浮伴读栏（同构渲染） ---------- */
+const railSlots = renderArticleRailSlots({
+  slug: post.slug,
+  dateText,
+  chars,
+  minutes,
+  tagText,
+  railMode: post.railMode,
+  railSpecs: post.railSpecs,
+  railConfig: post.railTopology,
+  globalRail: rail,
+  relatedPosts: posts.map((p, idx) => ({
+    slug: p.slug,
+    title: p.title,
+    tags: p.tags,
+    indexNo: idx + 1,
+  })),
+  totalPostsCount: posts.length,
+  isStudioDockPreview: false,
+});
 
 const kineticCaption = post.kineticCaption?.trim()
   ? esc(post.kineticCaption.trim())
-  : isMc
-    ? 'LOCAL : 25565 &lt;-&gt; FRP'
-    : esc(rail.threeBody?.defaultCaption ?? '3-BODY GRAVITY // CHAOTIC ORBIT');
+  : esc(rail.threeBody?.defaultCaption ?? '3-BODY GRAVITY // CHAOTIC ORBIT');
 
 /* ---------- 注入 ---------- */
 const slots: Record<string, string> = {
@@ -237,9 +129,9 @@ const slots: Record<string, string> = {
   KICKER: esc(entryBadge),
   KINETIC_CAPTION: kineticCaption,
   TOC: tocHtml,
-  RAIL_TOPOLOGY: topologyHtml,
-  RAIL_SPEC: `${specCardHtml}\n${customCardsHtml}`,
-  RAIL_RELATED: relatedHtml,
+  RAIL_TOPOLOGY: railSlots.topCardsHtml,
+  RAIL_SPEC: railSlots.specAndCustomHtml,
+  RAIL_RELATED: railSlots.relatedCardHtml,
   PAGER: pagerHtml,
 };
 
@@ -251,6 +143,20 @@ for (const [key, value] of Object.entries(slots)) {
 }
 if (!html.includes('@@PROSE@@')) throw new Error('article.html 缺少 @@PROSE@@ 占位符');
 html = html.replace('@@PROSE@@', proseHtml);
+
+if (rail.threeBody?.eraBadge) {
+  html = html.replace(
+    /(<span class="threebody-era-badge" id="threebody-era-badge">)[\s\S]*?(<\/span>)/,
+    (_m, a: string, b: string) => `${a}${esc(rail.threeBody!.eraBadge!)}${b}`
+  );
+}
+if (rail.threeBody?.fluxReadout) {
+  html = html.replace(
+    /(<span id="threebody-flux-readout">)[\s\S]*?(<\/span>)/,
+    (_m, a: string, b: string) => `${a}${esc(rail.threeBody!.fluxReadout!)}${b}`
+  );
+}
+
 html = applyArtifactSite(html, site, 'posts');
 ---
 

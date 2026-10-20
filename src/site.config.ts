@@ -52,9 +52,11 @@ export interface RailCustomCard {
   enabled: boolean;
   kicker: string;
   badge: string;
-  type: 'text' | 'kv';
+  type: 'text' | 'note' | 'kv' | 'links' | 'list';
   content?: string;
   items?: Array<{ label: string; value: string }>;
+  links?: Array<{ label: string; url: string; note?: string }>;
+  bullets?: string[];
 }
 
 export interface ArticleRailConfig {
@@ -100,8 +102,6 @@ export interface ArticleRailConfig {
 
 export const site = raw.site satisfies SiteConfig;
 export const home = raw.home satisfies HomeConfig;
-// JSON 里的字符串字面量（如 customCards.type）会被推断成 string，
-// 无法直接 satisfies 含字面量联合的接口；这里先按接口收窄。
 export const articleRail = (raw.articleRail ?? {}) as ArticleRailConfig;
 export const authorDossier = raw.authorDossier ?? {};
 export const programsConfig = raw.programs ?? {};

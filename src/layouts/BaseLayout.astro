@@ -77,6 +77,7 @@ const canonical = new URL(Astro.url.pathname, Astro.site);
 
     <!-- 需求 8：结合无限与黑洞主题的昼夜切换过渡动画层 -->
     <div class="theme-transition-stage" id="theme-transition-stage" aria-hidden="true">
+      <div class="theme-transition-veil" id="theme-transition-veil"></div>
       <canvas class="theme-transition-canvas" id="theme-transition-canvas"></canvas>
       <div class="theme-transition-badge" id="theme-transition-badge">SINGULARITY TRANSITION // ∞ ↔ BLACK HOLE</div>
     </div>

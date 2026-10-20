@@ -49,9 +49,15 @@
   /* 首屏顶栏/坐标/原点由后台「页面 → 主页」配置；切昼夜时沿用配置，不覆盖成写死文案 */
   var HOME_META = window.__HOME_META || null;
   if (HOME_META) {
-    ['originBadge', 'topbarTag', 'coordText'].forEach(function (key) {
+    ['originBadge', 'topbarTag', 'coordText', 'equation'].forEach(function (key) {
       if (typeof HOME_META[key] === 'string' && HOME_META[key]) MODE_META.infinity[key] = HOME_META[key];
     });
+    if (typeof HOME_META.particleCount === 'number' && HOME_META.particleCount >= 100) {
+      state.particleCount = HOME_META.particleCount;
+    }
+    if (typeof HOME_META.speed === 'number' && HOME_META.speed > 0) {
+      state.speed = HOME_META.speed;
+    }
   }
 
   var SUN_SVG_CONTENT = '<circle cx="9" cy="9" r="3.6"/><path d="M9 2v2M9 14v2M2 9h2M14 9h2M4.1 4.1l1.4 1.4M12.5 12.5l1.4 1.4M13.9 4.1l-1.4 1.4M5.5 12.5l-1.4 1.4"/>';
@@ -426,8 +432,8 @@
         var infPx = (a * 1.15 * ctK) / denK;
         var infPy = (b * 1.15 * stK * ctK) / denK;
         var diskR = bhR * (1.25 + (k % 5) * 0.35);
-        var bhPx = diskR * Math.cos(ang * 1.5);
-        var bhPy = diskR * Math.sin(ang * 1.5) * 0.28;
+        var bhPx = diskR * Math.cos(ang * 2.0);
+        var bhPy = diskR * Math.sin(ang * 2.0) * 0.28;
 
         var px = cx + infPx * (1 - morph) + bhPx * morph;
         var py = cy + infPy * (1 - morph) + bhPy * morph;
@@ -453,10 +459,16 @@
     transAnimId = requestAnimationFrame(stepTransition);
   }
 
+  var themeSwitchTimer = 0;
   function commitThemeDOM(nextTheme) {
     var mode = nextTheme === 'dark' ? 'gargantua' : 'infinity';
     state.mode = mode;
+    document.documentElement.dataset.themeSwitching = 'true';
     document.documentElement.dataset.theme = nextTheme;
+    clearTimeout(themeSwitchTimer);
+    themeSwitchTimer = window.setTimeout(function () {
+      delete document.documentElement.dataset.themeSwitching;
+    }, 280);
     try {
       localStorage.setItem('theme', nextTheme);
     } catch (e) {}
@@ -1495,6 +1507,7 @@
     var coordEl = document.getElementById('spot-coord-badge');
     var href = titleEl ? titleEl.getAttribute('href') || '' : '';
     var idMatch = /\/posts\/([^/]+)\//.exec(href);
+    var coverHidden = !coverEl || coverEl.hidden || coverEl.style.display === 'none';
     return {
       id: idMatch ? idMatch[1] : 'latest',
       url: href || '/posts/',
@@ -1502,7 +1515,7 @@
       date: dateEl ? dateEl.textContent : '',
       tags: tagsEl ? tagsEl.textContent : '',
       coord: coordEl ? coordEl.textContent : '',
-      cover: coverEl ? coverEl.getAttribute('src') || '' : '',
+      cover: !coverHidden && coverEl ? coverEl.getAttribute('src') || '' : '',
       excerpt: leadEl ? leadEl.textContent.trim() : ''
     };
   }
@@ -1517,6 +1530,7 @@
     var spotLead = document.getElementById('spot-lead-text');
     var spotReadBtn = document.getElementById('spot-read-btn');
     var spotCoverImg = document.getElementById('spot-cover-img');
+    var spotCoverSvg = document.getElementById('spot-cover-svg');
     var spotCoverLink = document.getElementById('spot-cover-link');
     var spotPath =
       data.url ||
@@ -1534,7 +1548,22 @@
     if (spotTags) spotTags.textContent = data.tags;
     if (spotCoord) spotCoord.textContent = data.coord;
     if (spotLead) spotLead.textContent = data.excerpt;
-    if (spotCoverImg && data.cover) spotCoverImg.src = data.cover;
+    var hasCover = Boolean(data.cover && String(data.cover).trim());
+    if (spotCoverImg) {
+      if (hasCover) {
+        spotCoverImg.src = data.cover;
+        spotCoverImg.hidden = false;
+        spotCoverImg.style.display = '';
+      } else {
+        spotCoverImg.removeAttribute('src');
+        spotCoverImg.hidden = true;
+        spotCoverImg.style.display = 'none';
+      }
+    }
+    if (spotCoverSvg) {
+      spotCoverSvg.hidden = hasCover;
+      spotCoverSvg.style.display = hasCover ? 'none' : '';
+    }
 
     var allLinks = document.querySelectorAll('#posts-recent-list a');
     allLinks.forEach(function (a) {
@@ -1626,7 +1655,7 @@
         date: postLink.dataset.postDate || '',
         tags: postLink.dataset.postTags || 'ARCHIVE',
         coord: postLink.dataset.postCoord || 'ARCHIVE ENTRY',
-        cover: postLink.dataset.postCover || defaultSpot.cover,
+        cover: postLink.dataset.postCover !== undefined ? postLink.dataset.postCover : defaultSpot.cover,
         excerpt: postLink.dataset.postExcerpt || defaultSpot.excerpt
       }, postLink);
       showToast('已在右侧预览《' + postLink.dataset.postTitle + '》（16:9 横幅封面），点击「阅读全文」进入详细页');
@@ -2024,8 +2053,9 @@
 
     for (var i = 0; i < count; i++) {
       var pt = particles[i];
-      var speedMod = 0.78 + 0.42 * Math.sin(pt.u * 2.0 + pt.phaseOffset);
-      pt.u = (pt.u + pt.uSpeed * speedMod * 0.68 * dt * state.speed) % (Math.PI * 2);
+      var speedMod = 0.82 + 0.32 * Math.sin(pt.u * 2.0 + pt.phaseOffset);
+      pt.u += pt.uSpeed * speedMod * 0.68 * dt * state.speed;
+      if (pt.u > Math.PI * 200) pt.u -= Math.PI * 200;
 
       var t = pt.u;
       var sinT = Math.sin(t);
@@ -2036,12 +2066,13 @@
       var by = (b * sinT * cosT) / denom;
       var bz = c * sinT;
 
-      var streamAngle = (pt.streamId / 7) * Math.PI * 2 + t * 1.5 + state.time * 0.55;
+      /* 使用严格的 2π 整数倍谐波 (t * 2.0)，消除 t = 0 ↔ 2π 右侧极点处的半周期相位翻转与粒子闪现断层 */
+      var streamAngle = (pt.streamId / 7) * Math.PI * 2 + t * 2.0 + state.time * 0.55;
       var cosTw = Math.cos(streamAngle), sinTw = Math.sin(streamAngle);
       var rx = pt.cx * cosTw - pt.cy * sinTw;
       var ry = pt.cx * sinTw + pt.cy * cosTw;
 
-      var localSpread = tubeRadius * (0.72 + 0.38 * Math.sin(t * 2 + pt.phaseOffset));
+      var localSpread = tubeRadius * (0.74 + 0.34 * Math.sin(t * 2.0 + pt.phaseOffset));
       var ox = rx * localSpread;
       var oy = ry * localSpread * 0.92;
       var oz = pt.cz * localSpread * 1.08;
@@ -2116,90 +2147,144 @@
     ctx.fill();
     ctx.restore();
 
-    // 2. 绘制黑球后方的上下引力透镜连续流线（Restored Back Lensing Streamlines）
+    // 2. 中央事件视界黑球本体 + 连续光子环亮线（置于流线与粒子底层，避免右侧 r > Rs 处粒子跨层闪现）
+    ctx.save();
+    var photonGlow = ctx.createRadialGradient(cx - Rs * 0.08, cy, Rs * 0.94, cx, cy, Rs * 1.32);
+    photonGlow.addColorStop(0, 'rgba(255, 225, 185, 0.46)');
+    photonGlow.addColorStop(0.32, 'rgba(217, 119, 87, 0.20)');
+    photonGlow.addColorStop(1, 'rgba(217, 119, 87, 0)');
+    ctx.fillStyle = photonGlow;
+    ctx.beginPath();
+    ctx.arc(cx, cy, Rs * 1.32, 0, Math.PI * 2);
+    ctx.fill();
+
+    var abyssGrad = ctx.createRadialGradient(cx - Rs * 0.22, cy - Rs * 0.20, Rs * 0.05, cx, cy, Rs);
+    abyssGrad.addColorStop(0, '#100f0e');
+    abyssGrad.addColorStop(0.55, '#070706');
+    abyssGrad.addColorStop(0.92, '#020202');
+    abyssGrad.addColorStop(1, '#000000');
+    ctx.beginPath();
+    ctx.arc(cx, cy, Rs, 0, Math.PI * 2);
+    ctx.fillStyle = abyssGrad;
+    ctx.fill();
+
+    ctx.beginPath();
+    ctx.arc(cx, cy, Rs * 1.03, 0, Math.PI * 2);
+    ctx.strokeStyle = 'rgba(255, 232, 198, 0.52)';
+    ctx.lineWidth = 1.25;
+    ctx.stroke();
+    ctx.restore();
+
+    // 3. 连续闭合的 2π 吸积盘与上下引力透镜流线（采用 C² Hermite 平滑过渡 s²(3-2s)，彻底消除左右两侧 y=0 处的折角断层）
     ctx.save();
     var diskRingNorms = [0.06, 0.18, 0.34, 0.52, 0.72, 0.90];
-    for (var bArch = 0; bArch < 2; bArch++) {
-      for (var rnIdx = 0; rnIdx < diskRingNorms.length; rnIdx++) {
-        var rn = diskRingNorms[rnIdx];
-        var rVal = rInner + rn * (rOuter - rInner);
-        ctx.beginPath();
-        for (var st = 0; st <= 64; st++) {
-          // 后半盘 phi ∈ [π, 2π] (sinP <= 0)
-          var phi = Math.PI + (st / 64) * Math.PI;
-          var cosP = Math.cos(phi), sinP = Math.sin(phi);
-          var s = -sinP;
-          var sCurve = Math.pow(s, 0.84);
-          var lx = rVal * cosP;
-          var flatY = rVal * sinP * Math.cos(tiltRad);
-          var ly;
-          if (bArch === 0) {
-            var topArchH = Rs * (1.08 + 0.78 * Math.pow(rn, 0.88)) + rVal * 0.14 * (1 - rn);
-            ly = flatY * (1 - s * 0.72) - sCurve * topArchH;
-          } else {
-            var botArchH = Rs * (1.04 + 0.66 * Math.pow(rn, 0.90)) + rVal * 0.12 * (1 - rn);
-            ly = flatY * (1 - s * 0.72) + sCurve * botArchH;
-          }
-          var sp = toScreen(lx, ly);
-          if (st === 0) ctx.moveTo(sp.x, sp.y);
-          else ctx.lineTo(sp.x, sp.y);
-        }
-        var archAlpha = (1 - rn * 0.65) * (bArch === 0 ? 0.28 : 0.20);
-        ctx.strokeStyle = 'rgba(242, 179, 126, ' + archAlpha.toFixed(3) + ')';
-        ctx.lineWidth = bArch === 0 ? 1.15 : 0.85;
-        ctx.stroke();
+    var loopSteps = 128;
+
+    // 3a. 下方次级引力透镜闭合流线环
+    for (var bIdx = 0; bIdx < diskRingNorms.length; bIdx++) {
+      var rnB = diskRingNorms[bIdx];
+      var rValB = rInner + rnB * (rOuter - rInner);
+      var botArchHB = Rs * (1.04 + 0.64 * Math.pow(rnB, 0.90)) + rValB * 0.11 * (1 - rnB);
+      ctx.beginPath();
+      for (var stB = 0; stB <= loopSteps; stB++) {
+        var phiB = (stB / loopSteps) * Math.PI * 2;
+        var cosB = Math.cos(phiB), sinB = Math.sin(phiB);
+        var lxB = rValB * cosB;
+        var sBackB = Math.max(0, -sinB);
+        var sBackSmoothB = sBackB * sBackB * (3 - 2 * sBackB);
+        var sFrontB = Math.max(0, sinB);
+        var sFrontSmoothB = sFrontB * sFrontB * (3 - 2 * sFrontB);
+        var lyB =
+          -rValB * sinB * Math.cos(tiltRad) * 0.76 +
+          sBackSmoothB * botArchHB -
+          sFrontSmoothB * (Rs * 0.14 * (1 - rnB * 0.5));
+        var spB = toScreen(lxB, lyB);
+        if (stB === 0) ctx.moveTo(spB.x, spB.y);
+        else ctx.lineTo(spB.x, spB.y);
       }
+      ctx.closePath();
+      var botAlpha = (1 - rnB * 0.65) * 0.19;
+      ctx.strokeStyle = 'rgba(242, 179, 126, ' + botAlpha.toFixed(3) + ')';
+      ctx.lineWidth = 0.85;
+      ctx.stroke();
+    }
+
+    // 3b. 主赤道吸积盘 + 上方主引力透镜拱桥一体化闭合流线环
+    for (var rnIdx = 0; rnIdx < diskRingNorms.length; rnIdx++) {
+      var rn = diskRingNorms[rnIdx];
+      var rVal = rInner + rn * (rOuter - rInner);
+      var topArchH = Rs * (1.08 + 0.78 * Math.pow(rn, 0.88)) + rVal * 0.14 * (1 - rn);
+      ctx.beginPath();
+      for (var st = 0; st <= loopSteps; st++) {
+        var phi = (st / loopSteps) * Math.PI * 2;
+        var cosP = Math.cos(phi), sinP = Math.sin(phi);
+        var lx = rVal * cosP;
+        var baseFlatY = rVal * sinP * Math.cos(tiltRad) * 0.82;
+        var s = Math.max(0, -sinP);
+        var sSmooth = s * s * (3 - 2 * s);
+        var fSin = Math.max(0, sinP);
+        var fDip = fSin * fSin * Math.exp(-(lx * lx) / (2 * (Rs * 1.25) * (Rs * 1.25)));
+        var ly = baseFlatY * (1 - sSmooth * 0.72) - sSmooth * topArchH + fDip * Rs * 0.05;
+        var sp = toScreen(lx, ly);
+        if (st === 0) ctx.moveTo(sp.x, sp.y);
+        else ctx.lineTo(sp.x, sp.y);
+      }
+      ctx.closePath();
+      var mainAlpha = (1 - rn * 0.62) * 0.31;
+      ctx.strokeStyle = 'rgba(244, 182, 124, ' + mainAlpha.toFixed(3) + ')';
+      ctx.lineWidth = 1.12;
+      ctx.stroke();
     }
     ctx.restore();
 
-    // 3. 计算全部黑洞纯粒子的连续三维投影位置
+    // 4. 计算全部黑洞纯粒子的 C² 连续三维投影轨迹（无 phi=0/2π 折角断层、无跨层闪现）
     var count = Math.min(state.particleCount, MAX_PARTICLES);
-    var backParticles = [];
-    var frontParticles = [];
+    var renderParticles = [];
 
     for (var i = 0; i < count; i++) {
       var pt = particles[i];
       var keplerOmega = 1.25 / Math.pow(0.22 + pt.rNorm, 1.32);
-      pt.phi = (pt.phi + keplerOmega * dt * state.speed) % (Math.PI * 2);
+      pt.phi += keplerOmega * dt * state.speed;
+      if (pt.phi > Math.PI * 200) pt.phi -= Math.PI * 200;
 
       var cosP = Math.cos(pt.phi);
       var sinP = Math.sin(pt.phi);
       var lx, ly;
-      var isFrontDisk = false;
 
       if (pt.branch === 2) {
-        var rHalo = Rs * (1.035 + 0.52 * Math.pow(pt.rNorm, 1.45));
+        var rHalo = Rs * (1.05 + 0.50 * Math.pow(pt.rNorm, 1.45));
         lx = rHalo * cosP * (1.12 + 0.22 * pt.rNorm);
         ly = rHalo * sinP * (1.02 + 0.10 * pt.rNorm) + pt.cz * 2.0;
-        isFrontDisk = false;
       } else {
-        var r = rInner + pt.rNorm * (rOuter - rInner) + pt.bhJitter * Rs * 0.04;
+        var r = Math.max(Rs * 1.06, rInner + pt.rNorm * (rOuter - rInner) + pt.bhJitter * Rs * 0.035);
         lx = r * cosP;
-        var flatY = r * sinP * Math.cos(tiltRad) + pt.cz * 2.5;
+        var sBack = Math.max(0, -sinP);
+        var sBackSmooth = sBack * sBack * (3 - 2 * sBack);
+        var sFront = Math.max(0, sinP);
+        var sFrontSmooth = sFront * sFront * (3 - 2 * sFront);
 
-        if (sinP >= 0) {
-          isFrontDisk = true;
-          var frontDip = Math.sin(pt.phi) * Math.exp(-(lx * lx) / (2 * (Rs * 1.25) * (Rs * 1.25)));
-          ly = flatY * 0.82 + frontDip * Rs * 0.06;
+        if (pt.branch === 0) {
+          /* 主吸积盘（前半盘）+ 上方引力透镜拱桥（后半盘），在 sinP = 0 处位置与一阶导数 100% 连续 */
+          var flatY0 = r * sinP * Math.cos(tiltRad) * 0.82;
+          var frontDip0 = sFront * sFront * Math.exp(-(lx * lx) / (2 * (Rs * 1.25) * (Rs * 1.25)));
+          var topArchH0 = Rs * (1.08 + 0.78 * Math.pow(pt.rNorm, 0.88)) + r * 0.14 * (1 - pt.rNorm);
+          ly = flatY0 * (1 - sBackSmooth * 0.72) - sBackSmooth * topArchH0 + frontDip0 * Rs * 0.05 + pt.cz * 2.05;
         } else {
-          isFrontDisk = false;
-          var s = -sinP;
-          var sCurve = Math.pow(s, 0.84);
-          if (pt.branch === 0) {
-            var topArchH = Rs * (1.08 + 0.78 * Math.pow(pt.rNorm, 0.88)) + r * 0.14 * (1 - pt.rNorm);
-            ly = flatY * (1 - s * 0.72) - sCurve * topArchH;
-          } else {
-            var botArchH = Rs * (1.04 + 0.66 * Math.pow(pt.rNorm, 0.90)) + r * 0.12 * (1 - pt.rNorm);
-            ly = flatY * (1 - s * 0.72) + sCurve * botArchH;
-          }
+          /* 下方引力透镜拱桥（后半盘）+ 赤道内盘过渡（前半盘），消除右侧 y=0 处速度反向折返断层 */
+          var botArchH1 = Rs * (1.04 + 0.66 * Math.pow(pt.rNorm, 0.90)) + r * 0.12 * (1 - pt.rNorm);
+          ly =
+            -r * sinP * Math.cos(tiltRad) * 0.76 +
+            sBackSmooth * botArchH1 -
+            sFrontSmooth * (Rs * 0.14 * (1 - pt.rNorm * 0.5)) +
+            pt.cz * 2.05;
+        }
 
-          var dCenter = Math.hypot(lx, ly);
-          var minR = Rs * (1.0 + 0.035 * s);
-          if (dCenter < minR && dCenter > 0.001) {
-            var pushScale = 1 + ((minR / dCenter) - 1) * s;
-            lx *= pushScale;
-            ly *= pushScale;
-          }
+        var dCenter = Math.hypot(lx, ly);
+        var minR = Rs * (1.02 + 0.03 * sBackSmooth);
+        if (dCenter < minR && dCenter > 0.001) {
+          var pushScale = 1 + ((minR / dCenter) - 1) * sBackSmooth;
+          lx *= pushScale;
+          ly *= pushScale;
         }
       }
 
@@ -2219,91 +2304,29 @@
         colorRGB = '217, 119, 87';
       }
 
-      var item = {
+      renderParticles.push({
         x: sp.x + pt.dx,
         y: sp.y + pt.dy,
         r: pt.size * (0.82 + 0.28 * innerHeat) + pt.glow * 0.4,
         colorRGB: colorRGB,
         alpha: alpha,
         innerHeat: innerHeat
-      };
-
-      if (isFrontDisk) frontParticles.push(item);
-      else backParticles.push(item);
+      });
     }
 
-    function renderPureParticles(list) {
-      for (var k = 0; k < list.length; k++) {
-        var p = list[k];
-        if (p.r > 1.85 || p.innerHeat > 0.5) {
-          ctx.beginPath();
-          ctx.arc(p.x, p.y, p.r * 2.2, 0, Math.PI * 2);
-          ctx.fillStyle = 'rgba(' + p.colorRGB + ', ' + (p.alpha * 0.18).toFixed(3) + ')';
-          ctx.fill();
-        }
+    for (var k = 0; k < renderParticles.length; k++) {
+      var p = renderParticles[k];
+      if (p.r > 1.85 || p.innerHeat > 0.5) {
         ctx.beginPath();
-        ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
-        ctx.fillStyle = 'rgba(' + p.colorRGB + ', ' + p.alpha.toFixed(3) + ')';
+        ctx.arc(p.x, p.y, p.r * 2.2, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(' + p.colorRGB + ', ' + (p.alpha * 0.18).toFixed(3) + ')';
         ctx.fill();
       }
-    }
-
-    renderPureParticles(backParticles);
-
-    // 4. 中央事件视界黑球本体 + 连续光子环线条
-    ctx.save();
-    var photonGlow = ctx.createRadialGradient(cx - Rs * 0.08, cy, Rs * 0.94, cx, cy, Rs * 1.32);
-    photonGlow.addColorStop(0, 'rgba(255, 225, 185, 0.48)');
-    photonGlow.addColorStop(0.32, 'rgba(217, 119, 87, 0.22)');
-    photonGlow.addColorStop(1, 'rgba(217, 119, 87, 0)');
-    ctx.fillStyle = photonGlow;
-    ctx.beginPath();
-    ctx.arc(cx, cy, Rs * 1.32, 0, Math.PI * 2);
-    ctx.fill();
-
-    var abyssGrad = ctx.createRadialGradient(cx - Rs * 0.22, cy - Rs * 0.20, Rs * 0.05, cx, cy, Rs);
-    abyssGrad.addColorStop(0, '#100f0e');
-    abyssGrad.addColorStop(0.55, '#070706');
-    abyssGrad.addColorStop(0.92, '#020202');
-    abyssGrad.addColorStop(1, '#000000');
-    ctx.beginPath();
-    ctx.arc(cx, cy, Rs, 0, Math.PI * 2);
-    ctx.fillStyle = abyssGrad;
-    ctx.fill();
-
-    // 紧贴视界边缘的连续光子环亮线
-    ctx.beginPath();
-    ctx.arc(cx, cy, Rs * 1.03, 0, Math.PI * 2);
-    ctx.strokeStyle = 'rgba(255, 232, 198, 0.52)';
-    ctx.lineWidth = 1.25;
-    ctx.stroke();
-    ctx.restore();
-
-    // 5. 横跨黑球正前方的赤道吸积盘连续流线 + 前景纯粒子流
-    ctx.save();
-    for (var fnIdx = 0; fnIdx < diskRingNorms.length; fnIdx++) {
-      var fn = diskRingNorms[fnIdx];
-      var rFront = rInner + fn * (rOuter - rInner);
       ctx.beginPath();
-      for (var fst = 0; fst <= 64; fst++) {
-        var fPhi = (fst / 64) * Math.PI;
-        var fCos = Math.cos(fPhi), fSin = Math.sin(fPhi);
-        var flx = rFront * fCos;
-        var fFlatY = rFront * fSin * Math.cos(tiltRad);
-        var fDip = fSin * Math.exp(-(flx * flx) / (2 * (Rs * 1.25) * (Rs * 1.25)));
-        var fly = fFlatY * 0.82 + fDip * Rs * 0.06;
-        var fsp = toScreen(flx, fly);
-        if (fst === 0) ctx.moveTo(fsp.x, fsp.y);
-        else ctx.lineTo(fsp.x, fsp.y);
-      }
-      var fAlpha = (1 - fn * 0.6) * 0.34;
-      ctx.strokeStyle = 'rgba(244, 182, 124, ' + fAlpha.toFixed(3) + ')';
-      ctx.lineWidth = 1.15;
-      ctx.stroke();
+      ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(' + p.colorRGB + ', ' + p.alpha.toFixed(3) + ')';
+      ctx.fill();
     }
-    ctx.restore();
-
-    renderPureParticles(frontParticles);
   }
 
   /* ----------------------------------------------------------------------
@@ -2772,6 +2795,8 @@
   var sliderDensity = document.getElementById('slider-density');
   var valDensity = document.getElementById('val-density');
   if (sliderDensity) {
+    sliderDensity.value = String(state.particleCount);
+    if (valDensity) valDensity.textContent = state.particleCount + ' 粒子';
     sliderDensity.addEventListener('input', function () {
       state.particleCount = parseInt(sliderDensity.value, 10);
       if (valDensity) valDensity.textContent = state.particleCount + ' 粒子';
@@ -2781,6 +2806,8 @@
   var sliderSpeed = document.getElementById('slider-speed');
   var valSpeed = document.getElementById('val-speed');
   if (sliderSpeed) {
+    sliderSpeed.value = String(state.speed);
+    if (valSpeed) valSpeed.textContent = state.speed.toFixed(1) + 'x';
     sliderSpeed.addEventListener('input', function () {
       state.speed = parseFloat(sliderSpeed.value);
       if (valSpeed) valSpeed.textContent = state.speed.toFixed(1) + 'x';

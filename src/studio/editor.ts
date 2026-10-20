@@ -1,13 +1,11 @@
 /**
  * 蓝图双模态正文编辑器（所见即所得 Visual ↔ Markdown 源码 ↔ 双栏对照 Split）
  *
- * 相比旧版调整与新增：
- *   1. 支持「富文本蓝图视图」「Markdown 源码」「双栏同步对照」三种编辑模式无缝切换；
- *   2. 新增 HUD 文章页专属排版块接口：代码终端块（Codeblock）、行内代码（Inline Code）、
- *      可增删行列的表格（Table）；
- *   3. 新增「一键识别粗体小节为 H2 章节坐标」功能（按钮是 07 组标题行的纯图标，解决旧文章只有 **加粗** 导致 TOC 目录为空的问题）；
- *   4. 移除阻塞式 window.prompt / window.alert，改用页内 HUD 抽屉插入链接、上传/挑选文章配图；
- *   5. 实时提取 H2/H3 章节坐标，用与前台文章页同构的 .toc-box-title / .toc-list / .toc-num 渲染右栏目录，点击可定位并短暂高亮。
+ * 1. 支持「富文本蓝图视图」「Markdown 源码」「双栏同步对照」三种编辑模式无缝切换；
+ * 2. 提供 HUD 文章页排版块接口：代码终端块（Codeblock）、行内代码（Inline Code）、
+ *    可增删行列的表格（Table）、悬浮弹窗配图选择器与选中文本上方悬浮链接输入框；
+ * 3. 支持「一键检测文章章节」功能：自动识别粗体小节、中式序号章节与现有 H1~H3 标题并生成章节坐标导览；
+ * 4. 实时提取 H2/H3 章节坐标，与前台文章页同构渲染右栏目录，点击可滚动定位并高亮。
  */
 import { extractRawHtml, htmlToMarkdown, renderMarkdown } from './md';
 import { esc, toast } from './ui';
@@ -75,30 +73,38 @@ const ALIGN_ICONS: Record<string, string> = {
   right: '<path d="M1 3h12M5 6.5h8M3 10h10"/>',
 };
 
-/* 05 · 插入内容的纯图标按钮：与 03 栏共用 16×16 / 1.6px / currentColor 的线性风格 */
-const ICON_ATTRS = `viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" fill="none"
-  stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"`;
+/* 05 · 插入内容的纯图标按钮：统一 18×18 / 1.65px / currentColor 线性风格 */
+const ICON_ATTRS = `viewBox="0 0 18 18" width="18" height="18" aria-hidden="true" fill="none"
+  stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round"`;
 
 const CODE_ICON = `<svg ${ICON_ATTRS}>
-  <path d="M5.4 4.2 2.2 8l3.2 3.8"/>
-  <path d="M10.6 4.2 13.8 8l-3.2 3.8"/>
-  <path d="M9.2 2.7 6.8 13.3"/>
+  <path d="M6 4.8 2.5 9 6 13.2"/>
+  <path d="M12 4.8 15.5 9 12 13.2"/>
+  <path d="M10.2 3.2 7.8 14.8"/>
+</svg>`;
+
+const TABLE_ICON = `<svg ${ICON_ATTRS}>
+  <rect x="2.2" y="3" width="13.6" height="12" rx="1.6"/>
+  <line x1="2.2" y1="7" x2="15.8" y2="7"/>
+  <line x1="2.2" y1="11" x2="15.8" y2="11"/>
+  <line x1="6.8" y1="7" x2="6.8" y2="15"/>
+  <line x1="11.2" y1="7" x2="11.2" y2="15"/>
 </svg>`;
 
 const IMAGE_ICON = `<svg ${ICON_ATTRS}>
-  <rect x="1.8" y="2.8" width="12.4" height="10.4" rx="1.2"/>
-  <circle cx="10.9" cy="5.9" r="1.15"/>
-  <path d="M2.4 11.6 5.6 8.4l2.5 2.5 2.1-1.9 3.4 3.1"/>
+  <rect x="2.2" y="3.2" width="13.6" height="11.6" rx="1.6"/>
+  <circle cx="12.1" cy="6.7" r="1.25"/>
+  <path d="M2.8 13.1 6.4 9.5l2.7 2.7 2.3-2.1 3.8 3.4"/>
 </svg>`;
 
 const LINK_ICON = `<svg ${ICON_ATTRS}>
-  <path d="M6.6 9.4a2.7 2.7 0 0 0 3.8.1l2.1-2.1a2.7 2.7 0 0 0-3.8-3.8l-1.2 1.2"/>
-  <path d="M9.4 6.6a2.7 2.7 0 0 0-3.8-.1L3.5 8.6a2.7 2.7 0 0 0 3.8 3.8l1.2-1.2"/>
+  <path d="M7.4 10.6a3 3 0 0 0 4.2.1l2.3-2.3a3 3 0 0 0-4.2-4.2L8.4 5.5"/>
+  <path d="M10.6 7.4a3 3 0 0 0-4.2-.1L4.1 9.6a3 3 0 0 0 4.2 4.2l1.3-1.3"/>
 </svg>`;
 
 const ALIGN_BUTTONS = [
   { kind: 'left', title: '左对齐（默认）' },
-  { kind: 'center', title: '居中' },
+  { kind: 'center', title: '居中对齐' },
   { kind: 'right', title: '右对齐' },
 ] as const;
 
@@ -131,7 +137,6 @@ export function createEditor(
         </div>
       </div>
 
-      <!-- 页内插入面板（替代浏览器原生 prompt，支持链接/配图/表格/提示框） -->
       <div class="ed-drawer" id="ed-drawer" hidden></div>
 
       <div class="ed-panes">
@@ -154,20 +159,25 @@ export function createEditor(
       <div class="ed-group">
         <span class="ed-glabel">02 · 文字样式</span>
         <div class="ed-row ed-row--grid ed-row--styles">
-          <button type="button" class="ed-btn ed-btn--sample" data-cmd="bold" title="加粗（Ctrl+B）" aria-label="加粗">
-            <span class="ed-sample-key">B</span><span class="ed-sample ed-sample--bold">示例</span>
+          <button type="button" class="ed-btn ed-btn--sample" data-cmd="bold" aria-pressed="false" title="加粗（Ctrl+B）" aria-label="加粗">
+            <span class="ed-sample-key">B</span>
+            <span class="ed-sample ed-sample--bold">加粗</span>
           </button>
-          <button type="button" class="ed-btn ed-btn--sample" data-cmd="italic" title="斜体（Ctrl+I）" aria-label="斜体">
-            <span class="ed-sample-key">I</span><span class="ed-sample ed-sample--italic">示例</span>
+          <button type="button" class="ed-btn ed-btn--sample" data-cmd="italic" aria-pressed="false" title="斜体（Ctrl+I）" aria-label="斜体">
+            <span class="ed-sample-key">I</span>
+            <span class="ed-sample ed-sample--italic">斜体</span>
           </button>
-          <button type="button" class="ed-btn ed-btn--sample" data-cmd="strikeThrough" title="删除线" aria-label="删除线">
-            <span class="ed-sample-key">S</span><span class="ed-sample ed-sample--strike">示例</span>
+          <button type="button" class="ed-btn ed-btn--sample" data-cmd="strikeThrough" aria-pressed="false" title="删除线" aria-label="删除线">
+            <span class="ed-sample-key">S</span>
+            <span class="ed-sample ed-sample--strike">删除线</span>
           </button>
-          <button type="button" class="ed-btn ed-btn--sample ed-btn--mark" data-cmd="mark" title="着重色（Claude 橙）" aria-label="着重色">
-            <span class="ed-sample-key ed-sample-key--mark">D</span><span class="ed-sample ed-sample--mark">示例</span>
+          <button type="button" class="ed-btn ed-btn--sample ed-btn--mark" data-cmd="mark" aria-pressed="false" title="着重高亮（理性橙）" aria-label="着重色">
+            <span class="ed-sample-key ed-sample-key--mark">M</span>
+            <span class="ed-sample ed-sample--mark">着重色</span>
           </button>
-          <button type="button" class="ed-btn ed-btn--sample" data-cmd="inlineCode" title="行内代码" aria-label="行内代码">
-            <span class="ed-sample-key ed-sample-key--code">&lt;/&gt;</span><span class="ed-sample ed-sample--code">示例</span>
+          <button type="button" class="ed-btn ed-btn--sample ed-btn--sample-wide" data-cmd="inlineCode" aria-pressed="false" title="行内代码" aria-label="行内代码">
+            <span class="ed-sample-key ed-sample-key--code">&lt;/&gt;</span>
+            <span class="ed-sample ed-sample--code">行内代码</span>
           </button>
         </div>
       </div>
@@ -177,8 +187,8 @@ export function createEditor(
         <div class="ed-row ed-row--align">
           ${ALIGN_BUTTONS.map(
             (a) => `<button type="button" class="ed-btn ed-btn--icon" data-align="${a.kind}" title="${a.title}" aria-label="${a.title}">
-              <svg viewBox="0 0 14 14" width="14" height="14" aria-hidden="true" fill="none"
-                   stroke="currentColor" stroke-width="1.6" stroke-linecap="round">${ALIGN_ICONS[a.kind]}</svg>
+              <svg viewBox="0 0 14 14" width="16" height="16" aria-hidden="true" fill="none"
+                   stroke="currentColor" stroke-width="1.65" stroke-linecap="round">${ALIGN_ICONS[a.kind]}</svg>
             </button>`
           ).join('')}
         </div>
@@ -198,11 +208,13 @@ export function createEditor(
           <button type="button" class="ed-btn ed-btn--icon" data-cmd="insertCodeblock" title="插入代码块" aria-label="插入代码块">
             ${CODE_ICON}
           </button>
-          <button type="button" class="ed-btn" data-cmd="insertTable" title="插入表格">表格</button>
-          <button type="button" class="ed-btn ed-btn--icon" data-cmd="insertImage" title="插入或上传配图" aria-label="插入或上传配图">
+          <button type="button" class="ed-btn ed-btn--icon" data-cmd="insertTable" title="插入表格" aria-label="插入表格">
+            ${TABLE_ICON}
+          </button>
+          <button type="button" class="ed-btn ed-btn--icon" data-cmd="insertImage" title="从媒体库选择或上传照片" aria-label="插入或上传配图">
             ${IMAGE_ICON}
           </button>
-          <button type="button" class="ed-btn ed-btn--icon" data-cmd="createLink" title="插入链接" aria-label="插入链接">
+          <button type="button" class="ed-btn ed-btn--icon" data-cmd="createLink" title="选中正文文字后插入超链接" aria-label="插入链接">
             ${LINK_ICON}
           </button>
         </div>
@@ -231,17 +243,15 @@ export function createEditor(
 
       <div class="ed-group ed-group--toc">
         <div class="ed-glabel ed-glabel--row">
-          <span>07 · 实时章节坐标预览</span>
-          <!-- 纯图标按钮：把正文里独占一行的 **粗体小节** 识别为 H2 目录（事件绑定见下方） -->
-          <button type="button" class="ed-btn ed-btn--icon ed-glabel-action" id="ed-auto-toc-btn" title="识别粗体小节为 H2 目录" aria-label="识别粗体小节为 H2 目录">
-            <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" fill="none"
-                 stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M3.1 1.9h5L11.2 5v5.2"/>
-              <path d="M2.1 2.9v10.2a1 1 0 0 0 1 1h3.6"/>
-              <path d="M8.1 1.9V5h3.1"/>
-              <path d="M4.4 6.4h4.1M4.4 8.6h3.2M4.4 10.8h2.2"/>
-              <path d="M12.7 10.3v4M10.7 12.3h4"/>
+          <span>07 · 章节坐标预览</span>
+          <button type="button" class="ed-toc-detect-btn" id="ed-auto-toc-btn" title="智能检测正文中的章节标题并生成目录" aria-label="一键检测文章章节">
+            <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true" fill="none"
+                 stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M2.2 3.8h11.6M2.2 8h7.2M2.2 12.2h4.8"/>
+              <circle cx="11.8" cy="11" r="2.2"/>
+              <path d="m13.5 12.7 1.4 1.4"/>
             </svg>
+            <span>检测章节</span>
           </button>
         </div>
         <div class="ed-toc-preview" id="ed-toc-preview"></div>
@@ -273,19 +283,24 @@ export function createEditor(
   let tocActiveTimer: number | undefined;
   let headingFlashTimer: number | undefined;
 
-  // 抽屉打开前保存的正文选区：点抽屉里的图片/上传按钮后仍能插回原光标处
+  // 弹窗/浮层打开前保存的正文选区
   let savedRange: Range | null = null;
-  // 抽屉的异步请求令牌：关闭后，迟到的 fetch 结果不再往抽屉里写
+  let lastValidRange: Range | null = null;
+  // 异步请求令牌：关闭后，迟到的 fetch 结果不再往弹窗里写
   let drawerSeq = 0;
   // 给刚插入的表格打临时标记，插入后靠它找回 DOM 并把光标放进第一个单元格
   let tableSeq = 0;
 
+  let activeImgModal: HTMLElement | null = null;
+  let activeLinkPopover: HTMLElement | null = null;
+  let linkPopoverCleanup: (() => void) | null = null;
+
   function collectHeadings(): Array<{ el: HTMLElement; depth: number; text: string }> {
     const list: Array<{ el: HTMLElement; depth: number; text: string }> = [];
-    area.querySelectorAll<HTMLElement>('h2, h3').forEach((node) => {
+    area.querySelectorAll<HTMLElement>('h1, h2, h3').forEach((node) => {
       const text = (node.textContent ?? '').trim();
       if (!text) return;
-      list.push({ el: node, depth: node.tagName === 'H2' ? 2 : 3, text });
+      list.push({ el: node, depth: node.tagName === 'H3' ? 3 : 2, text });
     });
     return list;
   }
@@ -299,7 +314,7 @@ export function createEditor(
   }
 
   function renderTocPreview(): void {
-    const tocBox = barHost.querySelector<HTMLElement>('#ed-toc-preview');
+    const tocBox = bar.querySelector<HTMLElement>('#ed-toc-preview');
     const headings = collectHeadings();
     tocHeadingEls = headings.map((h) => h.el);
     opts.onHeadingsChange?.(
@@ -310,17 +325,15 @@ export function createEditor(
       }))
     );
     if (!tocBox) return;
-    // 与前台文章页同一套结构：.toc-box-title + ul.toc-list + li > a > .toc-num
-    const tocTitle = `<h2 class="toc-box-title">INDEX // 章节坐标导览</h2>`;
+    const tocTitle = `<h2 class="toc-box-title">INDEX // 章节坐标导览 (${headings.length})</h2>`;
     if (!headings.length) {
-      tocBox.innerHTML = `${tocTitle}<p class="toc-empty">尚未检测到 H2/H3 章节标题（点击右上角图标可一键识别粗体小节）</p>`;
+      tocBox.innerHTML = `${tocTitle}<p class="toc-empty">尚未检测到 H2/H3 章节标题（点击上方「检测章节」可智能识别正文小节）</p>`;
       return;
     }
-    // 前台编号规则：H2/H3 统一按出现顺序两位数字编号，H3 不缩进
     tocBox.innerHTML = `${tocTitle}<ul class="toc-list">${headings
       .map(
         (h, idx) =>
-          `<li><a href="#ed-heading-${idx}" data-toc-index="${idx}"><span class="toc-num">${String(
+          `<li><a href="#ed-heading-${idx}" data-toc-index="${idx}" class="${h.depth === 3 ? 'is-h3' : ''}"><span class="toc-num">${String(
             idx + 1
           ).padStart(2, '0')}</span><span>${esc(h.text)}</span></a></li>`
       )
@@ -329,7 +342,7 @@ export function createEditor(
 
   // 点击目录：滚动到对应标题并短暂高亮（不移动光标、不触发保存）
   function jumpToHeading(index: number, link: HTMLAnchorElement): void {
-    barHost.querySelectorAll<HTMLAnchorElement>('.ed-toc-preview .toc-list a[data-active]').forEach((a) => {
+    bar.querySelectorAll<HTMLAnchorElement>('.ed-toc-preview .toc-list a[data-active]').forEach((a) => {
       if (a !== link) a.removeAttribute('data-active');
     });
     link.setAttribute('data-active', 'true');
@@ -338,7 +351,6 @@ export function createEditor(
 
     const heading = tocHeadingEls[index];
     if (!heading || !heading.isConnected) return;
-    // 源码模式正文区隐藏，只保留目录项的激活态
     if (mode === 'markdown') return;
 
     area.querySelectorAll('.is-toc-heading-flash').forEach((el) => el.classList.remove('is-toc-heading-flash'));
@@ -348,11 +360,6 @@ export function createEditor(
     heading.scrollIntoView({ block: 'center', behavior: 'smooth' });
   }
 
-  /**
-   * 编辑器里图片的显示路径：正文里存的是 `../../assets/posts/...`，
-   * 在 /studio/ 页面按相对路径解析会 404；预览时换成 /uploads/...，
-   * 原路径记在 data-ed-asset 里，保存/同步时再换回去。
-   */
   function previewAssetSrc(src: string): string {
     return src
       .replace(/^\.\.\/\.\.\/assets\/posts\//, '/uploads/posts/')
@@ -372,7 +379,6 @@ export function createEditor(
     });
   }
 
-  /** 序列化前把预览用的 /uploads/... 换回相对路径，保证正文仍可迁移 */
   function editorHtmlForMarkdown(): string {
     return area.innerHTML.replace(/<img\b[^>]*>/g, (tag) => {
       const m = /\bdata-ed-asset="([^"]*)"/.exec(tag);
@@ -437,38 +443,84 @@ export function createEditor(
     });
   });
 
-  // 一键将独占一行的 **粗体小节** 转换为 H2 标题（按钮位于右栏 07 组标题行）
-  bar.querySelector('#ed-auto-toc-btn')?.addEventListener('click', () => {
+  function detectAndPromoteChapters(): void {
+    if (mode === 'markdown') {
+      syncSourceToVisual();
+    }
     const curMd = mode === 'markdown' ? sourceArea.value : htmlToMarkdown(editorHtmlForMarkdown(), raws);
-    let count = 0;
+    let promotedCount = 0;
+    let inFence = false;
+
     const converted = curMd
       .split('\n')
       .map((line) => {
         const trimmed = line.trim();
-        // 匹配独占一行的 **一、xxx** 或 **1. xxx** 或 **xxx：**
-        const m = /^\*\*([^*]{2,36})\*\*$/.exec(trimmed);
-        if (m) {
-          const inner = m[1]!.replace(/[：:]$/, '').trim();
-          if (inner && !inner.startsWith('前言') && !inner.includes('The End')) {
-            count++;
-            return `## ${inner}`;
+        if (/^```/.test(trimmed)) {
+          inFence = !inFence;
+          return line;
+        }
+        if (inFence || !trimmed) return line;
+
+        const h1Match = /^#\s+(.+)$/.exec(trimmed);
+        if (h1Match) {
+          promotedCount++;
+          return `## ${h1Match[1]!.trim()}`;
+        }
+
+        if (/^#{2,6}\s+/.test(trimmed)) return line;
+
+        const boldMatch = /^(?:\*\*([^*]{2,52})\*\*|<strong>([^<]{2,52})<\/strong>)$/i.exec(trimmed);
+        if (boldMatch) {
+          const rawInner = (boldMatch[1] ?? boldMatch[2] ?? '').replace(/[：:]$/, '').trim();
+          const isSignoff = /^[-—─\s]*the\s+end[-—─\s]*$/i.test(rawInner) || /^[-—─]+$/.test(rawInner);
+          const isPureIntroLabel = rawInner === '前言';
+          if (rawInner && !isSignoff && !isPureIntroLabel && !/[。！？]$/.test(rawInner)) {
+            promotedCount++;
+            return `## ${rawInner}`;
           }
         }
+
+        const cnHeadingMatch =
+          /^(?:第[一二三四五六七八九十百0-9]+[章节步篇天部分]|[一二三四五六七八九十]+[、，.．]|步骤[一二三四五六七八九十0-9]+|[（(][一二三四五六七八九十0-9]+[)）])\s*([^\n]{1,36})$/.exec(
+            trimmed
+          );
+        if (cnHeadingMatch && !/[。！？；]$/.test(trimmed) && !trimmed.includes('http')) {
+          const cleanTitle = trimmed.replace(/[：:]$/, '').trim();
+          promotedCount++;
+          return `## ${cleanTitle}`;
+        }
+
         return line;
       })
       .join('\n');
 
-    if (count === 0) {
-      // 如果没有粗体行，则在光标处插入一个示例 H2 章节
-      area.focus();
-      document.execCommand('insertHTML', false, '<h2>新章节标题</h2><p>在此输入章节正文…</p>');
-      changed();
-      toast('已插入 H2 章节标题节点');
-      return;
+    if (promotedCount > 0) {
+      setMarkdown(converted);
+      opts.onInput();
+      const total = collectHeadings().length;
+      toast(`已智能识别并升级 ${promotedCount} 处章节标题，当前共 ${total} 个章节坐标`);
+    } else {
+      renderTocPreview();
+      const total = collectHeadings().length;
+      if (total > 0) {
+        toast(`章节检测完成：当前共识别到 ${total} 个章节坐标`);
+      } else {
+        toast('未检测到章节标题，可选中标题行点击上方「H2 / H3」或使用加粗单行小节', true);
+      }
     }
-    setMarkdown(converted);
-    opts.onInput();
-    toast(`已自动将 ${count} 处粗体小节升级为 H2 章节坐标，左侧 TOC 目录已同步生成`);
+
+    const tocBox = bar.querySelector<HTMLElement>('#ed-toc-preview');
+    if (tocBox) {
+      tocBox.classList.remove('is-toc-box-flash');
+      void tocBox.offsetWidth;
+      tocBox.classList.add('is-toc-box-flash');
+    }
+  }
+
+  bar.querySelector('#ed-auto-toc-btn')?.addEventListener('click', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    detectAndPromoteChapters();
   });
 
   function currentBlock(): HTMLElement | null {
@@ -482,6 +534,19 @@ export function createEditor(
       el = el.parentElement;
     }
     return null;
+  }
+
+  function hasAncestorTag(tagName: string): boolean {
+    const sel = window.getSelection();
+    const node = sel?.anchorNode;
+    if (!node) return false;
+    let el: HTMLElement | null =
+      node.nodeType === Node.ELEMENT_NODE ? (node as HTMLElement) : node.parentElement;
+    while (el && el !== area) {
+      if (el.tagName === tagName) return true;
+      el = el.parentElement;
+    }
+    return false;
   }
 
   function wrapSelection(tag: string): void {
@@ -554,8 +619,6 @@ export function createEditor(
   }
 
   function insertHr(cls: string): void {
-    // 四种样式都带类名插入：md.ts 的 styledHr 规则会把 `<hr class="…">` 原样留在 Markdown 里。
-    // （用户在源码模式手写不带类的 <hr> 时，仍由 md.ts 的默认规则转成 `* * *`。）
     const html = `<hr class="${cls || 'star'}">`;
     if (mode === 'markdown') {
       insertInTextarea(`\n\n${html}\n\n`, '');
@@ -590,27 +653,52 @@ export function createEditor(
     changed();
   }
 
-  /* ---------------- 页内抽屉：插入链接 / 配图 / 表格 ---------------- */
+  /* ---------------- 悬浮弹窗与选中文本上方浮层：插入链接 / 配图 ---------------- */
 
-  function closeDrawer(): void {
+  function closeLinkPopover(): void {
+    if (linkPopoverCleanup) {
+      linkPopoverCleanup();
+      linkPopoverCleanup = null;
+    }
+    if (activeLinkPopover) {
+      activeLinkPopover.remove();
+      activeLinkPopover = null;
+    }
+  }
+
+  function closeImageModal(): void {
     drawerSeq += 1;
+    if (activeImgModal) {
+      activeImgModal.remove();
+      activeImgModal = null;
+    }
     drawer.hidden = true;
     drawer.innerHTML = '';
+  }
+
+  function closeDrawer(): void {
+    closeLinkPopover();
+    closeImageModal();
     savedRange = null;
   }
 
-  /** 记下正文里的当前选区：点抽屉按钮 / 媒体库缩略图后还能插回原光标处 */
   function captureSelection(): void {
     const sel = window.getSelection();
-    if (!sel || sel.rangeCount === 0) {
-      savedRange = null;
-      return;
+    if (sel && sel.rangeCount > 0) {
+      const range = sel.getRangeAt(0);
+      if (area.contains(range.commonAncestorContainer)) {
+        savedRange = range.cloneRange();
+        lastValidRange = range.cloneRange();
+        return;
+      }
     }
-    const range = sel.getRangeAt(0);
-    savedRange = area.contains(range.commonAncestorContainer) ? range.cloneRange() : null;
+    if (lastValidRange && area.contains(lastValidRange.commonAncestorContainer)) {
+      savedRange = lastValidRange.cloneRange();
+    } else {
+      savedRange = null;
+    }
   }
 
-  /** 把焦点和选区还给正文；没有可用落点就退到正文末尾 */
   function focusAreaWithRange(range: Range | null): void {
     area.focus();
     const sel = window.getSelection();
@@ -640,7 +728,6 @@ export function createEditor(
     }
     const html = items.map((it) => `<p><img src="${esc(it.src)}" alt="${esc(it.alt)}"></p>`).join('');
     insertHtmlAtRange(html, range);
-    // 刚插入的相对路径立即换成 /uploads/... 预览，序列化时会自动换回去
     normalizeEditorImagePreviews();
     savedRange = null;
     changed();
@@ -650,7 +737,6 @@ export function createEditor(
     return file.type.startsWith('image/') || /\.(jpe?g|png|webp|avif|gif|svg|heic|heif)$/i.test(file.name);
   }
 
-  /** 逐张上传（父级负责压缩与报错 toast），返回可直接写进正文的图片条目 */
   async function uploadImages(files: File[]): Promise<Array<{ src: string; alt: string }>> {
     if (!opts.onUploadPostAsset) {
       toast('当前没有上传通道，请重新登录后台后再试', true);
@@ -673,118 +759,308 @@ export function createEditor(
     return out;
   }
 
-  /** getPostAssets 可能是文件名、<slug>/<file>，也可能已经是正文相对路径 */
-  function localAssetSrc(entry: string): string {
-    if (/^(https?:|data:|blob:)/.test(entry)) return entry;
-    if (entry.startsWith('/') || entry.startsWith('../')) return entry;
-    return `../../assets/posts/${entry}`;
-  }
-
   function isImageMedia(item: StudioMediaItem): boolean {
     return (item.mime ?? '').startsWith('image/') || /\.(jpe?g|png|webp|avif|gif|svg)$/i.test(item.path);
   }
 
+  /**
+   * 链接插入功能：选中一段正文文字后，在所选文字正上方弹出悬浮输入框输入链接
+   */
   function openLinkDrawer(): void {
+    closeDrawer();
     captureSelection();
-    drawerSeq += 1;
-    const sel = window.getSelection();
-    const selectedText = sel && !sel.isCollapsed ? sel.toString().trim() : '';
-    drawer.hidden = false;
-    drawer.innerHTML = `
-      <div class="ed-drawer-card">
-        <div class="ed-drawer-head">
-          <span>INSERT HYPERLINK // 插入超链接</span>
-          <button type="button" class="stage-mini-btn" id="ed-drawer-close">关闭 ×</button>
-        </div>
-        <div class="ed-drawer-grid">
-          <input class="st-input" id="ed-link-text" value="${esc(selectedText)}" placeholder="链接显示文字（如：Adoptium 官网）" />
-          <input class="st-input" id="ed-link-url" value="https://" placeholder="https://..." />
-          <button type="button" class="st-btn st-btn--primary" id="ed-link-confirm">插入链接</button>
-        </div>
-      </div>`;
-    drawer.querySelector('#ed-drawer-close')?.addEventListener('click', closeDrawer);
-    drawer.querySelector('#ed-link-confirm')?.addEventListener('click', () => {
-      const text = (drawer.querySelector<HTMLInputElement>('#ed-link-text')?.value ?? '').trim() || '链接文字';
-      const url = (drawer.querySelector<HTMLInputElement>('#ed-link-url')?.value ?? '').trim();
-      if (!url || url === 'https://') {
-        toast('请输入有效的链接地址', true);
+
+    if (mode === 'markdown') {
+      const start = sourceArea.selectionStart ?? 0;
+      const end = sourceArea.selectionEnd ?? 0;
+      const selectedText = sourceArea.value.slice(start, end).trim();
+      if (!selectedText) {
+        toast('请先在正文中拖选需要添加链接的文字', true);
         return;
       }
-      if (mode === 'markdown') {
-        insertInTextarea(`[${text}](${url})`, '');
-      } else {
+      const srcRect = sourceArea.getBoundingClientRect();
+      mountLinkPopover({
+        anchorRect: new DOMRect(srcRect.left + srcRect.width / 2 - 40, srcRect.top + 36, 80, 24),
+        initialUrl: '',
+        selectedLabel: selectedText,
+        onConfirm: (url) => {
+          sourceArea.setSelectionRange(start, end);
+          insertInTextarea('[', `](${url})`);
+        },
+      });
+      return;
+    }
+
+    // 检查是否光标在已有 <a> 内但未拖选文字：自动选中该 <a> 的文字
+    let existingHref = '';
+    if ((!savedRange || savedRange.collapsed) && window.getSelection()?.anchorNode) {
+      const node = window.getSelection()!.anchorNode!;
+      const el = node.nodeType === Node.ELEMENT_NODE ? (node as HTMLElement) : node.parentElement;
+      const anchor = el?.closest<HTMLAnchorElement>('a');
+      if (anchor && area.contains(anchor)) {
+        const r = document.createRange();
+        r.selectNodeContents(anchor);
+        savedRange = r;
+        lastValidRange = r.cloneRange();
+        existingHref = anchor.getAttribute('href') ?? '';
+      }
+    }
+
+    if (!savedRange || savedRange.collapsed || !savedRange.toString().trim()) {
+      toast('请先在正文中选中一段文字，再点击插入链接', true);
+      return;
+    }
+
+    const selectedText = savedRange.toString().trim();
+    if (!existingHref) {
+      const commonEl =
+        savedRange.commonAncestorContainer.nodeType === Node.ELEMENT_NODE
+          ? (savedRange.commonAncestorContainer as HTMLElement)
+          : savedRange.commonAncestorContainer.parentElement;
+      const anchor = commonEl?.closest<HTMLAnchorElement>('a');
+      if (anchor && area.contains(anchor)) {
+        existingHref = anchor.getAttribute('href') ?? '';
+      }
+    }
+
+    const rects = savedRange.getClientRects();
+    const firstRect = rects.length > 0 ? rects[0]! : savedRange.getBoundingClientRect();
+    const fallbackRect = area.getBoundingClientRect();
+    const anchorRect =
+      firstRect.width > 0 || firstRect.height > 0
+        ? firstRect
+        : new DOMRect(fallbackRect.left + fallbackRect.width / 2 - 40, fallbackRect.top + 48, 80, 24);
+
+    const rangeToUse = savedRange.cloneRange();
+
+    mountLinkPopover({
+      anchorRect,
+      initialUrl: existingHref,
+      selectedLabel: selectedText,
+      onConfirm: (finalUrl) => {
         insertHtmlAtRange(
-          `<a href="${esc(url)}" target="_blank" rel="noopener noreferrer">${esc(text)}</a>`,
-          savedRange
+          `<a href="${esc(finalUrl)}" target="_blank" rel="noopener noreferrer">${esc(selectedText)}</a>`,
+          rangeToUse
         );
         savedRange = null;
         changed();
-      }
-      closeDrawer();
+      },
     });
   }
 
+  function mountLinkPopover(params: {
+    anchorRect: DOMRect;
+    initialUrl: string;
+    selectedLabel: string;
+    onConfirm: (url: string) => void;
+  }): void {
+    const pop = document.createElement('div');
+    pop.className = 'ed-link-popover';
+    pop.id = 'ed-link-popover';
+    pop.setAttribute('role', 'dialog');
+    pop.setAttribute('aria-label', '插入超链接');
+
+    const shortLabel =
+      params.selectedLabel.length > 18
+        ? `${params.selectedLabel.slice(0, 18)}…`
+        : params.selectedLabel;
+
+    pop.innerHTML = `
+      <div class="ed-link-popover-head">
+        <span class="ed-link-popover-icon" aria-hidden="true">${LINK_ICON}</span>
+        <span class="ed-link-popover-target">为「${esc(shortLabel)}」添加链接</span>
+      </div>
+      <div class="ed-link-popover-row">
+        <input
+          type="url"
+          class="st-input ed-link-popover-input"
+          id="ed-link-url"
+          value="${esc(params.initialUrl)}"
+          placeholder="输入或粘贴链接 https://..."
+          autocomplete="off"
+        />
+        <button type="button" class="st-btn st-btn--primary ed-link-popover-ok" id="ed-link-confirm">确定</button>
+        <button type="button" class="stage-mini-btn ed-link-popover-cancel" id="ed-link-close" title="取消 (Esc)">×</button>
+      </div>
+      <span class="ed-link-popover-arrow" aria-hidden="true"></span>`;
+
+    document.body.appendChild(pop);
+    activeLinkPopover = pop;
+
+    const positionPopover = () => {
+      if (!activeLinkPopover) return;
+      const popRect = pop.getBoundingClientRect();
+      const targetCenterX = params.anchorRect.left + params.anchorRect.width / 2;
+      const margin = 14;
+      const left = Math.max(
+        margin,
+        Math.min(window.innerWidth - popRect.width - margin, targetCenterX - popRect.width / 2)
+      );
+      let top = params.anchorRect.top - popRect.height - 12;
+      let isBelow = false;
+      if (top < margin) {
+        top = Math.min(window.innerHeight - popRect.height - margin, params.anchorRect.bottom + 12);
+        isBelow = true;
+      }
+      pop.classList.toggle('is-below', isBelow);
+      pop.style.left = `${Math.round(left)}px`;
+      pop.style.top = `${Math.round(top)}px`;
+      const arrowX = Math.max(18, Math.min(popRect.width - 18, targetCenterX - left));
+      pop.style.setProperty('--arrow-x', `${Math.round(arrowX)}px`);
+    };
+
+    positionPopover();
+
+    const urlInput = pop.querySelector<HTMLInputElement>('#ed-link-url');
+    if (urlInput) {
+      urlInput.focus();
+      urlInput.select();
+    }
+
+    const submit = () => {
+      const raw = (urlInput?.value ?? '').trim();
+      if (!raw || raw === 'https://' || raw === 'http://') {
+        toast('请输入有效的链接地址', true);
+        urlInput?.focus();
+        return;
+      }
+      const normalized = /^(https?:\/\/|mailto:|tel:|\/|#|\.)/i.test(raw) ? raw : `https://${raw}`;
+      params.onConfirm(normalized);
+      closeLinkPopover();
+    };
+
+    pop.querySelector('#ed-link-confirm')?.addEventListener('click', submit);
+    pop.querySelector('#ed-link-close')?.addEventListener('click', () => {
+      closeLinkPopover();
+      focusAreaWithRange(savedRange);
+    });
+
+    urlInput?.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        submit();
+      } else if (e.key === 'Escape') {
+        e.preventDefault();
+        closeLinkPopover();
+        focusAreaWithRange(savedRange);
+      }
+    });
+
+    const onOutsideDown = (e: MouseEvent) => {
+      const t = e.target as Node | null;
+      if (!t || pop.contains(t)) return;
+      if ((t as HTMLElement).closest?.('[data-cmd="createLink"]')) return;
+      closeLinkPopover();
+    };
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        closeLinkPopover();
+      }
+    };
+    window.addEventListener('mousedown', onOutsideDown, true);
+    window.addEventListener('keydown', onKeyDown, true);
+    linkPopoverCleanup = () => {
+      window.removeEventListener('mousedown', onOutsideDown, true);
+      window.removeEventListener('keydown', onKeyDown, true);
+    };
+  }
+
+  /**
+   * 配图插入功能：弹出居中悬浮弹窗（从媒体库选择大图或上传本地照片，去除「已载入配图」项，提示字号 18px）
+   */
   function openImageDrawer(): void {
+    closeDrawer();
     captureSelection();
     drawerSeq += 1;
     const seq = drawerSeq;
-    const assets = (opts.getPostAssets?.() ?? []).filter((name) => !!name);
     const hintText = legacyImageHint
       ? legacyImageHint()
-      : '上传的图片会自动归档到 src/assets/posts/<文章 slug>/，媒体库按文章分组显示';
-    drawer.hidden = false;
-    drawer.innerHTML = `
-      <div class="ed-drawer-card ed-drawer-card--img">
-        <div class="ed-drawer-head">
-          <span>INSERT POST IMAGE // 插入或上传配图</span>
-          <button type="button" class="stage-mini-btn" id="ed-drawer-close">关闭 ×</button>
+      : '上传的照片会自动归档到 src/assets/posts/<文章 slug>/，并在媒体库中按文章分组展示。';
+
+    const backdrop = document.createElement('div');
+    backdrop.className = 'ed-img-modal-backdrop';
+    backdrop.id = 'ed-img-modal-backdrop';
+    backdrop.setAttribute('role', 'dialog');
+    backdrop.setAttribute('aria-modal', 'true');
+    backdrop.setAttribute('aria-label', '选择或上传文章配图');
+
+    backdrop.innerHTML = `
+      <div class="ed-img-modal">
+        <div class="ed-img-modal-head">
+          <div class="ed-img-modal-title-group">
+            <span class="ed-img-modal-kicker">INSERT IMAGE // 媒体库与本地上传</span>
+            <h3 class="ed-img-modal-title">从媒体库选择或上传照片</h3>
+          </div>
+          <button type="button" class="stage-mini-btn ed-img-modal-close" id="ed-drawer-close" aria-label="关闭弹窗">关闭 ×</button>
         </div>
 
-        <section class="ed-img-section">
-          <div class="ed-img-section-head">01 // 从媒体库选择</div>
-          <div class="ed-media-grid" id="ed-media-grid">
-            <p class="ed-media-empty">正在读取媒体库…</p>
-          </div>
-        </section>
+        <div class="ed-img-modal-body">
+          <section class="ed-img-section">
+            <div class="ed-img-section-head">
+              <span>01 // 从媒体库中选择照片（点击缩略图直接插入正文）</span>
+              <span class="ed-img-section-count" id="ed-media-count-label">读取中…</span>
+            </div>
+            <div class="ed-media-grid" id="ed-media-grid">
+              <p class="ed-media-empty">正在读取媒体库中的照片…</p>
+            </div>
+          </section>
 
-        <section class="ed-img-section">
-          <div class="ed-img-section-head">02 // 上传本地图片</div>
-          <div class="ed-dropzone" id="ed-img-dropzone" role="button" tabindex="0" aria-label="上传本地图片">
-            <span>把图片拖到这里，或点击选择文件</span>
-            <input type="file" id="ed-img-upload" accept="image/*" multiple hidden />
-          </div>
-        </section>
+          <section class="ed-img-section">
+            <div class="ed-img-section-head">
+              <span>02 // 上传本地照片</span>
+            </div>
+            <div class="ed-dropzone" id="ed-img-dropzone" role="button" tabindex="0" aria-label="上传本地图片">
+              <div class="ed-dropzone-content">
+                <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                  <polyline points="17 8 12 3 7 8"/>
+                  <line x1="12" y1="3" x2="12" y2="15"/>
+                </svg>
+                <span>把照片拖到这里，或点击选择本地照片上传（支持多选）</span>
+              </div>
+              <input type="file" id="ed-img-upload" accept="image/*" multiple hidden />
+            </div>
+          </section>
 
-        <section class="ed-img-section">
-          <div class="ed-img-section-head">03 // 手填路径（兜底）</div>
-          <div class="ed-drawer-grid ed-drawer-grid--image">
-            <input class="st-input" id="ed-img-src" value="" placeholder="../../assets/posts/xxx.png 或 /uploads/posts/<slug>/xxx.jpg" />
-            <input class="st-input" id="ed-img-alt" value="" placeholder="图片说明文字（Alt / 图注，可选）" />
-            <button type="button" class="st-btn st-btn--primary" id="ed-img-confirm">插入图片</button>
-          </div>
-          <div class="st-hint">${esc(hintText)}</div>
-          ${
-            assets.length
-              ? `<div class="ed-asset-chips">
-                  <span class="ed-asset-label">已载入的本地配图：</span>
-                  ${assets
-                    .map(
-                      (name) =>
-                        `<button type="button" class="stage-mini-btn" data-pick-asset="${esc(localAssetSrc(name))}">${esc(
-                          name
-                        )}</button>`
-                    )
-                    .join('')}
-                </div>`
-              : ''
-          }
-        </section>
+          <section class="ed-img-section">
+            <div class="ed-img-section-head">
+              <span>03 // 手填图片路径或外部图床链接（兜底）</span>
+            </div>
+            <div class="ed-drawer-grid ed-drawer-grid--image">
+              <input class="st-input" id="ed-img-src" value="" placeholder="../../assets/posts/xxx.png 或 /uploads/posts/<slug>/xxx.jpg" />
+              <input class="st-input" id="ed-img-alt" value="" placeholder="图片说明文字（Alt / 图注，可选）" />
+              <button type="button" class="st-btn st-btn--primary" id="ed-img-confirm">插入图片</button>
+            </div>
+            <div class="st-hint ed-img-modal-hint">${esc(hintText)}</div>
+          </section>
+        </div>
       </div>`;
 
-    drawer.querySelector('#ed-drawer-close')?.addEventListener('click', closeDrawer);
+    document.body.appendChild(backdrop);
+    activeImgModal = backdrop;
 
-    // 1) 媒体库：GET /api/media（只读，带 cookie 即可），过滤出图片后按缩略图网格展示
-    const grid = drawer.querySelector<HTMLElement>('#ed-media-grid');
+    const onEsc = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        window.removeEventListener('keydown', onEsc);
+        closeImageModal();
+      }
+    };
+    window.addEventListener('keydown', onEsc);
+
+    backdrop.addEventListener('click', (e) => {
+      if (e.target === backdrop) {
+        window.removeEventListener('keydown', onEsc);
+        closeImageModal();
+      }
+    });
+
+    backdrop.querySelector('#ed-drawer-close')?.addEventListener('click', () => {
+      window.removeEventListener('keydown', onEsc);
+      closeImageModal();
+    });
+
+    const grid = backdrop.querySelector<HTMLElement>('#ed-media-grid');
+    const countLabel = backdrop.querySelector<HTMLElement>('#ed-media-count-label');
     if (grid) {
       void (async () => {
         try {
@@ -794,11 +1070,11 @@ export function createEditor(
           });
           if (!res.ok) throw new Error(`HTTP ${res.status}`);
           const data = (await res.json()) as { media?: StudioMediaItem[] };
-          // 抽屉已关闭 / 又打开了新的抽屉：迟到的响应丢弃
-          if (seq >= drawerSeq && !drawer.hidden) {
+          if (seq >= drawerSeq && activeImgModal === backdrop) {
             const list = (Array.isArray(data.media) ? data.media : []).filter(isImageMedia);
+            if (countLabel) countLabel.textContent = `共 ${list.length} 张照片`;
             if (!list.length) {
-              grid.innerHTML = `<p class="ed-media-empty">媒体库还没有图片，先用下面的上传区传一张吧。</p>`;
+              grid.innerHTML = `<p class="ed-media-empty">媒体库还没有照片，请使用下方上传区上传照片。</p>`;
             } else {
               grid.innerHTML = list
                 .map(
@@ -806,18 +1082,24 @@ export function createEditor(
                   <button type="button" class="ed-media-item" data-media-path="${esc(item.path)}"
                           data-media-name="${esc(item.filename)}"
                           title="${esc(item.filename)}${item.postTitle ? ` · ${esc(item.postTitle)}` : ''}">
-                    <img src="${esc(item.path)}" alt="${esc(item.filename)}" loading="lazy" />
-                    <span class="ed-media-name">${esc(item.filename)}</span>
+                    <div class="ed-media-thumb-box">
+                      <img src="${esc(item.path)}" alt="${esc(item.filename)}" loading="lazy" />
+                    </div>
+                    <div class="ed-media-caption">
+                      <span class="ed-media-name">${esc(item.filename)}</span>
+                      ${item.postTitle ? `<span class="ed-media-owner">${esc(item.postTitle)}</span>` : ''}
+                    </div>
                   </button>`
                 )
                 .join('');
             }
           }
         } catch (error) {
-          if (seq >= drawerSeq && !drawer.hidden) {
+          if (seq >= drawerSeq && activeImgModal === backdrop) {
+            if (countLabel) countLabel.textContent = '读取失败';
             grid.innerHTML = `<p class="ed-media-empty ed-media-empty--error">媒体库读取失败（${esc(
               (error as Error).message
-            )}），可以用下面的上传区或手填路径。</p>`;
+            )}），可以使用下方上传区或手动填写路径。</p>`;
           }
         }
       })();
@@ -826,13 +1108,13 @@ export function createEditor(
         const btn = (e.target as HTMLElement).closest<HTMLButtonElement>('[data-media-path]');
         if (!btn) return;
         insertImages([{ src: btn.dataset.mediaPath ?? '', alt: btn.dataset.mediaName ?? '' }]);
-        closeDrawer();
+        window.removeEventListener('keydown', onEsc);
+        closeImageModal();
       });
     }
 
-    // 2) 上传本地图片：文件选择 + 抽屉内拖拽
-    const uploadInput = drawer.querySelector<HTMLInputElement>('#ed-img-upload');
-    const dropzone = drawer.querySelector<HTMLElement>('#ed-img-dropzone');
+    const uploadInput = backdrop.querySelector<HTMLInputElement>('#ed-img-upload');
+    const dropzone = backdrop.querySelector<HTMLElement>('#ed-img-dropzone');
     const handleFiles = async (files: File[]): Promise<void> => {
       if (!files.length) return;
       const images = files.filter(isImageFile);
@@ -842,14 +1124,14 @@ export function createEditor(
       }
       dropzone?.classList.add('is-dragover');
       const items = await uploadImages(images);
-      // 上传期间抽屉被关掉 / 换成另一个抽屉：文件已上传，但不再往正文里插
       if (seq !== drawerSeq) return;
       if (!items.length) {
         dropzone?.classList.remove('is-dragover');
         return;
       }
       insertImages(items);
-      closeDrawer();
+      window.removeEventListener('keydown', onEsc);
+      closeImageModal();
     };
     const pickFiles = () => uploadInput?.click();
     dropzone?.addEventListener('click', (e) => {
@@ -863,7 +1145,6 @@ export function createEditor(
     });
     uploadInput?.addEventListener('change', () => {
       const files = Array.from(uploadInput.files ?? []);
-      // 清空 value，失败后再选同一个文件也能重新触发 change
       uploadInput.value = '';
       void handleFiles(files);
     });
@@ -884,26 +1165,16 @@ export function createEditor(
       void handleFiles(Array.from(e.dataTransfer.files ?? []));
     });
 
-    // 3) 手填路径 / Alt（兜底）与本地已加载配图
-    drawer.querySelectorAll<HTMLButtonElement>('[data-pick-asset]').forEach((b) => {
-      b.addEventListener('click', () => {
-        const input = drawer.querySelector<HTMLInputElement>('#ed-img-src');
-        if (input) {
-          input.value = b.dataset.pickAsset ?? '';
-          input.focus();
-        }
-      });
-    });
-
-    drawer.querySelector('#ed-img-confirm')?.addEventListener('click', () => {
-      const src = (drawer.querySelector<HTMLInputElement>('#ed-img-src')?.value ?? '').trim();
-      const alt = (drawer.querySelector<HTMLInputElement>('#ed-img-alt')?.value ?? '').trim();
+    backdrop.querySelector('#ed-img-confirm')?.addEventListener('click', () => {
+      const src = (backdrop.querySelector<HTMLInputElement>('#ed-img-src')?.value ?? '').trim();
+      const alt = (backdrop.querySelector<HTMLInputElement>('#ed-img-alt')?.value ?? '').trim();
       if (!src) {
-        toast('请填写图片路径，或从媒体库选一张', true);
+        toast('请填写图片路径，或从媒体库选一张照片', true);
         return;
       }
       insertImages([{ src, alt }]);
-      closeDrawer();
+      window.removeEventListener('keydown', onEsc);
+      closeImageModal();
     });
   }
 
@@ -929,7 +1200,6 @@ export function createEditor(
     };
   }
 
-  /** 05 组下方的表格操作条：只在光标位于表格内、且不是源码模式时显示 */
   function updateTableTools(): void {
     const tools = bar.querySelector<HTMLElement>('#ed-table-tools');
     if (!tools) return;
@@ -978,7 +1248,6 @@ export function createEditor(
     if (action === 'row-add' || action === 'row-add-above') {
       const nextRow = newTableRow(columnCount);
       if (inHead) {
-        // 表头固定留在第一行：在表头行上点「加行」时插到表体顶部
         const body = tableBody(table);
         body.insertBefore(nextRow, body.firstElementChild);
       } else {
@@ -995,7 +1264,6 @@ export function createEditor(
         return;
       }
       if (inHead) {
-        // 删表头时把表体第一行提上来当新表头，保证 Markdown 表格仍有分隔行
         row.remove();
         const promoted = table.tBodies[0]?.rows[0] ?? null;
         if (promoted) {
@@ -1117,7 +1385,6 @@ export function createEditor(
       }
     },
     insertTable: () => {
-      // 2 行 × 2 列的空表：表头 + 一行表体；单元格不写任何示例文字，插入后光标落在第一个单元格
       if (mode === 'markdown') {
         insertMarkdownBlock('\n\n|  |  |\n| --- | --- |\n|  |  |\n\n');
         return;
@@ -1150,7 +1417,6 @@ export function createEditor(
   bar.addEventListener('click', (e) => {
     const target = e.target as HTMLElement;
 
-    // 07 栏目录：滚动定位 + 1.2s 高亮，不移动光标、不写回正文
     const tocLink = target.closest<HTMLAnchorElement>('.ed-toc-preview .toc-list a');
     if (tocLink) {
       e.preventDefault();
@@ -1165,7 +1431,6 @@ export function createEditor(
       return;
     }
 
-    // 05 组下方的表格上下文操作（只在光标位于表格内时可见）
     const tableBtn = target.closest<HTMLButtonElement>('button[data-table-action]');
     if (tableBtn) {
       applyTableAction(tableBtn.dataset.tableAction ?? '');
@@ -1220,7 +1485,6 @@ export function createEditor(
     return !!dt && Array.from(dt.types).includes('Files');
   }
 
-  /** 找到拖放落点；浏览器不支持或落在正文外时退回正文末尾 */
   function dropRangeAt(x: number, y: number): Range {
     let range: Range | null = null;
     if (typeof document.caretRangeFromPoint === 'function') {
@@ -1241,7 +1505,6 @@ export function createEditor(
     return range;
   }
 
-  // 正文拖拽上传：高亮提示 + 在落点插入（拿不到落点就插到文末）
   area.addEventListener('dragover', (e) => {
     if (!dropHasFiles(e.dataTransfer)) return;
     e.preventDefault();
@@ -1273,21 +1536,27 @@ export function createEditor(
   });
 
   area.addEventListener('keyup', () => {
-    // 抽屉开着时用户又回正文改光标：刷新保存的落点
-    if (!drawer.hidden) captureSelection();
+    captureSelection();
     changed();
   });
   area.addEventListener('mouseup', () => {
-    if (!drawer.hidden) captureSelection();
+    captureSelection();
     syncToolbar();
   });
   area.addEventListener('focus', () => updateTableTools());
   area.addEventListener('click', () => updateTableTools());
 
-  // 光标进出表格时刷新 05 组下方的操作条；源码模式下 tableContext 直接返回 null
   document.addEventListener('selectionchange', () => {
     if (!area.isConnected) return;
+    const sel = window.getSelection();
+    if (sel && sel.rangeCount > 0) {
+      const r = sel.getRangeAt(0);
+      if (area.contains(r.commonAncestorContainer)) {
+        lastValidRange = r.cloneRange();
+      }
+    }
     updateTableTools();
+    syncToolbar();
   });
 
   function changed(): void {
@@ -1314,6 +1583,21 @@ export function createEditor(
       b.setAttribute('aria-pressed', String(on));
     });
 
+    if (mode !== 'markdown' && area.contains(window.getSelection()?.anchorNode ?? null)) {
+      const queryState = (cmd: string): boolean => {
+        try {
+          return document.queryCommandState(cmd);
+        } catch {
+          return false;
+        }
+      };
+      bar.querySelector<HTMLButtonElement>('button[data-cmd="bold"]')?.setAttribute('aria-pressed', String(queryState('bold') || hasAncestorTag('STRONG') || hasAncestorTag('B')));
+      bar.querySelector<HTMLButtonElement>('button[data-cmd="italic"]')?.setAttribute('aria-pressed', String(queryState('italic') || hasAncestorTag('EM') || hasAncestorTag('I')));
+      bar.querySelector<HTMLButtonElement>('button[data-cmd="strikeThrough"]')?.setAttribute('aria-pressed', String(queryState('strikeThrough') || hasAncestorTag('DEL') || hasAncestorTag('S') || hasAncestorTag('STRIKE')));
+      bar.querySelector<HTMLButtonElement>('button[data-cmd="mark"]')?.setAttribute('aria-pressed', String(hasAncestorTag('MARK')));
+      bar.querySelector<HTMLButtonElement>('button[data-cmd="inlineCode"]')?.setAttribute('aria-pressed', String(hasAncestorTag('CODE')));
+    }
+
     updateTableTools();
   }
 
@@ -1321,7 +1605,7 @@ export function createEditor(
     const text = (area.textContent ?? '').replace(/\s/g, '');
     const chars = text.length;
     const mins = Math.max(1, Math.round(chars / 400));
-    const el = barHost.querySelector('#ed-count');
+    const el = bar.querySelector('#ed-count');
     if (el) el.textContent = `WORD COUNT // ${chars.toLocaleString('zh-CN')} 字 · 预计阅读 ${mins} 分钟`;
     const inlineStat = shell.querySelector('#ed-inline-stat');
     if (inlineStat) inlineStat.textContent = `${chars.toLocaleString('zh-CN')} 字 · 约 ${mins} 分钟`;

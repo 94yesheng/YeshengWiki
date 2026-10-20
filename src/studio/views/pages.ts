@@ -1,20 +1,6 @@
 /**
- * 「页面」视图 —— 集中维护主页 / 文章 / 相册 / 项目 / 友链五个子页的文案与结构化内容。
- *
- * 数据来源：`GET /api/pages` → `{ pages, values, defaults }`。
- * 这里**不 import `src/server/**`**（会把 better-sqlite3 打进前端包），
- * schema 完全由接口下发；视图自己缓存，不塞进 `state`。
- *
- * 每个子页只渲染一张「XX 页面设置」卡片：`PAGE_SECTIONS` 声明小节顺序与字段归属，
- * 文案字段与结构化面板（主页画布 / 文章右栏 / 关于我档案）在同一个 `st-section-box`
- * 版式里混排，不再分成上下两块。
- *
- * 保存语义：
- * - 没有页内保存按钮：顶栏的「保存」会调用这里导出的 `savePagesValues()`；
- * - 只提交字符串；输入框清空视为「使用默认值」，提交时回落到 `defaults[key]`；
- * - 服务端 sanitize 会丢掉与默认值相同的项，数据库只存真正改过的值；
- * - 主页引擎 / 文章右栏 / 关于我三个结构化面板写在 `state.draft.site` 里，
- *   由外壳的同一次保存调用 `saveSite()` 一并提交。
+ * 「页面」视图 —— 字体与左栏同步（楷体体系）、适度字号（最小 ≥ 顶栏 20px，一级标题略大）、
+ * 精简美化顶部检索栏、右侧按当前修改页面的章节标题（01，02，...）排列导航。
  */
 import { $, esc, toast } from '../ui';
 import { markDirty, rerender, state } from '../state';
@@ -32,7 +18,6 @@ interface PageField {
   key: string;
   label: string;
   default: string;
-  /** text=单行；textarea=多行；lines=多行且按行拆成数组 */
   type?: PageFieldType;
   hint?: string;
 }
@@ -40,6 +25,7 @@ interface PageField {
 interface PageDef {
   key: string;
   label: string;
+  route?: string;
   desc: string;
   fields: PageField[];
 }
@@ -51,53 +37,47 @@ interface PagesResponse {
   error?: string;
 }
 
-/** 左栏固定顺序。data-id 同时就是 `state.selected` 的取值。 */
+/** 左栏固定顺序 */
 export const PAGE_GROUPS = [
-  { key: 'home', label: '主页', sub: '首屏 · 加载动画 · 流形参数' },
-  { key: 'posts', label: '文章', sub: '归档页 · 主页文章屏 · 右栏' },
-  { key: 'photos', label: '相册', sub: '照片页 · 主页相册屏' },
-  { key: 'programs', label: '项目', sub: '项目页 · 主页程序屏' },
-  { key: 'links', label: '友链', sub: '友链页 · 架构志 · 关于我' },
+  { key: 'home', label: '主页', route: '/', sub: '首屏主视觉 · 五屏导语 · 流形参数' },
+  { key: 'posts', label: '文章', route: '/posts/', sub: '归档首屏 · 时间轴检索 · 全局悬浮窗' },
+  { key: 'photos', label: '相册', route: '/photos/', sub: '光学检视台 · 分组筛选 · 档案网格' },
+  { key: 'programs', label: '项目', route: '/programs/', sub: '工坊标题 · 模块按钮 · 空态说明' },
+  { key: 'links', label: '友链', route: '/links/', sub: '友链名录 · 互换名片 · 关于我与说明志' },
 ] as const;
 
 type PageKey = (typeof PAGE_GROUPS)[number]['key'];
 type StructuredPanelKey = 'home' | 'rail' | 'dossier';
 
 interface SectionDef {
-  /** 稳定标识，仅用于布局核对与调试，不渲染 */
   key: string;
   title: string;
   tag: string;
-  desc?: string;
-  /** 字段 key，按渲染顺序排列；必须与 schema 里当前分组的字段集合一致 */
+  desc: string;
   fields: string[];
-  /** 结构化面板插入点 */
   structured?: StructuredPanelKey;
 }
 
-/**
- * 五个子页的小节排布。这里同时决定卡片内小节编号（01…0N）与字段归属；
- * 字段的 label / type / hint / default 一律从 `/api/pages` 下发的 schema 读取。
- */
 const PAGE_SECTIONS: Record<PageKey, SectionDef[]> = {
   home: [
     {
       key: 'hero',
-      title: '首屏文案与坐标',
-      tag: 'HERO',
-      desc: '首屏左上角坐标、顶栏标签、坐标说明与自述段落；自述段落一行一段。',
+      title: '首屏主视觉与个人自述',
+      tag: 'SCREEN 01 · HERO',
+      desc: '主页第一屏左上角坐标、顶栏状态标语、右侧三维流形数学方程以及站名下方的个人自述段落。',
       fields: [
         'home.hero.originBadge',
         'home.hero.topbarTag',
         'home.hero.coordText',
+        'home.hero.equation',
         'home.hero.intro',
       ],
     },
     {
       key: 'loader-index',
-      title: '加载动画与导航角标',
-      tag: 'LOADER / INDEX',
-      desc: '开屏加载动画的状态文字，以及首屏四象限导航的角标文案。',
+      title: '开屏加载与首屏四象限角标',
+      tag: 'LOADER & QUADRANT META',
+      desc: '全站开屏立体流形加载动画的状态文字，以及首屏左下角四个象限入口的角标文字。',
       fields: [
         'home.loader.status',
         'home.hero.metaPosts',
@@ -107,134 +87,161 @@ const PAGE_SECTIONS: Record<PageKey, SectionDef[]> = {
       ],
     },
     {
+      key: 'screens-note',
+      title: '主页分屏顶栏导语（第 02 ~ 05 屏）',
+      tag: 'SCREENS 02-05',
+      desc: '主页向下滚动时，文章屏、相册屏、程序屏与友链屏各自顶栏居中的导览说明。',
+      fields: [
+        'home.posts.note',
+        'home.photos.note',
+        'home.programs.note',
+        'home.links.note',
+      ],
+    },
+    {
       key: 'manifold',
-      title: '流形画布参数',
-      tag: 'MANIFOLD · 结构化',
-      desc: '昼夜主题、粒子数量、演化速率与四象限导览卡片；与文案在同一次保存中提交。',
+      title: '四象限入口卡片与流形引擎参数',
+      tag: 'ENGINE & CARDS',
+      desc: '首屏四象限导览卡片的标题/路由与 3D 粒子场默认参数（白天/黑夜、粒子数 N、演化速率 ω）。',
       fields: [],
       structured: 'home',
     },
   ],
   posts: [
     {
-      key: 'archive',
-      title: '页面文案',
-      tag: 'ARCHIVE',
-      desc: '归档页标题、SEO 描述、标签与文章卡片上的按钮 / 空态文案。',
+      key: 'archive-hero',
+      title: '归档页首屏标题与导语',
+      tag: 'HERO & SEO',
+      desc: '控制 /posts/ 页面首屏左侧的大标题 (H1)、上方坐标铭牌、导语段落、顶栏说明及浏览器标题。',
       fields: [
+        'posts.heroTitle',
+        'posts.heroKicker',
+        'posts.heroLead',
+        'posts.topbarNote',
         'posts.title',
         'posts.description',
+      ],
+    },
+    {
+      key: 'timeline-filter',
+      title: '时间轴检索、标签筛选与卡片按钮',
+      tag: 'TIMELINE & FILTER',
+      desc: '归档时间轴的筛选按钮、搜索框提示词、文章卡片阅读按钮以及时间轴首尾坐标文案。',
+      fields: [
         'posts.allTag',
         'posts.uncategorized',
+        'posts.searchPlaceholder',
         'posts.readLabel',
+        'posts.now',
+        'posts.origin',
         'posts.empty',
       ],
     },
     {
-      key: 'timeline',
-      title: '时间轴与统计',
-      tag: 'TIMELINE',
-      desc: '时间轴两端的坐标说明与右栏统计文案，可含 {count} / {chars} 占位符。',
+      key: 'stats-random',
+      title: '归档统计卡片与右栏随机漫游',
+      tag: 'STATS & EXPLORE',
+      desc: '首屏右侧统计卡片的数量展示格式（支持 {count} / {chars} 占位符）及右栏随机漫游卡片文案。',
       fields: [
-        'posts.origin',
-        'posts.now',
         'posts.statTotal',
         'posts.statVisible',
         'posts.statWords',
         'posts.unit',
+        'posts.randomWalkText',
+        'posts.randomWalkBtn',
       ],
     },
     {
-      key: 'home-posts',
-      title: '主页文章屏',
-      tag: 'HOME SCREEN 02',
-      desc: '主页文章屏顶栏的一句说明。',
-      fields: ['home.posts.note'],
-    },
-    {
       key: 'rail',
-      title: '文章右栏',
-      tag: 'RAIL · 结构化',
-      desc: '右侧伴读栏的模块开关、模板文案与自定义卡片；与文案在同一次保存中提交。',
+      title: '文章详情页与全局悬浮窗默认配置',
+      tag: 'ARTICLE RAIL · 全局默认',
+      desc: '配置文章详情页《三体》画布默认铭牌、全局文档速查卡、全局伴读卡与同系列文章推荐卡。',
       fields: [],
       structured: 'rail',
     },
   ],
   photos: [
     {
-      key: 'optics',
-      title: '页面文案',
-      tag: 'OPTICS',
-      desc: '照片页标题、SEO 描述、筛选与空态文案。',
-      fields: ['photos.title', 'photos.description', 'photos.all', 'photos.empty'],
+      key: 'optics-stage',
+      title: '光学检视台与顶栏标题',
+      tag: 'OPTICS STAGE',
+      desc: '控制 /photos/ 第一屏自适应光学检视台的顶栏标题、右侧拍摄信息栏标题、胶片条与直方图标题。',
+      fields: [
+        'photos.title',
+        'photos.description',
+        'photos.topbarTitle',
+        'photos.topbarNote',
+        'photos.specTitle',
+        'photos.filmstripTitle',
+        'photos.histTitle',
+      ],
     },
     {
-      key: 'groups',
-      title: '分组与滚动提示',
-      tag: 'GROUPS',
-      desc: '照片分组的名称与向下滚动提示。',
-      fields: ['photos.latest', 'photos.earlier', 'photos.scrollLabel'],
-    },
-    {
-      key: 'home-photos',
-      title: '主页相册屏',
-      tag: 'HOME SCREEN 03',
-      desc: '主页相册屏顶栏的一句说明。',
-      fields: ['home.photos.note'],
+      key: 'groups-grid',
+      title: '影集分组、画幅筛选与档案网格',
+      tag: 'GROUPS & ARCHIVE GRID',
+      desc: '照片分组名称、底部网格筛选栏按钮、向下滚动按钮与空态提示文案。',
+      fields: [
+        'photos.all',
+        'photos.latest',
+        'photos.earlier',
+        'photos.scrollLabel',
+        'photos.gridHint',
+        'photos.empty',
+      ],
     },
   ],
   programs: [
     {
-      key: 'programs',
-      title: '页面文案',
-      tag: 'PROGRAMS',
-      desc: '项目页标题、导语、SEO 描述与模块卡片文案。',
+      key: 'programs-main',
+      title: '项目页标题、导语与模块按钮',
+      tag: 'PROGRAMS MAIN',
+      desc: '控制 /programs/ 页面主标题、副标题导语、模块卡片默认按钮及核心控制台底部跳转链接文案。',
       fields: [
         'programs.title',
-        'programs.description',
         'programs.note',
+        'programs.description',
         'programs.viewCta',
         'programs.statusFallback',
         'programs.hostCta',
       ],
     },
     {
-      key: 'empty',
-      title: '空态',
+      key: 'programs-empty',
+      title: '无项目数据时的空态提示',
       tag: 'EMPTY STATE',
-      desc: '没有程序数据时展示的标题、说明与按钮。',
-      fields: ['programs.emptyTitle', 'programs.emptyText', 'programs.emptyCta'],
-    },
-    {
-      key: 'home-programs',
-      title: '主页程序屏',
-      tag: 'HOME SCREEN 04',
-      desc: '主页程序屏顶栏的一句说明。',
-      fields: ['home.programs.note'],
+      desc: '当尚未录入任何程序模块时，在 /programs/ 与主页程序屏展示的空态标题、说明与后台入口按钮。',
+      fields: [
+        'programs.emptyTitle',
+        'programs.emptyText',
+        'programs.emptyCta',
+      ],
     },
   ],
   links: [
     {
-      key: 'peers-copy',
-      title: '页面文案',
-      tag: 'PEERS',
-      desc: '友链页标题、导语、SEO 描述与空态文案。',
-      fields: ['links.title', 'links.description', 'links.note', 'links.empty'],
-    },
-    {
-      key: 'directory',
-      title: '友链名录',
-      tag: 'DIRECTORY',
-      desc: '友链名录的小节标题、收录数量与空态说明。',
-      fields: ['links.peersTitle', 'links.peersCount', 'links.peersEmpty'],
+      key: 'peers-directory',
+      title: '友链页标题与邻人名录文案',
+      tag: 'PEERS DIRECTORY',
+      desc: '控制 /links/ 页面主标题、副标题导语、友链名录小节标题与收录数量统计文案。',
+      fields: [
+        'links.title',
+        'links.note',
+        'links.description',
+        'links.peersTitle',
+        'links.peersCount',
+        'links.peersEmpty',
+        'links.empty',
+      ],
     },
     {
       key: 'site-card',
-      title: '本站名片',
-      tag: 'SITE CARD',
-      desc: '本站友链名片的标题、导言、规格标签与复制提示。',
+      title: '本站互换名片与规格标签',
+      tag: 'SITE EXCHANGE CARD',
+      desc: '本站友链互换名片的标题、右上角徽标、导言、四项规格名称以及复制与 RSS 按钮文案。',
       fields: [
         'links.cardTitle',
+        'links.cardBadge',
         'links.cardIntro',
         'links.specName',
         'links.specTagline',
@@ -242,40 +249,33 @@ const PAGE_SECTIONS: Record<PageKey, SectionDef[]> = {
         'links.specRss',
         'links.copyBtn',
         'links.copyDone',
+        'links.rssBtn',
       ],
     },
     {
-      key: 'colophon-title',
-      title: '架构志标题',
-      tag: 'COLOPHON',
-      desc: '「站点说明（Site Colophon）」的小节标题与说明。',
+      key: 'colophon-head',
+      title: '站点说明志小节标题',
+      tag: 'COLOPHON HEADING',
+      desc: '第二部分「站点说明（Site Colophon）」的小节主标题与副标题说明。',
       fields: ['links.colophonTitle', 'links.colophonNote'],
     },
     {
-      key: 'home-links',
-      title: '主页友链屏',
-      tag: 'HOME SCREEN 05',
-      desc: '主页友链屏顶栏的一句说明。',
-      fields: ['home.links.note'],
-    },
-    {
       key: 'dossier',
-      title: '关于我与架构志',
-      tag: 'DOSSIER · 结构化',
-      desc: '关于「我」档案卡与架构志条目；与文案在同一次保存中提交。',
+      title: '关于「我」个人档案卡与说明志条目',
+      tag: 'AUTHOR DOSSIER & COLOPHON',
+      desc: '维护关于「我」个人自述档案卡与底部四象限「站点说明志」卡片（主页与 /links/ 同步生效）。',
       fields: [],
       structured: 'dossier',
     },
   ],
 };
 
-/** 卡片顶栏的英文标题；编号由 PAGE_GROUPS 顺序推出来。 */
 const PAGE_EN_TITLE: Record<PageKey, string> = {
-  home: 'HOME PAGE SETTINGS',
-  posts: 'POSTS PAGE SETTINGS',
-  photos: 'PHOTOS PAGE SETTINGS',
-  programs: 'PROGRAMS PAGE SETTINGS',
-  links: 'LINKS PAGE SETTINGS',
+  home: 'HOME PAGE CONFIGURATION',
+  posts: 'POSTS ARCHIVE & RAIL CONFIGURATION',
+  photos: 'PHOTOS SHOWCASE CONFIGURATION',
+  programs: 'PROGRAMS WORKBENCH CONFIGURATION',
+  links: 'LINKS & AUTHOR DOSSIER CONFIGURATION',
 };
 
 type PanelRenderer = (host: HTMLElement, data: Record<string, unknown>) => void;
@@ -286,20 +286,17 @@ const STRUCTURED_PANELS: Record<StructuredPanelKey, PanelRenderer> = {
   dossier: renderAuthorDossierPanel,
 };
 
-/**
- * 视图级缓存。刻意不放进 `state`：
- * 这几个变量只属于「页面」板块，和 loadAll 的草稿/集合状态是两套生命周期。
- * 切分组不清空 `values`，所以五个子页的未保存改动都会保留。
- */
 let schema: PageDef[] | null = null;
 let values: PageValues = {};
 let defaults: PageValues = {};
-
-/** 最近一次读取 / 保存后的值，用来判断「有没有未保存改动」 */
 let saved: PageValues = {};
-
 let loading = false;
 let loadError: string | null = null;
+
+/** 页面内筛选状态（搜索关键词 / 仅看已修改项）与右侧高亮章节 */
+let searchQuery = '';
+let onlyModified = false;
+let activeSectionByPage: Record<string, string> = {};
 
 /* --------------------------------------------------------------------------
    入口
@@ -309,7 +306,6 @@ export function renderPagesView(): void {
   const edit = $('#st-edit');
   if (!edit) return;
 
-  // 首次进入（或上次读取失败后重新进入）才拉接口；之后一直用模块级缓存。
   if (!schema && !loading && !loadError) void loadPages();
 
   if (!schema) {
@@ -324,7 +320,6 @@ export function renderPagesView(): void {
   edit.innerHTML = viewHtml(page);
   wireEvents(edit, page);
 
-  // 结构化面板只渲染小节内容，挂到对应 st-section-box 里的容器上。
   edit.querySelectorAll<HTMLElement>('[data-pages-panel]').forEach((host) => {
     const key = host.dataset.pagesPanel as StructuredPanelKey | undefined;
     const panel = key ? STRUCTURED_PANELS[key] : undefined;
@@ -385,18 +380,15 @@ async function loadPages(): Promise<void> {
   }
 }
 
-/** 全局保存成功后重新拉一次 `/api/pages`，让前端缓存与数据库重新对齐。 */
 export async function pagesReload(): Promise<void> {
   loadError = null;
   await loadPages();
 }
 
-/** 五个子页的文案是否有未保存改动（供外壳的离开确认与全局保存判断）。 */
 export function pagesDirty(): boolean {
   return hasChanges();
 }
 
-/** 放弃所有未保存的文案改动（离开板块 / 刷新 / 锁定时由外壳调用）。 */
 export function pagesDiscard(): void {
   if (!hasChanges()) return;
   values = { ...saved };
@@ -418,7 +410,6 @@ function readValues(pages: PageDef[], raw: PageValues | undefined, fallback: Pag
   for (const page of pages) {
     for (const field of page.fields) {
       const candidate = raw && typeof raw === 'object' ? raw[field.key] : undefined;
-      // 空字符串按「用默认值」处理，和输入框清空的语义保持一致。
       if (typeof candidate === 'string' && candidate !== '') out[field.key] = candidate;
     }
   }
@@ -431,12 +422,14 @@ function readValues(pages: PageDef[], raw: PageValues | undefined, fallback: Pag
 
 function viewHtml(page: PageDef): string {
   const key = page.key as PageKey;
+  const groupMeta = PAGE_GROUPS.find((g) => g.key === key) ?? PAGE_GROUPS[0];
   const pageIndex = PAGE_GROUPS.findIndex((group) => group.key === key);
   const badge = `PAGE // ${String((pageIndex >= 0 ? pageIndex : 0) + 1).padStart(2, '0')}`;
   const enTitle = PAGE_EN_TITLE[key] ?? 'PAGE SETTINGS';
   const sections = sectionsFor(page);
   const dirty = hasChanges();
   const changed = changedKeys().length;
+  const pageCustomizedCount = page.fields.filter((f) => isFieldCustomized(f.key)).length;
 
   return `
     <div class="st-pages-view">
@@ -444,20 +437,60 @@ function viewHtml(page: PageDef): string {
         <div class="q-topbar">
           <div class="q-topbar-cell">
             <span class="q-sec-badge">${esc(badge)}</span>
-            <span>${esc(enTitle)} // ${esc(page.label)}页面设置</span>
+            <span>${esc(enTitle)}</span>
           </div>
           <div class="q-topbar-cell q-topbar-cell--right">
             <span class="st-pages-dirty${dirty ? ' is-dirty' : ''}" id="st-pages-dirty">${
-              dirty ? `${changed} 项未保存` : '全部已保存'
+              dirty ? `${changed} 项待保存` : '全部已同步'
             }</span>
-            <span class="telemetry-accent">/studio/ → 页面</span>
+            <a href="${esc(groupMeta.route)}" target="_blank" rel="noopener noreferrer" class="st-pages-open-route">
+              打开前台 ${esc(groupMeta.route)} ↗
+            </a>
           </div>
         </div>
 
-        <div class="st-head">
-          <div class="st-kicker">PAGE COPY &amp; STRUCTURE // 文案与结构化内容统一维护</div>
-          <h2>${esc(page.label)}页面设置</h2>
-          <p class="st-hint">修改后点顶栏「保存」一次性提交；文案写 site_settings.pages，结构化内容写站点设置。</p>
+        <div class="st-head st-pages-hero-head">
+          <div class="st-head-top-row">
+            <div>
+              <div class="st-kicker">ROUTE: ${esc(groupMeta.route)} · 共 ${page.fields.length} 个动态文案项（已自定义 ${pageCustomizedCount} 项）</div>
+              <h2 class="st-pages-main-title">${esc(page.label)}页面 · 动态内容与版块管理</h2>
+              <p class="st-pages-main-desc">${esc(page.desc)}。修改后点右上角「保存」即刻同步至前台页面。</p>
+            </div>
+            <div class="st-head-btns">
+              <button type="button" class="stage-mini-btn" id="st-pages-reset-all" ${pageCustomizedCount === 0 ? 'disabled' : ''}>
+                恢复本页默认
+              </button>
+            </div>
+          </div>
+
+          <!-- 仅保留精简协调的检索栏（移除最上方各章节导航按钮，章节导航统一置于右侧栏） -->
+          <div class="st-pages-search-bar" role="search" aria-label="检索本页配置项">
+            <div class="st-pages-search-box">
+              <svg class="st-pages-search-icon" viewBox="0 0 18 18" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <circle cx="8" cy="8" r="5.2"/>
+                <path d="m12 12 3.8 3.8"/>
+              </svg>
+              <input
+                type="search"
+                class="st-input st-pages-search-input"
+                id="st-pages-search"
+                value="${esc(searchQuery)}"
+                placeholder="检索本页配置项名称、键名或当前文案内容…"
+                aria-label="搜索本页配置项"
+              />
+              ${
+                searchQuery
+                  ? `<button type="button" class="stage-mini-btn st-pages-search-clear" id="st-pages-search-clear">清空</button>`
+                  : ''
+              }
+            </div>
+            <div class="st-pages-search-tools">
+              <label class="st-check st-pages-only-mod">
+                <input type="checkbox" id="st-pages-only-mod" ${onlyModified ? 'checked' : ''} />
+                <span>仅看已自定义 (${pageCustomizedCount})</span>
+              </label>
+            </div>
+          </div>
         </div>
 
         ${sections.map((section, index) => sectionHtml(section, index)).join('')}
@@ -467,18 +500,38 @@ function viewHtml(page: PageDef): string {
 
 function sectionHtml(section: SectionDef, index: number): string {
   const number = String(index + 1).padStart(2, '0');
-  const fields = section.fields
+  const allFields = section.fields
     .map((key) => fieldFor(key))
     .filter((field): field is PageField => Boolean(field));
 
+  const q = searchQuery.trim().toLowerCase();
+  const filteredFields = allFields.filter((f) => {
+    if (onlyModified && !isFieldCustomized(f.key) && !isFieldChanged(f.key)) return false;
+    if (!q) return true;
+    const val = (values[f.key] ?? defaultFor(f)).toLowerCase();
+    return (
+      f.label.toLowerCase().includes(q) ||
+      f.key.toLowerCase().includes(q) ||
+      val.includes(q) ||
+      (f.hint ?? '').toLowerCase().includes(q)
+    );
+  });
+
+  if (!section.structured && allFields.length > 0 && filteredFields.length === 0) {
+    return '';
+  }
+
   return `
-    <div class="st-section-box">
-      <div class="st-section-head">
-        <span>${number} // ${esc(section.title)}</span>
+    <div class="st-section-box st-pages-section-box" id="st-page-sec-${esc(section.key)}" data-page-section="${esc(section.key)}">
+      <div class="st-section-head st-pages-section-head">
+        <div class="st-pages-sec-title-wrap">
+          <span class="st-pages-sec-num">${number}</span>
+          <h3 class="st-pages-sec-title">${esc(section.title)}</h3>
+        </div>
         <span class="st-sec-tag">${esc(section.tag)}</span>
       </div>
-      ${section.desc ? `<p class="st-hint st-pages-section-desc">${esc(section.desc)}</p>` : ''}
-      ${fields.length ? `<div class="st-grid-3">${fields.map(fieldHtml).join('')}</div>` : ''}
+      ${section.desc ? `<p class="st-pages-section-desc">${esc(section.desc)}</p>` : ''}
+      ${filteredFields.length ? `<div class="st-pages-cards-grid">${filteredFields.map(fieldHtml).join('')}</div>` : ''}
       ${section.structured ? `<div class="st-pages-panel" data-pages-panel="${section.structured}"></div>` : ''}
     </div>`;
 }
@@ -486,29 +539,43 @@ function sectionHtml(section: SectionDef, index: number): string {
 function fieldHtml(field: PageField): string {
   const fallback = defaultFor(field);
   const value = values[field.key] ?? fallback;
-  const multiline = field.type === 'textarea' || field.type === 'lines';
+  const multiline = field.type === 'textarea' || field.type === 'lines' || value.length > 26;
   const linesFlag = field.type === 'lines';
+  const isDirty = isFieldChanged(field.key);
+  const isCustom = value !== fallback;
   const id = `st-pages-${field.key}`;
-  const control = multiline
-    ? `<textarea class="st-textarea" id="${esc(id)}" data-page-field="${esc(field.key)}" rows="${
-        linesFlag ? 4 : 3
-      }" placeholder="留空则使用默认值">${esc(value)}</textarea>`
-    : `<input class="st-input" id="${esc(id)}" data-page-field="${esc(field.key)}" value="${esc(
-        value
-      )}" placeholder="留空则使用默认值" />`;
+
+  const control =
+    field.type === 'textarea' || field.type === 'lines'
+      ? `<textarea class="st-textarea st-pages-input-lg" id="${esc(id)}" data-page-field="${esc(field.key)}" rows="${
+          linesFlag ? 4 : 3
+        }" placeholder="留空则使用默认值">${esc(value)}</textarea>`
+      : `<input class="st-input st-pages-input-lg" id="${esc(id)}" data-page-field="${esc(field.key)}" value="${esc(
+          value
+        )}" placeholder="留空则使用默认值" />`;
 
   return `
-    <div class="st-field st-pages-field-cell${multiline ? ' st-pages-field-cell--wide' : ''}">
-      <label for="${esc(id)}" title="${esc(field.key)}">${esc(field.label)}</label>
-      <div>${control}</div>
-      ${field.hint ? `<div class="st-hint">${esc(field.hint)}</div>` : ''}
-      <div class="st-hint st-pages-default-line">默认值：<span class="st-pages-default-value">${esc(
-        fallback === '' ? '（空）' : fallback
-      )}</span>${linesFlag ? '<span class="st-pages-field-flag">一行一项</span>' : ''}</div>
-      <div class="st-pages-field-actions">
-        <button type="button" class="stage-mini-btn" data-page-reset="${esc(
-          field.key
-        )}" title="将此字段恢复为默认值">恢复默认</button>
+    <div class="st-pages-field-card${multiline ? ' st-pages-field-card--wide' : ''}${isDirty ? ' is-dirty' : ''}${isCustom ? ' is-custom' : ''}" id="st-card-${esc(field.key)}">
+      <div class="st-pages-field-top">
+        <label class="st-pages-label-lg" for="${esc(id)}">
+          <span>${esc(field.label)}</span>
+          ${linesFlag ? '<span class="st-pages-field-flag">多段 · 每行一段</span>' : ''}
+        </label>
+        <div class="st-pages-field-meta">
+          <span class="st-pages-status-pill" data-status-for="${esc(field.key)}">${
+            isDirty ? '未保存修改' : isCustom ? '已自定义' : '默认文案'
+          }</span>
+          <button type="button" class="stage-mini-btn st-pages-reset-btn" data-page-reset="${esc(
+            field.key
+          )}" ${!isCustom && !isDirty ? 'disabled' : ''} title="恢复为系统默认文案">恢复默认</button>
+        </div>
+      </div>
+      <div class="st-pages-control-wrap">${control}</div>
+      <div class="st-pages-field-foot">
+        <span class="st-pages-field-key">KEY: <code>${esc(field.key)}</code>${field.hint ? ` · ${esc(field.hint)}` : ''}</span>
+        <span class="st-pages-default-inline" data-default-for="${esc(field.key)}" ${isCustom ? '' : 'hidden'}>
+          默认：${esc(fallback.length > 48 ? `${fallback.slice(0, 48)}…` : fallback)}
+        </span>
       </div>
     </div>`;
 }
@@ -518,8 +585,8 @@ function renderPlaceholder(edit: HTMLElement): void {
   if (preview) {
     preview.innerHTML = `
       <div class="st-col-inner">
-        <div class="st-dock-head"><span>PAGE SETTINGS // 页面设置</span></div>
-        <p class="st-hint">${
+        <div class="st-panel-title"><span>SECTION INDEX // 章节导航</span></div>
+        <p class="st-hint" style="padding:0.75rem 1rem;">${
           loading ? '正在读取 /api/pages…' : loadError ? '页面文案尚未读取，请先重试。' : '等待读取…'
         }</p>
       </div>`;
@@ -565,6 +632,49 @@ function renderPlaceholder(edit: HTMLElement): void {
    -------------------------------------------------------------------------- */
 
 function wireEvents(edit: HTMLElement, page: PageDef): void {
+  // 搜索与仅看已改筛选
+  const searchInp = edit.querySelector<HTMLInputElement>('#st-pages-search');
+  searchInp?.addEventListener('input', () => {
+    searchQuery = searchInp.value;
+    const pos = searchInp.selectionStart ?? searchQuery.length;
+    renderPagesView();
+    const nextInp = $<HTMLInputElement>('#st-pages-search');
+    if (nextInp) {
+      nextInp.focus();
+      nextInp.setSelectionRange(pos, pos);
+    }
+  });
+
+  edit.querySelector<HTMLButtonElement>('#st-pages-search-clear')?.addEventListener('click', () => {
+    searchQuery = '';
+    renderPagesView();
+    $<HTMLInputElement>('#st-pages-search')?.focus();
+  });
+
+  const onlyModInp = edit.querySelector<HTMLInputElement>('#st-pages-only-mod');
+  onlyModInp?.addEventListener('change', () => {
+    onlyModified = onlyModInp.checked;
+    renderPagesView();
+  });
+
+  // 恢复本页全部默认
+  edit.querySelector<HTMLButtonElement>('#st-pages-reset-all')?.addEventListener('click', () => {
+    let count = 0;
+    for (const field of page.fields) {
+      const fb = defaultFor(field);
+      if ((values[field.key] ?? fb) !== fb) {
+        values[field.key] = fb;
+        count++;
+      }
+    }
+    if (count > 0) {
+      markDirty();
+      renderPagesView();
+      toast(`已将「${page.label}」页面的 ${count} 个字段恢复为默认值，请点保存生效`);
+    }
+  });
+
+  // 单个字段输入
   edit.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>('[data-page-field]').forEach((input) => {
     input.addEventListener('input', () => {
       const field = fieldFor(input.dataset.pageField ?? '');
@@ -576,7 +686,6 @@ function wireEvents(edit: HTMLElement, page: PageDef): void {
       renderPreview(page);
     });
 
-    // 清空后离开输入框：直接落回默认值，避免留下一个「看起来是空、实际是默认」的歧义状态。
     input.addEventListener('blur', () => {
       const field = fieldFor(input.dataset.pageField ?? '');
       if (!field || input.value !== '') return;
@@ -589,6 +698,7 @@ function wireEvents(edit: HTMLElement, page: PageDef): void {
     });
   });
 
+  // 单个字段恢复默认
   edit.querySelectorAll<HTMLButtonElement>('[data-page-reset]').forEach((btn) => {
     btn.addEventListener('click', () => {
       const field = fieldFor(btn.dataset.pageReset ?? '');
@@ -610,14 +720,12 @@ function wireEvents(edit: HTMLElement, page: PageDef): void {
 }
 
 /* --------------------------------------------------------------------------
-   保存（由外壳的全局「保存」调用）
+   保存
    -------------------------------------------------------------------------- */
 
 export async function savePagesValues(): Promise<void> {
   if (!schema || !hasChanges()) return;
 
-  // 只提交「和已保存值不同」的字段。
-  // 全量提交会把别人（或本标签页的旧缓存）没改过的默认值写回去，冲掉库里已有的覆盖值。
   const payload: PageValues = {};
   for (const page of schema) {
     for (const field of page.fields) {
@@ -665,7 +773,6 @@ function fieldFor(key: string): PageField | null {
   return null;
 }
 
-/** 服务端下发的 defaults 优先，schema 里的 default 兜底。 */
 function defaultFor(field: PageField): string {
   return defaults[field.key] ?? field.default;
 }
@@ -674,6 +781,12 @@ function isFieldChanged(key: string): boolean {
   const field = fieldFor(key);
   const fallback = field ? defaultFor(field) : defaults[key] ?? '';
   return (values[key] ?? fallback) !== (saved[key] ?? fallback);
+}
+
+function isFieldCustomized(key: string): boolean {
+  const field = fieldFor(key);
+  const fallback = field ? defaultFor(field) : defaults[key] ?? '';
+  return (values[key] ?? fallback) !== fallback;
 }
 
 function changedKeys(): string[] {
@@ -691,26 +804,41 @@ function hasChanges(): boolean {
   return changedKeys().length > 0;
 }
 
-/** 输入时只改徽章，不整栏重画，避免焦点与滚动位置丢失。 */
 function syncDirtyUi(): void {
   const dirty = hasChanges();
   const badge = $('#st-pages-dirty');
   if (badge) {
-    badge.textContent = dirty ? `${changedKeys().length} 项未保存` : '全部已保存';
+    badge.textContent = dirty ? `${changedKeys().length} 项待保存` : '全部已同步';
     badge.classList.toggle('is-dirty', dirty);
   }
 }
 
-/** 标记当前字段是否偏离已保存值（只切换样式，不重画输入框）。 */
 function syncFieldState(input: HTMLInputElement | HTMLTextAreaElement): void {
   const field = fieldFor(input.dataset.pageField ?? '');
   if (!field) return;
-  const cell = input.closest<HTMLElement>('.st-pages-field-cell');
-  if (cell) cell.classList.toggle('is-dirty', isFieldChanged(field.key));
+  const card = input.closest<HTMLElement>('.st-pages-field-card');
+  const dirty = isFieldChanged(field.key);
+  const custom = isFieldCustomized(field.key);
+  if (card) {
+    card.classList.toggle('is-dirty', dirty);
+    card.classList.toggle('is-custom', custom);
+  }
+  const statusEl = card?.querySelector<HTMLElement>(`[data-status-for="${field.key}"]`);
+  if (statusEl) {
+    statusEl.textContent = dirty ? '未保存修改' : custom ? '已自定义' : '默认文案';
+  }
+  const resetBtn = card?.querySelector<HTMLButtonElement>(`[data-page-reset="${field.key}"]`);
+  if (resetBtn) {
+    resetBtn.disabled = !custom && !dirty;
+  }
+  const defLine = card?.querySelector<HTMLElement>(`[data-default-for="${field.key}"]`);
+  if (defLine) {
+    defLine.hidden = !custom;
+  }
 }
 
 /* --------------------------------------------------------------------------
-   右侧概览
+   右侧：按当前修改页面的章节标题（01，02，...）排列导航（与左栏风格和字体同步）
    -------------------------------------------------------------------------- */
 
 function renderPreview(page: PageDef): void {
@@ -718,58 +846,51 @@ function renderPreview(page: PageDef): void {
   if (!box) return;
 
   const sections = sectionsFor(page);
-  const pageChanged = page.fields.filter((field) => isFieldChanged(field.key));
-  const allChanged = changedKeys().length;
-  const structuredCount = sections.filter((section) => section.structured).length;
+  const currentActive = activeSectionByPage[page.key] || sections[0]?.key || '';
 
   box.innerHTML = `
-    <div class="st-col-inner">
-      <div class="st-dock-head"><span>PAGE SETTINGS // 页面设置概览</span></div>
-
-      <div class="rail-blueprint-card">
-        <div class="rail-card-kicker">
-          <span>${esc(page.label)}</span>
-          <span>${sections.length} SECTIONS</span>
-        </div>
-        <div class="st-pages-preview-title">${esc(page.label)}页面设置</div>
-        <ul class="rail-kv-list">
-          <li><span>小节</span><strong>${sections.length}</strong></li>
-          <li><span>字段</span><strong>${page.fields.length}</strong></li>
-          <li><span>本页改动</span><strong>${pageChanged.length}</strong></li>
-          <li><span>全部未保存</span><strong>${allChanged}</strong></li>
-          ${structuredCount ? `<li><span>结构化小节</span><strong>${structuredCount}</strong></li>` : ''}
-        </ul>
+    <div class="st-col-inner st-pages-right-nav">
+      <div class="st-panel-title">
+        <span>SECTION NAV // ${esc(page.label)}章节导航 (${sections.length})</span>
       </div>
-
-      <div class="st-sub-kicker st-pages-preview-label">SECTIONS // 小节清单</div>
-      <ul class="st-pages-preview-list">
+      <ul class="st-list st-pages-sec-nav-list" id="st-pages-sec-nav-list">
         ${sections
-          .map((section, index) => {
-            const count = section.fields.filter((key) => fieldFor(key)).length;
-            const countLabel = count ? `${count} 字段` : '';
-            const structuredLabel = section.structured ? '结构化' : '';
-            const right = [countLabel, structuredLabel].filter(Boolean).join(' · ');
-            return `<li><span>${String(index + 1).padStart(2, '0')} // ${esc(
-              section.title
-            )}</span><span>${esc(right)}</span></li>`;
+          .map((sec, idx) => {
+            const num = String(idx + 1).padStart(2, '0');
+            const isCurrent = sec.key === currentActive;
+            const modCount = sec.fields.filter((k) => isFieldChanged(k) || isFieldCustomized(k)).length;
+            const subInfo = sec.structured
+              ? `${sec.tag} · 结构化配置模块`
+              : `${sec.tag} · 共 ${sec.fields.length} 项${modCount > 0 ? `（已改 ${modCount} 项）` : ''}`;
+            return `<li>
+              <button
+                type="button"
+                data-sec-nav="st-page-sec-${esc(sec.key)}"
+                data-sec-key="${esc(sec.key)}"
+                aria-current="${isCurrent ? 'true' : 'false'}"
+              >
+                <span class="st-line">
+                  <span class="st-date">${num}</span>
+                  <span class="st-name">${esc(sec.title)}</span>
+                </span>
+                <span class="st-sub">${esc(subInfo)}</span>
+              </button>
+            </li>`;
           })
           .join('')}
       </ul>
-
-      <div class="st-sub-kicker st-pages-preview-label">UNSAVED // 本页未保存字段</div>
-      ${
-        pageChanged.length
-          ? `<ul class="st-pages-preview-changes">${pageChanged
-              .map(
-                (field) =>
-                  `<li title="${esc(field.key)}"><span>${esc(field.label)}</span><span class="telemetry-accent">●</span></li>`
-              )
-              .join('')}</ul>`
-          : '<p class="st-hint">本页没有未保存的改动。</p>'
-      }
-
-      <p class="st-hint st-pages-preview-note">
-        保存走顶栏的「保存」按钮；文案与结构化内容在同一次提交里写入，输入框清空会回落到默认值。
-      </p>
     </div>`;
+
+  box.querySelectorAll<HTMLButtonElement>('[data-sec-nav]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const targetId = btn.dataset.secNav ?? '';
+      const secKey = btn.dataset.secKey ?? '';
+      if (secKey) activeSectionByPage[page.key] = secKey;
+      box.querySelectorAll<HTMLButtonElement>('[data-sec-nav]').forEach((b) => {
+        b.setAttribute('aria-current', String(b === btn));
+      });
+      const targetEl = document.getElementById(targetId);
+      targetEl?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  });
 }

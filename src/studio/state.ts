@@ -177,3 +177,8 @@ export function rerender(): void {
 export async function reload(): Promise<void> {
   await hooks.reload?.();
 }
+
+/** 兼容旧调用名：登录/切换账号后重新加载全部数据。 */
+export async function reloadAll(): Promise<void> {
+  await reload();
+}

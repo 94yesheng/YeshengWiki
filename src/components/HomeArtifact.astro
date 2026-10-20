@@ -3,7 +3,8 @@
  * 主页 artifact 的 HTML 组装层（SSR 版）。
  *
  * 文章队列 / 焦点文章 / 最新照片墙 / 程序工坊 / 友链与作者档案由 SQLite 生成，
- * hero、loader、header、tail 仍是原始 partial。
+ * 所有文案、四象限导览卡片与流形参数均与后台「页面」和「设置」实时联动。
+ * 当文章无封面时，自动展示符合昼夜主题的 SVG 图案（昼：无限流形 ∞，夜：卡冈图雅黑洞）。
  */
 import loader from '../artifact/home/loader.html?raw';
 import header from '../artifact/home/header.html?raw';
@@ -19,21 +20,23 @@ import { listLinks } from '../server/repositories/links';
 import { getSetting } from '../server/repositories/settings';
 import { copy, copyLines, getPageValues } from '../server/pages';
 import { applyArtifactSite, getSiteConfig } from '../server/site';
+import { home as staticHome, type HomeConfig } from '../site.config';
 import { chineseMonthDay } from '../utils/date';
 import { cjkSpacing } from '../utils/typography';
+import { THEME_COVER_SVG_HTML } from '../utils/cover-svg';
 
 const esc = (s: string) =>
   s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 const pad2 = (n: number) => String(n).padStart(2, '0');
 
 const posts = listPosts();
-const featured = posts[0] ?? null;
-const queue = posts.slice(1, 5);
+const featured = posts.find((p) => p.featured) ?? posts[0] ?? null;
+const queue = posts.filter((p) => p.slug !== featured?.slug).slice(0, 4);
 const site = getSiteConfig();
 const pages = getPageValues();
+const homeCfg = getSetting<Partial<HomeConfig>>('home', staticHome);
 const c = (key: string, vars?: Record<string, string | number>) => copy(pages, key, vars);
 
-/** 按 @@TOKEN@@ 替换 HTML 片段；缺 token 时告警，方便发现模板与页面不同步。 */
 function fillTokens(html: string, slots: Record<string, string>, label: string): string {
   let out = html;
   for (const [key, value] of Object.entries(slots)) {
@@ -48,6 +51,10 @@ const heroIntroHtml = copyLines(pages, 'home.hero.intro')
   .map((line) => `<p>${esc(line)}</p>`)
   .join('\n                  ');
 
+const heroSections = Array.isArray(homeCfg.sections) && homeCfg.sections.length >= 4
+  ? homeCfg.sections
+  : staticHome.sections;
+
 const heroSlots: Record<string, string> = {
   SITE_TITLE: esc(site.title),
   SITE_TAGLINE: esc(site.tagline),
@@ -55,28 +62,32 @@ const heroSlots: Record<string, string> = {
   HERO_ORIGIN: esc(c('home.hero.originBadge')),
   HERO_COORD: esc(c('home.hero.coordText')),
   HERO_INTRO: heroIntroHtml,
-  HERO_META_POSTS: esc(c('home.hero.metaPosts', { count: posts.length })),
-  HERO_META_PHOTOS: esc(c('home.hero.metaPhotos')),
-  HERO_META_PROGRAMS: esc(c('home.hero.metaPrograms')),
-  HERO_META_LINKS: esc(c('home.hero.metaLinks')),
+  HERO_META_POSTS: esc(heroSections[0]?.meta?.trim() || c('home.hero.metaPosts', { count: posts.length })),
+  HERO_META_PHOTOS: esc(heroSections[1]?.meta?.trim() || c('home.hero.metaPhotos')),
+  HERO_META_PROGRAMS: esc(heroSections[2]?.meta?.trim() || c('home.hero.metaPrograms')),
+  HERO_META_LINKS: esc(heroSections[3]?.meta?.trim() || c('home.hero.metaLinks')),
 };
 
-const heroHtml = fillTokens(hero, heroSlots, 'hero');
+let heroHtml = fillTokens(hero, heroSlots, 'hero');
+heroHtml = heroHtml.replace(
+  /(<span id="telemetry-equation">)[\s\S]*?(<\/span>)/,
+  (_m, a: string, b: string) => `${a}${esc(c('home.hero.equation'))}${b}`
+);
+const defaultLabels = ['文章', '照片', '程序', '友链'];
+const screenAnchors = ['#screen-posts', '#screen-photos', '#screen-programs', '#screen-links'];
+screenAnchors.forEach((anchor, idx) => {
+  const secTitle = heroSections[idx]?.title?.trim() || defaultLabels[idx]!;
+  const re = new RegExp(`(<a class="hero-q-index-cell" href="${anchor}">[\\s\\S]*?<span class="hero-index-label"><span>)[\\s\\S]*?(<\\/span>)`);
+  heroHtml = heroHtml.replace(re, (_m, a: string, b: string) => `${a}${esc(secTitle)}${b}`);
+});
+
 const loaderHtml = fillTokens(loader, { LOADER_STATUS: esc(c('home.loader.status')) }, 'loader');
 
 const headerHtml = applyArtifactSite(header, site, 'home');
 const tailHtml = applyArtifactSite(tail, site, 'home');
 
-const DESIGN_COVERS: Record<string, string> = {
-  'mc-server': '/artifact/home/images/spot-default-mc.jpg',
-  'ji-bao': '/artifact/home/images/post-cover-jibao.jpg',
-  maptoposter: '/artifact/home/images/post-cover-maptoposter.jpg',
-  blender: '/artifact/home/images/post-cover-blender.jpg',
-  'deepseek-wechat': '/artifact/home/images/post-cover-deepseek.jpg',
-};
-
 function coverFor(post: Post): string {
-  return DESIGN_COVERS[post.slug] ?? post.cover ?? '/artifact/home/images/spot-default-mc.jpg';
+  return post.cover?.trim() || '';
 }
 
 function leadFor(post: Post): string {
@@ -119,8 +130,8 @@ const spotTitle = featured ? cjkSpacing(featured.title) : '暂无文章';
 const spotUrl = featured ? `/posts/${featured.slug}/` : '/posts/';
 const spotDate = featured ? chineseMonthDay(new Date(`${featured.pubDate}T00:00:00`)) : '';
 const spotTags = featured ? featured.tags.join(' · ') : '';
-const spotCover = featured ? coverFor(featured) : '/artifact/home/images/spot-default-mc.jpg';
-const spotExcerpt = featured ? leadFor(featured) : '去 /studio/ 写第一篇文章。';
+const spotCover = featured ? coverFor(featured) : '';
+const spotExcerpt = featured ? leadFor(featured) : c('posts.empty');
 const spotCoverCaption = featured?.coverCaption?.trim() || '16:9 FEATURED';
 
 const postSlots: Record<string, string> = {
@@ -131,6 +142,9 @@ const postSlots: Record<string, string> = {
   SPOT_DATE: esc(spotDate),
   SPOT_TAGS: esc(spotTags),
   SPOT_COVER: esc(spotCover),
+  SPOT_IMG_HIDDEN: spotCover ? '' : 'hidden',
+  SPOT_SVG_HIDDEN: spotCover ? 'hidden' : '',
+  SPOT_COVER_SVG: THEME_COVER_SVG_HTML,
   SPOT_COVER_CAPTION: esc(spotCoverCaption),
   SPOT_EXCERPT: esc(spotExcerpt),
   POST_COUNT: String(posts.length),
@@ -178,7 +192,7 @@ const photoItemsHtml = wallPhotos
 
 const photoSlots: Record<string, string> = {
   WALL_COORD: 'LATEST GROUP // #01',
-  WALL_TITLE: esc(wall?.title ?? '暂无照片'),
+  WALL_TITLE: esc(wall?.title ?? c('photos.empty')),
   WALL_NOTE: esc(wall?.note ?? ''),
   PHOTO_ITEMS: photoItemsHtml,
   PHOTO_FOOTER: `最新一组共 ${wallPhotos.length} 张照片 · 当前栏宽内完整展示 <strong class="telemetry-accent">4 张</strong>（超出右边界自动不显示）`,
@@ -250,7 +264,7 @@ const consoleCardHtml = progConsole
               }
               <div class="quad-cell-foot" style="${consoleFootStyle}">
                 <span>${esc(progConsole.buildVersion?.trim() || 'BUILD: —')}</span>
-                <a href="#screen-hero" style="color:var(--accent); font-weight:600;">返回首屏检视引擎 -&gt;</a>
+                <a href="#screen-hero" style="color:var(--accent); font-weight:600;">${esc(c('programs.hostCta'))}</a>
               </div>
             </div>`
   : `<div class="prog-featured-console q-joint">
@@ -259,21 +273,21 @@ const consoleCardHtml = progConsole
                   <span class="console-dots" aria-hidden="true"><span></span><span></span><span></span></span>
                   <span>CORE ENGINE // EMPTY</span>
                 </div>
-                <h3 class="console-title">暂无程序数据</h3>
+                <h3 class="console-title">${esc(c('programs.emptyTitle'))}</h3>
                 <p class="console-desc">
-                  程序数据已清空。可在 /studio/ 的「程序工坊」里补充控制台与模块，保存后这里会立即显示。
+                  ${esc(c('programs.emptyText'))}
                 </p>
               </div>
               <div class="quad-cell-foot" style="${consoleFootStyle}">
                 <span>WAITING FOR IMPORT</span>
-                <a href="/studio/" style="color:var(--accent); font-weight:600;">打开后台 -&gt;</a>
+                <a href="/studio/" style="color:var(--accent); font-weight:600;">${esc(c('programs.emptyCta'))}</a>
               </div>
             </div>`;
 
 let dmTriggerTaken = false;
 const rackItemHtml = (m: ProgModule): string => {
   const href = m.href?.trim() ?? '';
-  const status = esc(m.status?.trim() || (href ? '查看详情 ->' : 'IDLE'));
+  const status = esc(m.status?.trim() || (href ? c('programs.viewCta') : c('programs.statusFallback')));
   const progress = Math.max(0, Math.min(100, Number(m.progress) || 0));
   let triggerAttr = '';
   if (href && href.startsWith('#') && !dmTriggerTaken) {
@@ -308,8 +322,8 @@ const rackItemsHtml = progModules.length
                   <span class="rack-id-stack">EMPTY</span>
                 </div>
                 <div class="rack-main-col">
-                  <h3>暂无程序模块</h3>
-                  <p>程序模块已清空，等待导入；在 /studio/ 的「程序工坊」中添加后会立即显示在这里。</p>
+                  <h3>${esc(c('programs.emptyTitle'))}</h3>
+                  <p>${esc(c('programs.emptyText'))}</p>
                 </div>
                 <div class="rack-metric-col">
                   <span class="telemetry-accent">IDLE</span>
@@ -359,10 +373,10 @@ const authorChipsHtml = chips.length
 
 const siteBaseUrl = site.url.replace(/\/+$/, '');
 const siteSpecHtml = [
-  ['站名 / TITLE', site.title],
-  ['签名 / MOTTO', site.tagline],
-  ['网址 / URL', siteBaseUrl],
-  ['订阅 / RSS', `${siteBaseUrl}/rss.xml`],
+  [c('links.specName'), site.title],
+  [c('links.specTagline'), site.tagline],
+  [c('links.specUrl'), siteBaseUrl],
+  [c('links.specRss'), `${siteBaseUrl}/rss.xml`],
 ]
   .map(([label, value]) => `<li><span>${esc(label)}</span><strong>${esc(value)}</strong></li>`)
   .join('\n                  ');
@@ -405,13 +419,13 @@ const peerCardsHtml = links.length
                       <span class="peer-avatar">友</span>
                       <div class="peer-head-meta">
                         <div class="peer-title-line">
-                          <h3 class="peer-name">暂无友链</h3>
-                          <span class="peer-tag">等待导入</span>
+                          <h3 class="peer-name">${esc(c('links.empty'))}</h3>
+                          <span class="peer-tag">${esc(c('links.peersEmpty'))}</span>
                         </div>
                         <div class="peer-domain">/links/</div>
                       </div>
                     </div>
-                    <p class="peer-bio">友链数据已清空。可在 /studio/ 的「友链」面板中添加，保存后这里会立即显示。</p>
+                    <p class="peer-bio">可在 /studio/ 的「友链」板块中添加独立博客友链，保存后这里会立即显示。</p>
                   </div>
                   <div class="peer-foot">
                     <span>站长：—</span>
@@ -434,6 +448,7 @@ const linkSlots: Record<string, string> = {
   SITE_CARD_BTN: esc(c('links.copyBtn')),
   PEER_COUNT_PAD: pad2(links.length),
   PEER_CARDS: peerCardsHtml,
+  PEER_CARDS_COUNT: String(links.length),
   PEER_DIRECTORY: `ABOUT ME + SITE CARD + ${links.length} FRIEND NODE${links.length === 1 ? '' : 'S'}`,
   HOME_LINKS_NOTE: esc(c('home.links.note')),
 };
@@ -444,6 +459,8 @@ for (const [key, value] of Object.entries(linkSlots)) {
   if (!linksHtml.includes(token)) console.warn('[home] 缺友链占位符', token);
   linksHtml = linksHtml.split(token).join(value);
 }
+
+const manifoldCfg = homeCfg.manifold ?? staticHome.manifold ?? {};
 ---
 
 <Fragment set:html={loaderHtml} />
@@ -453,6 +470,10 @@ for (const [key, value] of Object.entries(linkSlots)) {
     originBadge: copy(pages, 'home.hero.originBadge'),
     topbarTag: copy(pages, 'home.hero.topbarTag'),
     coordText: copy(pages, 'home.hero.coordText'),
+    equation: copy(pages, 'home.hero.equation'),
+    particleCount: Number(manifoldCfg.particleCount ?? 560),
+    speed: Number(manifoldCfg.speed ?? 1.0),
+    defaultTheme: manifoldCfg.defaultTheme ?? 'light',
   }).replace(/</g, '\\u003c')};`}
 ></script>
 <Fragment set:html={headerHtml} />

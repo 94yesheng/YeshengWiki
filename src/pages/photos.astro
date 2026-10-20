@@ -1,7 +1,7 @@
 ---
 /**
  * 照片子页 —— SSR 版。
- * 检视台、胶片条、筛选和档案网格都来自 SQLite；artifact.js 仍负责交互。
+ * 检视台、胶片条、筛选和档案网格都来自 SQLite；顶栏说明、卡片标题等全部关联后台「页面 → 相册」。
  */
 export const prerender = false;
 
@@ -151,6 +151,33 @@ for (const [key, value] of Object.entries(slots)) {
   if (!html.includes(token)) console.warn('[photos] 缺占位符', token);
   html = html.split(token).join(value);
 }
+
+// 动态注入后台「页面 → 相册」配置的文案
+html = html.replace(
+  '<span>PHOTO SHOWCASE STAGE // 照片子页 · 一屏自适应光学检视台</span>',
+  `<span>${esc(c('photos.topbarTitle'))}</span>`
+);
+html = html.replace(
+  /(<div class="q-topbar-cell q-topbar-cell--center" id="photos-detail-topbar-title">\s*)[\s\S]*?(\s*<\/div>)/,
+  (_m, a: string, b: string) => `${a}${esc(c('photos.topbarNote'))}${b}`
+);
+html = html.replace(
+  '<span>PHOTO SPECIFICATION // 影像档案与拍摄信息</span>',
+  `<span>${esc(c('photos.specTitle'))}</span>`
+);
+html = html.replace(
+  '<span>QUICK FILMSTRIP // 快速切换影像（#02 为 3:4 竖向画框）</span>',
+  `<span>${esc(c('photos.filmstripTitle'))}</span>`
+);
+html = html.replace(
+  '<span>LUMINANCE &amp; SPECTRUM // 影调直方分布</span>',
+  `<span>${esc(c('photos.histTitle'))}</span>`
+);
+html = html.replace(
+  'CLICK CARD TO INSPECT ABOVE // 点击任意卡片自动滚回上方一屏画框检视',
+  esc(c('photos.gridHint'))
+);
+
 html = applyArtifactSite(html, site, 'photos');
 
 const photoJson = JSON.stringify(db).replace(/</g, '\\u003c');

@@ -5,12 +5,11 @@
  *   1. `site`    —— 01 · 全局站点标识、导航栏、页脚与世界线辉光管探测仪
  *   2. `account` —— 02 · 管理员账号与密码（写 users 表，不经过站点 JSON）
  *
- * 主页流形引擎、文章右侧悬浮栏与关于我/架构志三个结构化面板不再挂在「设置」里，
- * 改由「页面」板块对应分组渲染（见本文件导出的 render*Panel，只输出小节内容，
- * 外层卡片与顶部说明由 pages.ts 统一提供）。
+ * 主页流形引擎、文章右侧悬浮栏与关于我/架构志三个结构化面板由「页面」板块对应分组渲染。
  */
 import { $, esc, toast } from '../ui';
 import { state, markDirty, rerender } from '../state';
+import { renderWidgetCardHtml, type RailWidgetCard, type RailWidgetType } from '../../utils/article-rail';
 
 type Json = Record<string, unknown>;
 
@@ -231,7 +230,7 @@ function renderGlobalIdentitySettings(host: HTMLElement, data: Json): void {
 }
 
 /* --------------------------------------------------------------------------
-   「页面」板块 · 主页分组的结构化小节（无卡片外壳，由 pages.ts 嵌入 st-section-box）
+   「页面」板块 · 主页分组的结构化小节（四象限导览卡片 + 流形画布参数）
    -------------------------------------------------------------------------- */
 export function renderHomeEnginePanel(host: HTMLElement, data: Json): void {
   const home = (data.home ?? {}) as Json;
@@ -251,7 +250,7 @@ export function renderHomeEnginePanel(host: HTMLElement, data: Json): void {
           (s, i) => `
         <div class="st-kv-row st-kv-row--4">
           <input class="st-input" data-sec="${i}.title" value="${esc(s.title ?? '')}" placeholder="标题（如：文章）" />
-          <input class="st-input" data-sec="${i}.meta" value="${esc(s.meta ?? '')}" placeholder="角标（如：5 篇 / 最新组）" />
+          <input class="st-input" data-sec="${i}.meta" value="${esc(s.meta ?? '')}" placeholder="角标（留空走上方角标配置）" />
           <input class="st-input" data-sec="${i}.href" value="${esc(s.href ?? '')}" placeholder="路由（如：/posts/）" />
           <input class="st-input" data-sec="${i}.desc" value="${esc(s.desc ?? '')}" placeholder="导览说明文字" />
         </div>`
@@ -259,7 +258,7 @@ export function renderHomeEnginePanel(host: HTMLElement, data: Json): void {
         .join('')}
     </div>
 
-    <div class="st-sub-kicker">MANIFOLD ENGINE // 昼夜粒子场默认参数（开屏文字见上方文案字段）</div>
+    <div class="st-sub-kicker" style="margin-top:1.1rem;">MANIFOLD ENGINE // 昼夜粒子场默认参数</div>
     <div class="st-grid-2">
       <div class="st-field">
         <label>默认主题</label>
@@ -291,6 +290,8 @@ export function renderHomeEnginePanel(host: HTMLElement, data: Json): void {
       const [iStr, k] = (inp.dataset.sec ?? '').split('.');
       const item = sections[Number(iStr)];
       if (item && k) item[k] = inp.value;
+      home.sections = sections;
+      data.home = home;
       markDirty();
     })
   );
@@ -316,7 +317,7 @@ export function renderHomeEnginePanel(host: HTMLElement, data: Json): void {
 }
 
 /* --------------------------------------------------------------------------
-   「页面」板块 · 友链分组的结构化小节（无卡片外壳，由 pages.ts 嵌入 st-section-box）
+   「页面」板块 · 友链分组的结构化小节（关于「我」个人档案卡 + 站点说明志）
    -------------------------------------------------------------------------- */
 export function renderAuthorDossierPanel(host: HTMLElement, data: Json): void {
   const dossier = (data.authorDossier ?? {}) as Json;
@@ -324,7 +325,7 @@ export function renderAuthorDossierPanel(host: HTMLElement, data: Json): void {
   const colophon = Array.isArray(dossier.colophon) ? (dossier.colophon as Json[]) : [];
 
   host.innerHTML = `
-    <div class="st-sub-kicker">AUTHOR DOSSIER CARD // 关于「我」个人档案卡</div>
+    <div class="st-sub-kicker">AUTHOR DOSSIER CARD // 关于「我」个人档案卡（同时在主页第 05 屏与 /links/ 展示）</div>
     <div class="st-grid-3">
       <div class="st-field">
         <label>单字徽章</label>
@@ -339,29 +340,40 @@ export function renderAuthorDossierPanel(host: HTMLElement, data: Json): void {
         <div><input class="st-input" data-dos="subCoord" value="${esc(dossier.subCoord ?? 'AUTHOR // YESHENG · 独立记录者')}" /></div>
       </div>
     </div>
-    <div class="st-field" style="margin-top:0.6rem;">
+    <div class="st-field" style="margin-top:0.75rem;">
       <label>个人自述</label>
       <div><textarea class="st-textarea" data-dos="bio" rows="3">${esc(dossier.bio ?? '')}</textarea></div>
     </div>
-    <div class="st-field" style="margin-top:0.6rem;">
+    <div class="st-field" style="margin-top:0.75rem;">
       <label>个人标签行</label>
       <div>
         ${chips
           .map(
-            (c, i) => `<input class="st-input" data-dos-chip="${i}" value="${esc(c)}" style="margin-bottom:0.4rem;" placeholder="如：坐标 · 重庆 / 远方" />`
+            (c, i) => `
+          <div style="display:flex;gap:0.45rem;margin-bottom:0.45rem;">
+            <input class="st-input" data-dos-chip="${i}" value="${esc(c)}" placeholder="如：坐标 · 重庆 / 远方" />
+            <button type="button" class="stage-mini-btn st-btn--danger" data-dos-chip-del="${i}">删除</button>
+          </div>`
           )
           .join('')}
+        <button type="button" class="stage-mini-btn" id="st-add-dos-chip">＋ 新增个人标签</button>
       </div>
     </div>
 
-    <div class="st-sub-kicker">SITE COLOPHON // /links/ 页面底部四象限「站点说明志」卡片</div>
+    <div class="st-pages-subhead" style="margin-top:1.2rem;">
+      <div class="st-sub-kicker">SITE COLOPHON // /links/ 页面底部「站点说明志」卡片</div>
+      <button type="button" class="stage-mini-btn" id="st-add-colophon-card">＋ 新增说明志卡片</button>
+    </div>
     <div class="st-grid-2">
       ${colophon
         .map(
           (c, i) => `
         <div class="st-colophon-edit-box">
-          <input class="st-input" data-col="${i}.kicker" value="${esc(c.kicker ?? '')}" placeholder="01 // PHILOSOPHY" style="margin-bottom:4px;font-family:var(--mono);font-size:0.75rem;" />
-          <input class="st-input" data-col="${i}.title" value="${esc(c.title ?? '')}" placeholder="卡片标题" style="margin-bottom:4px;" />
+          <div style="display:flex;gap:0.4rem;align-items:center;margin-bottom:0.4rem;">
+            <input class="st-input" data-col="${i}.kicker" value="${esc(c.kicker ?? '')}" placeholder="01 // PHILOSOPHY" style="font-family:var(--mono);" />
+            <button type="button" class="stage-mini-btn st-btn--danger" data-col-del="${i}">删除</button>
+          </div>
+          <input class="st-input" data-col="${i}.title" value="${esc(c.title ?? '')}" placeholder="卡片标题" style="margin-bottom:0.4rem;" />
           <textarea class="st-textarea" data-col="${i}.desc" rows="3" placeholder="说明正文">${esc(c.desc ?? '')}</textarea>
         </div>`
         )
@@ -386,6 +398,24 @@ export function renderAuthorDossierPanel(host: HTMLElement, data: Json): void {
     })
   );
 
+  host.querySelectorAll<HTMLButtonElement>('[data-dos-chip-del]').forEach((btn) =>
+    btn.addEventListener('click', () => {
+      chips.splice(Number(btn.dataset.dosChipDel), 1);
+      dossier.chips = chips;
+      data.authorDossier = dossier;
+      markDirty();
+      rerender();
+    })
+  );
+
+  $('#st-add-dos-chip', host)?.addEventListener('click', () => {
+    chips.push('新标签 · 内容');
+    dossier.chips = chips;
+    data.authorDossier = dossier;
+    markDirty();
+    rerender();
+  });
+
   host.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>('[data-col]').forEach((inp) =>
     inp.addEventListener('input', () => {
       const [iStr, k] = (inp.dataset.col ?? '').split('.');
@@ -396,15 +426,42 @@ export function renderAuthorDossierPanel(host: HTMLElement, data: Json): void {
       markDirty();
     })
   );
+
+  host.querySelectorAll<HTMLButtonElement>('[data-col-del]').forEach((btn) =>
+    btn.addEventListener('click', () => {
+      colophon.splice(Number(btn.dataset.colDel), 1);
+      dossier.colophon = colophon;
+      data.authorDossier = dossier;
+      markDirty();
+      rerender();
+    })
+  );
+
+  $('#st-add-colophon-card', host)?.addEventListener('click', () => {
+    colophon.push({
+      kicker: `0${colophon.length + 1} // SECTION`,
+      title: '新站点说明卡片',
+      desc: '在此填写站点说明内容。',
+    });
+    dossier.colophon = colophon;
+    data.authorDossier = dossier;
+    markDirty();
+    rerender();
+  });
 }
 
 /* --------------------------------------------------------------------------
-   「页面」板块 · 文章分组的结构化小节（无卡片外壳，由 pages.ts 嵌入 st-section-box）
+   「页面」板块 · 文章分组的结构化小节（全局文章悬浮窗 & 三体画布铭牌配置）
+   已彻底移除特定文章专用的写死拓扑图模板，升级为高通用多类型卡片管理。
    -------------------------------------------------------------------------- */
 export function renderArticleRailPanel(host: HTMLElement, data: Json): void {
-  // 渲染阶段只读：默认值放在局部变量里，等用户真正操作时才写回 state.draft.site，
-  // 避免「只是打开页面」就被判定成有未保存改动。
   const rail = (data.articleRail ?? {}) as Json;
+  const threeBody = (rail.threeBody ?? {
+    eraBadge: '3D MUTUAL GRAVITY // 三体立体轨道',
+    fluxReadout: '3 VOLUMETRIC SPHERES · CLICK TO PERTURB',
+    defaultCaption: '3-BODY GRAVITY // CHAOTIC ORBIT',
+  }) as Json;
+
   const docSpec = (rail.docSpec ?? {
     enabled: true,
     kicker: 'DOC SPEC // 文档速查卡',
@@ -420,21 +477,6 @@ export function renderArticleRailPanel(host: HTMLElement, data: Json): void {
     ? (docSpec.customRows as Array<{ label: string; value: string }>)
     : [];
 
-  const topo = (rail.topology ?? {
-    enabledForMc: true,
-    globalEnabled: false,
-    kicker: 'TOPOLOGY // 穿透链路图解',
-    badge: 'TCP : 25565',
-    node1Title: 'LOCAL HOST',
-    node1Sub: 'Paper :25565',
-    node2Title: 'FRP RELAY',
-    node2Sub: 'Public :7000',
-    node3Title: 'PLAYERS',
-    node3Sub: 'Clients 1..N',
-    line1: 'TUNNEL: 127.0.0.1:25565 -> frps:25565',
-    line2: 'STATUS: NAT BYPASSED · ZERO PUBLIC IP',
-  }) as Json;
-
   const related = (rail.related ?? {
     enabled: true,
     kicker: 'ARCHIVE // 同系列文章切换',
@@ -443,14 +485,32 @@ export function renderArticleRailPanel(host: HTMLElement, data: Json): void {
     strategy: 'latest',
   }) as Json;
 
-  const customCards = Array.isArray(rail.customCards) ? (rail.customCards as Json[]) : [];
+  const customCards = Array.isArray(rail.customCards) ? (rail.customCards as RailWidgetCard[]) : [];
 
   host.innerHTML = `
     <div class="st-pages-subhead">
-      <div class="st-sub-kicker">DOC SPEC CARD // 默认「文档速查卡」配置（显示发布日、字数、时长与自定义键值）</div>
+      <div class="st-sub-kicker">THREE-BODY CANVAS // 文章详细页右上角《三体》引力画布默认铭牌</div>
+    </div>
+    <div class="st-grid-3">
+      <div class="st-field">
+        <label>左上角纪元徽标</label>
+        <div><input class="st-input" data-threebody="eraBadge" value="${esc(threeBody.eraBadge ?? '3D MUTUAL GRAVITY // 三体立体轨道')}" /></div>
+      </div>
+      <div class="st-field">
+        <label>右上角交互提示</label>
+        <div><input class="st-input" data-threebody="fluxReadout" value="${esc(threeBody.fluxReadout ?? '3 VOLUMETRIC SPHERES · CLICK TO PERTURB')}" /></div>
+      </div>
+      <div class="st-field">
+        <label>底栏默认副标题</label>
+        <div><input class="st-input" data-threebody="defaultCaption" value="${esc(threeBody.defaultCaption ?? '3-BODY GRAVITY // CHAOTIC ORBIT')}" /></div>
+      </div>
+    </div>
+
+    <div class="st-pages-subhead" style="margin-top:1.15rem;">
+      <div class="st-sub-kicker">DOC SPEC CARD // 全局默认「文档速查卡」配置（显示发布日、字数、时长与通用键值）</div>
       <label class="st-check" style="font-weight:400;">
         <input type="checkbox" id="st-rail-doc-on" ${docSpec.enabled !== false ? 'checked' : ''} />
-        <span>启用此卡片</span>
+        <span>默认启用此卡片</span>
       </label>
     </div>
     <div class="st-grid-2">
@@ -471,7 +531,7 @@ export function renderArticleRailPanel(host: HTMLElement, data: Json): void {
       <label class="st-check"><input type="checkbox" data-docspec-bool="showTags" ${docSpec.showTags !== false ? 'checked' : ''} /><span>显示 TAGS（分类标签）</span></label>
     </div>
 
-    <div class="st-sub-kicker" style="margin-top:0.75rem;">GLOBAL EXTRA KV ROWS // 全局附加速查键值行（如作者、许可协议、版本号）</div>
+    <div class="st-sub-kicker" style="margin-top:0.85rem;">GLOBAL EXTRA KV ROWS // 全局附加速查键值行（如作者、许可协议、版权说明）</div>
     <div class="st-kv-editor-list">
       ${customRows
         .map(
@@ -486,47 +546,8 @@ export function renderArticleRailPanel(host: HTMLElement, data: Json): void {
     </div>
     <button type="button" class="stage-mini-btn" id="st-add-docrow" style="margin-top:0.45rem;">＋ 添加全局速查键值行</button>
 
-    <div class="st-pages-subhead">
-      <div class="st-sub-kicker">TOPOLOGY DIAGRAM CARD // 「拓扑链路图解」矢量卡默认模板</div>
-      <div class="st-pages-subhead-actions">
-        <label class="st-check"><input type="checkbox" id="st-topo-mc" ${topo.enabledForMc !== false ? 'checked' : ''} /><span>Mc 服务器篇默认开启</span></label>
-        <label class="st-check"><input type="checkbox" id="st-topo-all" ${topo.globalEnabled === true ? 'checked' : ''} /><span>全站文章默认开启</span></label>
-      </div>
-    </div>
-    <div class="st-grid-2">
-      <div class="st-field">
-        <label>卡片顶栏标</label>
-        <div><input class="st-input" data-railtopo="kicker" value="${esc(topo.kicker ?? 'TOPOLOGY // 穿透链路图解')}" /></div>
-      </div>
-      <div class="st-field">
-        <label>端口/协议标</label>
-        <div><input class="st-input" data-railtopo="badge" value="${esc(topo.badge ?? 'TCP : 25565')}" /></div>
-      </div>
-    </div>
-    <div class="st-grid-3" style="margin-top:0.6rem;">
-      <div>
-        <label class="st-mini-label">节点 1（左）</label>
-        <input class="st-input" data-railtopo="node1Title" value="${esc(topo.node1Title ?? 'LOCAL HOST')}" style="margin-bottom:4px" />
-        <input class="st-input" data-railtopo="node1Sub" value="${esc(topo.node1Sub ?? 'Paper :25565')}" />
-      </div>
-      <div>
-        <label class="st-mini-label">节点 2（中）</label>
-        <input class="st-input" data-railtopo="node2Title" value="${esc(topo.node2Title ?? 'FRP RELAY')}" style="margin-bottom:4px" />
-        <input class="st-input" data-railtopo="node2Sub" value="${esc(topo.node2Sub ?? 'Public :7000')}" />
-      </div>
-      <div>
-        <label class="st-mini-label">节点 3（右）</label>
-        <input class="st-input" data-railtopo="node3Title" value="${esc(topo.node3Title ?? 'PLAYERS')}" style="margin-bottom:4px" />
-        <input class="st-input" data-railtopo="node3Sub" value="${esc(topo.node3Sub ?? 'Clients 1..N')}" />
-      </div>
-    </div>
-    <div class="st-grid-2" style="margin-top:0.5rem;">
-      <input class="st-input" data-railtopo="line1" value="${esc(topo.line1 ?? '')}" placeholder="底部状态行 1" />
-      <input class="st-input" data-railtopo="line2" value="${esc(topo.line2 ?? '')}" placeholder="底部状态行 2" />
-    </div>
-
-    <div class="st-pages-subhead">
-      <div class="st-sub-kicker">RELATED ARCHIVE CARD // 「同系列文章快速切换」模块</div>
+    <div class="st-pages-subhead" style="margin-top:1.15rem;">
+      <div class="st-sub-kicker">RELATED ARCHIVE CARD // 全局「同系列文章快速切换」模块</div>
       <label class="st-check"><input type="checkbox" id="st-rel-on" ${related.enabled !== false ? 'checked' : ''} /><span>显示同系列文章列表</span></label>
     </div>
     <div class="st-grid-3">
@@ -544,20 +565,23 @@ export function renderArticleRailPanel(host: HTMLElement, data: Json): void {
       </div>
     </div>
 
-    <div class="st-pages-subhead">
-      <div class="st-sub-kicker">CUSTOM FLOATING CARDS // 自定义右侧悬浮栏卡片（公告 / 伴读贴士 / 扩展链接）</div>
-      <button type="button" class="stage-mini-btn" id="st-add-rail-card">＋ 新增自定义右侧悬浮卡片</button>
+    <div class="st-pages-subhead" style="margin-top:1.15rem;">
+      <div class="st-sub-kicker">GLOBAL FLOATING CARDS // 全局自定义信息悬浮卡片（所有文章默认共享，单篇可独立覆盖）</div>
+      <div style="display:flex;gap:0.4rem;flex-wrap:wrap;">
+        <button type="button" class="stage-mini-btn" data-add-global-card="note">＋ 伴读便签卡</button>
+        <button type="button" class="stage-mini-btn" data-add-global-card="kv">＋ 键值参数卡</button>
+      </div>
     </div>
     ${
       customCards.length
         ? customCards
             .map(
               (c, i) => `
-          <div class="st-prog-mod-editor" style="margin-bottom:0.65rem;">
-            <div class="st-section-head" style="margin-bottom:0.45rem;">
+          <div class="st-prog-mod-editor" style="margin-bottom:0.75rem;">
+            <div class="st-section-head" style="margin-bottom:0.5rem;">
               <label class="st-check">
                 <input type="checkbox" data-cc-on="${i}" ${c.enabled !== false ? 'checked' : ''} />
-                <span>卡片 #${i + 1}：${esc(c.kicker || '未命名伴读卡')}</span>
+                <span>全局卡片 #${i + 1}：${esc(c.kicker || '未命名伴读卡')}</span>
               </label>
               <button type="button" class="stage-mini-btn st-btn--danger" data-cc-del="${i}">删除卡片</button>
             </div>
@@ -571,7 +595,7 @@ export function renderArticleRailPanel(host: HTMLElement, data: Json): void {
                 <div><input class="st-input" data-cc="${i}.badge" value="${esc(c.badge ?? '')}" placeholder="TELEMETRY" /></div>
               </div>
             </div>
-            <div class="st-field" style="margin-top:0.5rem;">
+            <div class="st-field" style="margin-top:0.55rem;">
               <label>卡片内容</label>
               <div><textarea class="st-textarea" data-cc="${i}.content" rows="2" placeholder="输入悬浮栏伴读说明、版权提示或公告文字">${esc(
                 c.content ?? ''
@@ -580,14 +604,13 @@ export function renderArticleRailPanel(host: HTMLElement, data: Json): void {
           </div>`
             )
             .join('')
-        : '<p class="st-empty">尚未添加自定义悬浮卡片，可点击上方「＋ 新增自定义右侧悬浮卡片」。</p>'
+        : '<p class="st-empty">尚未添加全局自定义悬浮卡片，可点击上方按钮新增。</p>'
     }`;
 
-  // 第一次真实编辑时把局部默认值挂回站点草稿；只是打开面板不会产生改动。
   const attachRail = (): void => {
     docSpec.customRows = customRows;
+    rail.threeBody = threeBody;
     rail.docSpec = docSpec;
-    rail.topology = topo;
     rail.related = related;
     rail.customCards = customCards;
     data.articleRail = rail;
@@ -595,8 +618,15 @@ export function renderArticleRailPanel(host: HTMLElement, data: Json): void {
   host.addEventListener('input', attachRail, { capture: true, once: true });
   host.addEventListener('change', attachRail, { capture: true, once: true });
 
-  // 绑定 DOC SPEC
-  $<HTMLInputElement>('#st-rail-doc-on')?.addEventListener('change', (e) => {
+  host.querySelectorAll<HTMLInputElement>('[data-threebody]').forEach((inp) =>
+    inp.addEventListener('input', () => {
+      const k = inp.dataset.threebody ?? '';
+      if (k) threeBody[k] = inp.value;
+      markDirty();
+    })
+  );
+
+  $<HTMLInputElement>('#st-rail-doc-on', host)?.addEventListener('change', (e) => {
     docSpec.enabled = (e.target as HTMLInputElement).checked;
     markDirty();
   });
@@ -642,32 +672,14 @@ export function renderArticleRailPanel(host: HTMLElement, data: Json): void {
     })
   );
 
-  $('#st-add-docrow')?.addEventListener('click', () => {
+  $('#st-add-docrow', host)?.addEventListener('click', () => {
     attachRail();
     customRows.push({ label: 'STATUS', value: 'VERIFIED' });
     markDirty();
     rerender();
   });
 
-  // 绑定 TOPOLOGY
-  $<HTMLInputElement>('#st-topo-mc')?.addEventListener('change', (e) => {
-    topo.enabledForMc = (e.target as HTMLInputElement).checked;
-    markDirty();
-  });
-  $<HTMLInputElement>('#st-topo-all')?.addEventListener('change', (e) => {
-    topo.globalEnabled = (e.target as HTMLInputElement).checked;
-    markDirty();
-  });
-  host.querySelectorAll<HTMLInputElement>('[data-railtopo]').forEach((inp) =>
-    inp.addEventListener('input', () => {
-      const k = inp.dataset.railtopo ?? '';
-      if (k) topo[k] = inp.value;
-      markDirty();
-    })
-  );
-
-  // 绑定 RELATED
-  $<HTMLInputElement>('#st-rel-on')?.addEventListener('change', (e) => {
+  $<HTMLInputElement>('#st-rel-on', host)?.addEventListener('change', (e) => {
     related.enabled = (e.target as HTMLInputElement).checked;
     markDirty();
   });
@@ -679,21 +691,24 @@ export function renderArticleRailPanel(host: HTMLElement, data: Json): void {
     })
   );
 
-  // 绑定自定义卡片
-  $('#st-add-rail-card')?.addEventListener('click', () => {
-    attachRail();
-    customCards.push({
-      id: `rail-card-${Date.now().toString(36).slice(-4)}`,
-      enabled: true,
-      kicker: 'CUSTOM WIDGET // 伴读便签',
-      badge: 'NOTE',
-      type: 'text',
-      content: '在此输入显示在文章右侧悬浮栏中的自定义伴读信息。',
-    });
-    markDirty();
-    rerender();
-    toast('已新增一张右侧悬浮栏伴读卡片');
-  });
+  host.querySelectorAll<HTMLButtonElement>('[data-add-global-card]').forEach((btn) =>
+    btn.addEventListener('click', () => {
+      attachRail();
+      const type = (btn.dataset.addGlobalCard ?? 'note') as RailWidgetType;
+      customCards.push({
+        id: `rail-card-${Date.now().toString(36).slice(-4)}`,
+        enabled: true,
+        kicker: type === 'kv' ? 'GLOBAL SPEC // 全局参数' : 'READER NOTE // 伴读提示',
+        badge: type === 'kv' ? 'SPEC' : 'NOTE',
+        type,
+        content: '在此输入显示在文章右侧悬浮栏中的自定义伴读信息。',
+        items: type === 'kv' ? [{ label: '項目', value: '说明' }] : [],
+      });
+      markDirty();
+      rerender();
+      toast('已新增一张全局右侧悬浮卡片');
+    })
+  );
 
   host.querySelectorAll<HTMLInputElement>('[data-cc-on]').forEach((inp) =>
     inp.addEventListener('change', () => {
@@ -706,7 +721,7 @@ export function renderArticleRailPanel(host: HTMLElement, data: Json): void {
   host.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>('[data-cc]').forEach((inp) =>
     inp.addEventListener('input', () => {
       const [iStr, k] = (inp.dataset.cc ?? '').split('.');
-      const item = customCards[Number(iStr)];
+      const item = customCards[Number(iStr)] as unknown as Record<string, unknown> | undefined;
       if (item && k) item[k] = inp.value;
       markDirty();
     })
@@ -718,13 +733,13 @@ export function renderArticleRailPanel(host: HTMLElement, data: Json): void {
       customCards.splice(Number(btn.dataset.ccDel), 1);
       markDirty();
       rerender();
-      toast('已删除自定义悬浮栏卡片');
+      toast('已删除全局自定义悬浮卡片');
     })
   );
 }
 
 /* --------------------------------------------------------------------------
-   右栏实时预览（根据当前选中的设置子板块动态呈现 1:1 蓝图预览）
+   账户安全与右栏站点预览
    -------------------------------------------------------------------------- */
 function renderAccountSettings(host: HTMLElement, preview: HTMLElement): void {
   const current = state.user || 'admin';
@@ -733,7 +748,7 @@ function renderAccountSettings(host: HTMLElement, preview: HTMLElement): void {
     <div class="st-q-card">
       <div class="q-topbar">
         <div class="q-topbar-cell">
-          <span class="q-sec-badge">SECURITY // 05</span>
+          <span class="q-sec-badge">SECURITY // 02</span>
           <span>ADMIN ACCOUNT &amp; PASSWORD // 管理员账号与登录密码</span>
         </div>
         <div class="q-topbar-cell q-topbar-cell--right">
@@ -918,9 +933,8 @@ function renderSitePreview(subView: string, data: Json): void {
   if (subView === 'rail') {
     const rail = (data.articleRail ?? {}) as Json;
     const docSpec = (rail.docSpec ?? {}) as Json;
-    const topo = (rail.topology ?? {}) as Json;
     const related = (rail.related ?? {}) as Json;
-    const customCards = Array.isArray(rail.customCards) ? (rail.customCards as Json[]) : [];
+    const customCards = Array.isArray(rail.customCards) ? (rail.customCards as RailWidgetCard[]) : [];
     const customRows = Array.isArray(docSpec.customRows)
       ? (docSpec.customRows as Array<{ label: string; value: string }>)
       : [];
@@ -930,38 +944,7 @@ function renderSitePreview(subView: string, data: Json): void {
         <div class="st-dock-head">
           <span>FLOATING RAIL PREVIEW // 文章右侧悬浮栏实时预览</span>
         </div>
-        <div class="st-hint" style="margin-bottom:0.65rem;">
-          下方实时渲染文章详细页右侧的粘性悬浮栏（<code>.article-RightRail-q &gt; .article-sidebar-sticky</code>）。
-        </div>
-
         <div class="st-rail-preview-wrap">
-          ${
-            topo.enabledForMc !== false || topo.globalEnabled === true
-              ? `<div class="rail-blueprint-card" style="margin-bottom:0.65rem;">
-                  <div class="rail-card-kicker">
-                    <span>${esc(topo.kicker ?? 'TOPOLOGY // 穿透链路图解')}</span>
-                    <span>${esc(topo.badge ?? 'TCP : 25565')}</span>
-                  </div>
-                  <svg viewBox="0 0 240 130" style="width:100%; height:auto; display:block;">
-                    <rect x="8" y="14" width="66" height="40" rx="2" fill="none" stroke="currentColor" stroke-opacity="0.35"/>
-                    <text x="16" y="31" font-family="monospace" font-size="8.5" fill="#d97757">${esc(topo.node1Title ?? 'LOCAL HOST')}</text>
-                    <text x="16" y="44" font-family="monospace" font-size="8" fill="currentColor" opacity="0.7">${esc(topo.node1Sub ?? 'Paper :25565')}</text>
-                    <rect x="87" y="14" width="66" height="40" rx="2" fill="none" stroke="#d97757" stroke-width="1.3"/>
-                    <text x="96" y="31" font-family="monospace" font-size="8.5" fill="#d97757">${esc(topo.node2Title ?? 'FRP RELAY')}</text>
-                    <text x="96" y="44" font-family="monospace" font-size="8" fill="currentColor" opacity="0.7">${esc(topo.node2Sub ?? 'Public :7000')}</text>
-                    <rect x="166" y="14" width="66" height="40" rx="2" fill="none" stroke="currentColor" stroke-opacity="0.35"/>
-                    <text x="175" y="31" font-family="monospace" font-size="8.5" fill="#788c5d">${esc(topo.node3Title ?? 'PLAYERS')}</text>
-                    <text x="175" y="44" font-family="monospace" font-size="8" fill="currentColor" opacity="0.7">${esc(topo.node3Sub ?? 'Clients 1..N')}</text>
-                    <line x1="74" y1="34" x2="87" y2="34" stroke="#d97757" stroke-width="1.4"/>
-                    <line x1="153" y1="34" x2="166" y2="34" stroke="#d97757" stroke-width="1.4"/>
-                    <rect x="8" y="72" width="224" height="46" rx="2" fill="none" stroke="currentColor" stroke-opacity="0.2" stroke-dasharray="3 3"/>
-                    <text x="18" y="90" font-family="monospace" font-size="8.5" fill="currentColor" opacity="0.75">${esc(topo.line1 ?? '')}</text>
-                    <text x="18" y="106" font-family="monospace" font-size="8.5" fill="#d97757">${esc(topo.line2 ?? '')}</text>
-                  </svg>
-                </div>`
-              : ''
-          }
-
           ${
             docSpec.enabled !== false
               ? `<div class="rail-blueprint-card" style="margin-bottom:0.65rem;">
@@ -973,27 +956,13 @@ function renderSitePreview(subView: string, data: Json): void {
                     ${docSpec.showPublished !== false ? `<li><span>PUBLISHED</span><strong>二〇二六年三月十三日</strong></li>` : ''}
                     ${docSpec.showChars !== false ? `<li><span>CHARS</span><strong>2,400 字</strong></li>` : ''}
                     ${docSpec.showReading !== false ? `<li><span>READING</span><strong>约 6 分钟</strong></li>` : ''}
-                    ${docSpec.showTags !== false ? `<li><span>TAGS</span><strong>技术 · 服务器</strong></li>` : ''}
+                    ${docSpec.showTags !== false ? `<li><span>TAGS</span><strong>技术 · 随笔</strong></li>` : ''}
                     ${customRows.map((r) => `<li><span>${esc(r.label)}</span><strong>${esc(r.value)}</strong></li>`).join('')}
                   </ul>
                 </div>`
               : ''
           }
-
-          ${customCards
-            .filter((c) => c.enabled !== false)
-            .map(
-              (c) => `
-              <div class="rail-blueprint-card" style="margin-bottom:0.65rem;">
-                <div class="rail-card-kicker">
-                  <span>${esc(c.kicker ?? 'CUSTOM')}</span>
-                  <span>${esc(c.badge ?? 'NOTE')}</span>
-                </div>
-                <p style="margin:0;font-size:0.84rem;line-height:1.6;color:var(--muted);">${esc(c.content ?? '')}</p>
-              </div>`
-            )
-            .join('')}
-
+          ${customCards.map((c) => renderWidgetCardHtml(c, true)).join('')}
           ${
             related.enabled !== false
               ? `<div class="rail-blueprint-card">

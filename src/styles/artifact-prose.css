@@ -129,12 +129,7 @@
   background: var(--rule);
 }
 
-/* ---------- 章节分隔线四式 ----------
-   与后台编辑器的 `.ed-area hr.xxx`、格式工具按钮里的 `.ed-hr-preview--xxx`
-   共用同一套画法：星号沿用 prose.css 的 `＊ ＊ ＊`，樱花复用 tokens.css 的
-   --sakura / --sakura-mask，三点与双线是新增的两档。 */
-
-/* 星号：中文书籍里的「＊ ＊ ＊」，比一条横线更贴题 */
+/* ---------- 章节分隔线四式 ---------- */
 .article-prose-q hr.star {
   width: auto;
   height: auto;
@@ -150,7 +145,6 @@
   color: var(--faint);
 }
 
-/* 樱花：两侧极淡的细线 + 中间一朵用蒙版画的淡粉花（不用字体字形，跨平台一致） */
 .article-prose-q hr.sakura {
   display: flex;
   align-items: center;
@@ -171,7 +165,6 @@
   mask: var(--sakura-mask) center / contain no-repeat;
 }
 
-/* 三点：细、疏、低调 */
 .article-prose-q hr.dots {
   width: auto;
   height: auto;
@@ -187,7 +180,6 @@
   color: var(--faint);
 }
 
-/* 双线：两条 1px 线、间隔 5px、宽 40% */
 .article-prose-q hr.double {
   display: flex;
   justify-content: center;
@@ -205,7 +197,7 @@
     linear-gradient(var(--rule), var(--rule)) bottom / 100% 1px no-repeat;
 }
 
-/* ---------- 三、四级标题（现有文章没有，留给以后） ---------- */
+/* ---------- 三、四级标题 ---------- */
 .article-prose-q h3,
 .article-prose-q h4 {
   font-family: var(--kai);
@@ -226,11 +218,13 @@
 .article-prose-q iframe { max-width: 100%; border: 0; }
 
 /* ==========================================================================
-   两处「集成」补丁（不是 Markdown 的事，但同属新模板的必要适配）
+   右栏「相关文章」与伴读卡片链接适配（消除浏览器默认蓝色下划线）
    ========================================================================== */
 
-/* 右栏「相关文章」从 <button> 换成了 <a>，原样式只写了 button */
-.rail-related-list a {
+.rail-related-list a,
+.rail-related-list button,
+.rail-related-list .rail-rel-link,
+.rail-related-list .rail-rel-mock {
   width: 100%;
   text-align: left;
   border: 1px solid var(--rule);
@@ -240,14 +234,33 @@
   display: flex;
   flex-direction: column;
   gap: 0.15rem;
+  color: var(--ink) !important;
+  text-decoration: none !important;
   transition: all var(--dur-fast) ease;
 }
-.rail-related-list a:hover {
+.rail-related-list a:hover,
+.rail-related-list button:hover,
+.rail-related-list .rail-rel-link:hover,
+.rail-related-list .rail-rel-mock:hover {
   border-color: var(--accent);
   background: color-mix(in srgb, var(--accent) 8%, var(--paper));
+  color: var(--ink) !important;
+  text-decoration: none !important;
+}
+.rail-related-list .r-idx {
+  font-family: var(--mono);
+  font-size: 0.68rem;
+  color: var(--accent);
+  text-decoration: none !important;
+}
+.rail-related-list .r-tit {
+  font-family: var(--kai);
+  font-size: 1.08rem;
+  color: var(--ink);
+  text-decoration: none !important;
 }
 
-/* TOC 空态：现有 5 篇正文没有 Markdown 标题，目录列表会是空的 */
+/* TOC 空态 */
 .toc-empty {
   margin: 0;
   padding: 0.45rem 0.6rem;

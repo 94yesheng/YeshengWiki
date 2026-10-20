@@ -120,7 +120,7 @@
           </div>
         </div>
 
-        <!-- 紧凑型文章首部双象限（已按要求移除顶部的文章切换和标签筛选条，归档与筛选统一收归至第二层「文章子页面」时间轴）：左标题与元数据 + 右《三体》三个立体球体相互作用运动轨迹画布 -->
+        <!-- 紧凑型文章首部双象限：左标题与元数据 + 右《三体》三个立体球体相互作用运动轨迹画布 -->
         <div class="article-hero-grid">
           <div class="article-hero-meta-cell q-joint">
             <div>
@@ -163,12 +163,12 @@
             </div>
             <div class="cover-caption-bar">
               <span>THREE-BODY 3D ORBITAL TRAJECTORY // 三体立体引力轨迹</span>
-              <span>@@KINETIC_CAPTION@@</span>
+              <span id="detail-kinetic-caption">@@KINETIC_CAPTION@@</span>
             </div>
           </div>
         </div>
 
-        <!-- 三栏平衡工作区：左章节目录 + 中宽幅正文 + 右技术拓扑与参数速查伴读栏 -->
+        <!-- 三栏平衡工作区：左章节目录 + 中宽幅正文 + 右自定义信息伴读栏 -->
         <div class="article-workspace-grid">
           <aside class="article-sidebar-q" aria-label="文章章节大纲">
             <div class="article-sidebar-sticky">
@@ -203,20 +203,14 @@
             @@PROSE@@
           </div>
 
-          <!-- 右侧技术伴读栏：拓扑图解 + 关键参数速查 + 同系列文章快速切换 -->
-          <aside class="article-RightRail-q" aria-label="文章伴读与技术速查栏">
-            <div class="article-sidebar-sticky">
+          <!-- 右侧信息悬浮伴读栏：专属卡片 + 参数速查 + 全局伴读卡 + 同系列文章切换 -->
+          <aside class="article-RightRail-q" aria-label="文章伴读与信息速查栏">
+            <div class="article-sidebar-sticky" id="article-right-rail-sticky">
               @@RAIL_TOPOLOGY@@
 
               @@RAIL_SPEC@@
 
-              <div class="rail-blueprint-card">
-                <div class="rail-card-kicker">
-                  <span>ARCHIVE // 同系列文章切换</span>
-                  <span>5 ENTRIES</span>
-                </div>
-                @@RAIL_RELATED@@
-              </div>
+              @@RAIL_RELATED@@
             </div>
           </aside>
         </div>
@@ -231,7 +225,6 @@
       </article>
     </div>
   </section>
-  <!-- 视图三：照片子页面（上方展示模块正好一屏大小 calc(100vh - var(--nav-h))，支持横向框/竖向框双模态最大化适配与右侧信息栏联动伸缩动画） -->
 
 <footer class="site-foot">
     <div class="wrap">
@@ -272,8 +265,6 @@
           </svg>
         </button>
       </div>
-
-
 
       <div class="fab-item">
         <span class="fab-chip-label">TOP // 回到顶部</span>

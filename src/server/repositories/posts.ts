@@ -91,7 +91,19 @@ function parseJson<T>(value: string | null, fallback: T): T {
   }
 }
 
+function hasExplicitCoverInFrontmatter(rawMarkdown: string): boolean {
+  if (!rawMarkdown) return true;
+  const m = /^---\n([\s\S]*?)\n---/.exec(rawMarkdown);
+  if (!m) return true;
+  return /^\s*cover\s*:\s*(?!""|''|\s*$)[^\n]+/m.test(m[1]!);
+}
+
 function mapRow(row: PostRow): Post {
+  const effectiveCover =
+    row.cover && row.cover.trim() && hasExplicitCoverInFrontmatter(row.raw_markdown)
+      ? row.cover.trim()
+      : null;
+
   return {
     id: row.id,
     slug: row.slug,
@@ -100,7 +112,7 @@ function mapRow(row: PostRow): Post {
     lead: row.lead,
     bodyMarkdown: row.body_markdown,
     rawMarkdown: row.raw_markdown,
-    cover: row.cover,
+    cover: effectiveCover,
     coverCaption: row.cover_caption,
     entryBadge: row.entry_badge,
     featured: row.featured === 1,

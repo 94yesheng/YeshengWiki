@@ -1,5 +1,5 @@
 /**
- * 文章视图 —— HUD 蓝图双象限元数据表单 + 双模态正文编辑器 + 单篇右侧悬浮栏覆写 + 实时伴读预览
+ * 文章视图 —— HUD 蓝图双象限元数据表单（克制细线网格划分） + 双模态正文编辑器 + 高自定义信息悬浮窗 + 1:1 实景预览
  */
 import {
   buildPostText,
@@ -18,6 +18,16 @@ import { createEditor } from '../editor';
 import { normalizeHtml, renderMarkdown } from '../md';
 import { openPreview } from '../preview';
 import { chineseFullDate, isoDate, readingTime } from '../../utils/date';
+import {
+  normalizePostRailConfig,
+  renderArticleRailSlots,
+  type PostRailConfig,
+  type RailKvItem,
+  type RailWidgetCard,
+  type RailWidgetType,
+} from '../../utils/article-rail';
+import { THEME_COVER_SVG_HTML } from '../../utils/cover-svg';
+import type { ArticleRailConfig, SiteConfig } from '../../site.config';
 import { $, $$, esc, reportError, setBusy, showConfirm, toast } from '../ui';
 import { isV2Layout } from '../layout';
 import { applyV2PostLayout } from '../v2-layout';
@@ -33,34 +43,27 @@ import {
 } from '../state';
 import type { Github } from '../github';
 
-interface RailSpecRow {
-  label: string;
-  value: string;
-}
-
-interface RailTopologyCfg {
-  enabled?: boolean;
-  kicker?: string;
-  badge?: string;
-  node1Title?: string;
-  node1Sub?: string;
-  node2Title?: string;
-  node2Sub?: string;
-  node3Title?: string;
-  node3Sub?: string;
-  line1?: string;
-  line2?: string;
-}
-
-/**
- * 文章草稿附带的界面状态：只存在内存里，不写进 frontmatter / 数据库。
- * 折叠面板里的控件操作常常会触发整块重渲染，开合状态必须挂在 draft 上，
- * 渲染时据此恢复 is-open / aria-expanded，否则点一下控件面板就会自动收起。
- */
 type PostDraftUi = NonNullable<Draft['post']> & {
   /** 「信息悬浮窗」小节是否展开 */
   railOpen?: boolean;
 };
+
+interface StudioMediaItem {
+  path: string;
+  filename: string;
+  mime: string | null;
+  postTitle?: string | null;
+}
+
+function previewCoverSrc(src: string): string {
+  const s = src.trim();
+  if (!s) return '';
+  return s
+    .replace(/^\.\.\/\.\.\/assets\/posts\//, '/uploads/posts/')
+    .replace(/^\.\.\/\.\.\/assets\/photos\//, '/uploads/photos/')
+    .replace(/^\/src\/assets\/posts\//, '/uploads/posts/')
+    .replace(/^\/src\/assets\/photos\//, '/uploads/photos/');
+}
 
 function autoUpdatedDefault(): boolean {
   const data = state.site?.data as Record<string, unknown> | undefined;
@@ -99,13 +102,66 @@ function extractAutoLeadFromMarkdown(mdText: string): string {
   return parts.join(' ');
 }
 
+function createDefaultWidget(type: RailWidgetType): RailWidgetCard {
+  const id = `card-${Date.now().toString(36).slice(-4)}-${Math.random().toString(36).slice(2, 5)}`;
+  if (type === 'kv') {
+    return {
+      id,
+      enabled: true,
+      type: 'kv',
+      kicker: 'SPEC // 核心参数',
+      badge: 'SPEC',
+      items: [
+        { label: '环境 / 工具', value: 'v1.0' },
+        { label: '状态', value: '已验证' },
+      ],
+    };
+  }
+  if (type === 'links') {
+    return {
+      id,
+      enabled: true,
+      type: 'links',
+      kicker: 'LINKS // 相关资源与参考',
+      badge: 'REF',
+      links: [{ label: '参考文档 / 项目地址', url: 'https://', note: '官方文档' }],
+    };
+  }
+  if (type === 'list') {
+    return {
+      id,
+      enabled: true,
+      type: 'list',
+      kicker: 'KEYPOINTS // 核心要点',
+      badge: 'SUMMARY',
+      bullets: ['要点一：在此输入核心步骤或结论', '要点二：补充注意事项'],
+    };
+  }
+  return {
+    id,
+    enabled: true,
+    type: 'note',
+    kicker: 'READER NOTE // 伴读便签',
+    badge: 'NOTE',
+    content: '在此输入本文的背景补充、修订说明或伴读提示。',
+  };
+}
+
 function postDraft(): PostDraftUi | undefined {
   const entry = currentPost();
   if (!entry) return undefined;
   if (!state.draft.post || state.draft.post.entry.id !== entry.id) {
     const d = entry.parsed.data;
-    const rawSpecs = Array.isArray(d.railSpecs) ? (d.railSpecs as RailSpecRow[]) : [];
-    const rawTopo = (d.railTopology ?? {}) as RailTopologyCfg;
+    const rawSpecs = Array.isArray(d.railSpecs) ? (d.railSpecs as RailKvItem[]) : [];
+    const normalizedCfg = normalizePostRailConfig(d.railTopology);
+    const rawMode = String(d.railMode ?? '');
+    const initialMode =
+      rawMode === 'custom' || rawMode === 'minimal' || rawMode === 'follow'
+        ? rawMode
+        : rawSpecs.length || (normalizedCfg.cards && normalizedCfg.cards.length)
+          ? 'custom'
+          : 'follow';
+
     const fields: Record<string, unknown> = {
       title: d.title ?? '',
       pubDate: String(d.pubDate ?? ''),
@@ -113,13 +169,13 @@ function postDraft(): PostDraftUi | undefined {
       lead: d.lead ?? '',
       tags: [...(Array.isArray(d.tags) ? (d.tags as string[]) : [])],
       entryBadge: d.entryBadge ?? '',
-      cover: d.cover ?? '',
+      cover: d.cover ? String(d.cover) : '',
       coverCaption: d.coverCaption ?? '',
       featured: d.featured === true,
       kineticCaption: d.kineticCaption ?? '',
-      railMode: d.railMode ?? (entry.id === 'mc-server' ? 'topology' : rawSpecs.length ? 'custom' : 'follow'),
+      railMode: initialMode,
       railSpecs: rawSpecs.map((r) => ({ label: String(r.label ?? ''), value: String(r.value ?? '') })),
-      railTopology: { ...rawTopo },
+      railTopology: JSON.parse(JSON.stringify(normalizedCfg)) as PostRailConfig,
       updatedDate: d.updatedDate ? String(d.updatedDate) : '',
       draft: d.draft === true,
       autoUpdated: typeof d.autoUpdated === 'boolean' ? d.autoUpdated : undefined,
@@ -127,8 +183,6 @@ function postDraft(): PostDraftUi | undefined {
     state.draft.post = {
       entry,
       fields,
-      // 打开时的字段快照：判断"有没有真改过"只跟它比，不跟文件原值比。
-      // 像 railMode 这类有 UI 默认值、原文件里又没有的字段，跟原值比会误报成"改了"。
       baseline: JSON.parse(JSON.stringify(fields)) as Record<string, unknown>,
       body: entry.parsed.body,
       dateTouched: false,
@@ -136,6 +190,398 @@ function postDraft(): PostDraftUi | undefined {
     };
   }
   return state.draft.post;
+}
+
+function renderRailCustomCardsEditor(cards: RailWidgetCard[]): string {
+  if (!cards.length) {
+    return `<div class="st-rail-empty-box">
+      <p>当前尚未添加本文专属悬浮卡片。点击下方按钮可自由组合「参数速查表」「伴读便签」「参考链接」或「核心要点清单」。</p>
+    </div>`;
+  }
+
+  return cards
+    .map((card, cIdx) => {
+      const type = card.type || 'note';
+      const items = card.items ?? [];
+      const links = card.links ?? [];
+      const bulletsText = (card.bullets ?? []).join('\n');
+
+      let bodyEditorHtml = '';
+      if (type === 'kv') {
+        bodyEditorHtml = `
+          <div class="st-kv-editor-list" style="margin-top:0.55rem;">
+            ${items
+              .map(
+                (it, rIdx) => `
+              <div class="st-kv-row">
+                <input class="st-input" data-rc-kv-k="${cIdx}.${rIdx}" value="${esc(it.label)}" placeholder="字段名（如：适用版本）" />
+                <input class="st-input" data-rc-kv-v="${cIdx}.${rIdx}" value="${esc(it.value)}" placeholder="字段值（如：Node 22+）" />
+                <button type="button" class="stage-mini-btn st-btn--danger" data-rc-kv-del="${cIdx}.${rIdx}">删除</button>
+              </div>`
+              )
+              .join('')}
+          </div>
+          <button type="button" class="stage-mini-btn" data-rc-kv-add="${cIdx}" style="margin-top:0.45rem;">＋ 添加一行键值</button>`;
+      } else if (type === 'links') {
+        bodyEditorHtml = `
+          <div class="st-kv-editor-list" style="margin-top:0.55rem;">
+            ${links
+              .map(
+                (lk, lIdx) => `
+              <div class="st-kv-row st-kv-row--3">
+                <input class="st-input" data-rc-lk-label="${cIdx}.${lIdx}" value="${esc(lk.label)}" placeholder="链接标题（如：源码仓库）" />
+                <input class="st-input" data-rc-lk-note="${cIdx}.${lIdx}" value="${esc(lk.note ?? '')}" placeholder="副标说明（如：GitHub）" />
+                <input class="st-input" data-rc-lk-url="${cIdx}.${lIdx}" value="${esc(lk.url)}" placeholder="https://... 或 /posts/..." />
+                <button type="button" class="stage-mini-btn st-btn--danger" data-rc-lk-del="${cIdx}.${lIdx}">删除</button>
+              </div>`
+              )
+              .join('')}
+          </div>
+          <button type="button" class="stage-mini-btn" data-rc-lk-add="${cIdx}" style="margin-top:0.45rem;">＋ 添加一条链接</button>`;
+      } else if (type === 'list') {
+        bodyEditorHtml = `
+          <div class="st-field" style="margin-top:0.55rem;">
+            <label>要点列表</label>
+            <div>
+              <textarea class="st-textarea" rows="3" data-rc-bullets="${cIdx}" placeholder="每行一条核心要点，前台自动生成 01 / 02 编号列表">${esc(
+                bulletsText
+              )}</textarea>
+              <div class="st-hint">一行一条要点，前台自动带序号展示</div>
+            </div>
+          </div>`;
+      } else {
+        bodyEditorHtml = `
+          <div class="st-field" style="margin-top:0.55rem;">
+            <label>便签内容</label>
+            <div>
+              <textarea class="st-textarea" rows="3" data-rc-content="${cIdx}" placeholder="输入伴读提示、背景导读或补充说明（支持多行分段）">${esc(
+                card.content ?? ''
+              )}</textarea>
+            </div>
+          </div>`;
+      }
+
+      return `
+        <div class="st-rail-widget-card" data-rc-idx="${cIdx}">
+          <div class="st-rail-widget-head">
+            <label class="st-check">
+              <input type="checkbox" data-rc-enabled="${cIdx}" ${card.enabled !== false ? 'checked' : ''} />
+              <strong>卡片 #${String(cIdx + 1).padStart(2, '0')}</strong>
+            </label>
+            <select class="st-select st-rail-type-select" data-rc-type="${cIdx}" aria-label="卡片类型">
+              <option value="kv"${type === 'kv' ? ' selected' : ''}>键值参数表 (KV)</option>
+              <option value="note"${type === 'note' ? ' selected' : ''}>伴读便签卡 (Note)</option>
+              <option value="links"${type === 'links' ? ' selected' : ''}>参考链接卡 (Links)</option>
+              <option value="list"${type === 'list' ? ' selected' : ''}>核心要点卡 (List)</option>
+            </select>
+            <div class="st-rail-widget-actions">
+              <button type="button" class="stage-mini-btn" data-rc-move="${cIdx}:-1" ${cIdx === 0 ? 'disabled' : ''} title="上移卡片">↑</button>
+              <button type="button" class="stage-mini-btn" data-rc-move="${cIdx}:1" ${cIdx === cards.length - 1 ? 'disabled' : ''} title="下移卡片">↓</button>
+              <button type="button" class="stage-mini-btn st-btn--danger" data-rc-del="${cIdx}">删除</button>
+            </div>
+          </div>
+          <div class="st-grid-2">
+            <div class="st-field">
+              <label>卡片顶栏标</label>
+              <div><input class="st-input" data-rc-field="${cIdx}.kicker" value="${esc(card.kicker)}" placeholder="如：SPEC // 环境参数" /></div>
+            </div>
+            <div class="st-field">
+              <label>右侧副徽标</label>
+              <div><input class="st-input" data-rc-field="${cIdx}.badge" value="${esc(card.badge)}" placeholder="如：INFO / REF" /></div>
+            </div>
+          </div>
+          ${bodyEditorHtml}
+        </div>`;
+    })
+    .join('');
+}
+
+let activeCoverModal: HTMLElement | null = null;
+let coverModalSeq = 0;
+
+function closeCoverModal(): void {
+  coverModalSeq += 1;
+  if (activeCoverModal) {
+    activeCoverModal.remove();
+    activeCoverModal = null;
+  }
+}
+
+function isImageFile(file: File): boolean {
+  return file.type.startsWith('image/') || /\.(jpe?g|png|webp|avif|gif|svg|heic|heif)$/i.test(file.name);
+}
+
+function isImageMedia(item: StudioMediaItem): boolean {
+  return (item.mime ?? '').startsWith('image/') || /\.(jpe?g|png|webp|avif|gif|svg)$/i.test(item.path);
+}
+
+function syncCoverUi(d: PostDraftUi): void {
+  const rawCover = String(d.fields.cover ?? '').trim();
+  const previewUrl = rawCover ? previewCoverSrc(rawCover) : '';
+  const input = $<HTMLInputElement>('#st-f-cover');
+  if (input && input.value !== rawCover) input.value = rawCover;
+
+  const img = $<HTMLImageElement>('#st-cover-preview-img');
+  const svgHost = $('#st-cover-svg-fallback');
+  const pill = $('#st-cover-mode-pill');
+  const clearBtn = $<HTMLButtonElement>('#st-clear-cover-btn');
+
+  if (previewUrl) {
+    if (img) {
+      img.hidden = false;
+      img.style.opacity = '1';
+      img.src = previewUrl;
+    }
+    if (svgHost) svgHost.hidden = true;
+    if (pill) pill.textContent = '16:9 COVER';
+    if (clearBtn) clearBtn.disabled = false;
+  } else {
+    if (img) {
+      img.hidden = true;
+      img.removeAttribute('src');
+    }
+    if (svgHost) svgHost.hidden = false;
+    if (pill) pill.textContent = 'AUTO SVG // ∞ ↔ 黑洞';
+    if (clearBtn) clearBtn.disabled = true;
+  }
+}
+
+/**
+ * 打开封面图片选择/上传悬浮模态弹窗（与 05 · 插入内容 → 插入配图 完全一致的弹窗逻辑与样式）
+ */
+function openCoverPickerModal(d: PostDraftUi): void {
+  closeCoverModal();
+  coverModalSeq += 1;
+  const seq = coverModalSeq;
+  const curCover = String(d.fields.cover ?? '').trim();
+
+  const backdrop = document.createElement('div');
+  backdrop.className = 'ed-img-modal-backdrop';
+  backdrop.id = 'st-cover-modal-backdrop';
+  backdrop.setAttribute('role', 'dialog');
+  backdrop.setAttribute('aria-modal', 'true');
+  backdrop.setAttribute('aria-label', '选择或上传文章封面');
+
+  backdrop.innerHTML = `
+    <div class="ed-img-modal">
+      <div class="ed-img-modal-head">
+        <div class="ed-img-modal-title-group">
+          <span class="ed-img-modal-kicker">ARTICLE COVER // 16:9 宽银幕封面配置</span>
+          <h3 class="ed-img-modal-title">从媒体库选择或上传封面照片</h3>
+        </div>
+        <button type="button" class="stage-mini-btn ed-img-modal-close" id="st-cover-modal-close" aria-label="关闭弹窗">关闭 ×</button>
+      </div>
+
+      <div class="ed-img-modal-body">
+        <section class="ed-img-section">
+          <div class="ed-img-section-head">
+            <span>01 // 从媒体库中选择照片作为封面（点击缩略图直接设为封面）</span>
+            <span class="ed-img-section-count" id="st-cover-media-count">读取中…</span>
+          </div>
+          <div class="ed-media-grid" id="st-cover-media-grid">
+            <p class="ed-media-empty">正在读取媒体库中的照片…</p>
+          </div>
+        </section>
+
+        <section class="ed-img-section">
+          <div class="ed-img-section-head">
+            <span>02 // 从本地上传封面照片</span>
+          </div>
+          <div class="ed-dropzone" id="st-cover-dropzone" role="button" tabindex="0" aria-label="上传本地封面图片">
+            <div class="ed-dropzone-content">
+              <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                <polyline points="17 8 12 3 7 8"/>
+                <line x1="12" y1="3" x2="12" y2="15"/>
+              </svg>
+              <span>把封面照片拖到这里，或点击选择本地照片上传（自动归档至本文目录）</span>
+            </div>
+            <input type="file" id="st-cover-modal-upload" accept="image/*" hidden />
+          </div>
+        </section>
+
+        <section class="ed-img-section">
+          <div class="ed-img-section-head">
+            <span>03 // 手动填写封面路径或设为空白（无封面）</span>
+          </div>
+          <div class="ed-drawer-grid ed-drawer-grid--image">
+            <input class="st-input" id="st-cover-modal-src" value="${esc(curCover)}" placeholder="留空表示无封面（自动展示昼/夜主题 SVG 图案）" />
+            <input class="st-input" id="st-cover-modal-cap" value="${esc(d.fields.coverCaption ?? '')}" placeholder="封面图注说明（如：16:9 WIDESCREEN COVER，可选）" />
+            <div style="display:flex;gap:0.45rem;">
+              <button type="button" class="st-btn st-btn--primary" id="st-cover-modal-confirm">确认设置</button>
+              <button type="button" class="stage-mini-btn st-btn--danger" id="st-cover-modal-blank">设为空白（无封面）</button>
+            </div>
+          </div>
+          <div class="st-hint ed-img-modal-hint">默认选项为空白：当文章没有封面时，前台与后台会自动绘制符合主题的 SVG 图案（昼主题对应无限流形 ∞，夜主题对应卡冈图雅黑洞）。</div>
+        </section>
+      </div>
+    </div>`;
+
+  document.body.appendChild(backdrop);
+  activeCoverModal = backdrop;
+
+  const onEsc = (e: KeyboardEvent) => {
+    if (e.key === 'Escape') {
+      window.removeEventListener('keydown', onEsc);
+      closeCoverModal();
+    }
+  };
+  window.addEventListener('keydown', onEsc);
+
+  backdrop.addEventListener('click', (e) => {
+    if (e.target === backdrop) {
+      window.removeEventListener('keydown', onEsc);
+      closeCoverModal();
+    }
+  });
+
+  backdrop.querySelector('#st-cover-modal-close')?.addEventListener('click', () => {
+    window.removeEventListener('keydown', onEsc);
+    closeCoverModal();
+  });
+
+  const applyCover = (nextCover: string, nextCap?: string) => {
+    d.fields.cover = nextCover.trim();
+    if (nextCap !== undefined) {
+      d.fields.coverCaption = nextCap.trim();
+      const capInp = $<HTMLInputElement>('#st-f-covercap');
+      if (capInp) capInp.value = String(d.fields.coverCaption);
+    }
+    markDirty();
+    syncCoverUi(d);
+    window.removeEventListener('keydown', onEsc);
+    closeCoverModal();
+  };
+
+  const grid = backdrop.querySelector<HTMLElement>('#st-cover-media-grid');
+  const countLabel = backdrop.querySelector<HTMLElement>('#st-cover-media-count');
+  if (grid) {
+    void (async () => {
+      try {
+        const res = await fetch('/api/media', {
+          credentials: 'same-origin',
+          headers: { Accept: 'application/json' },
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = (await res.json()) as { media?: StudioMediaItem[] };
+        if (seq >= coverModalSeq && activeCoverModal === backdrop) {
+          const list = (Array.isArray(data.media) ? data.media : []).filter(isImageMedia);
+          if (countLabel) countLabel.textContent = `共 ${list.length} 张照片`;
+          if (!list.length) {
+            grid.innerHTML = `<p class="ed-media-empty">媒体库还没有照片，请使用下方上传区上传照片。</p>`;
+          } else {
+            grid.innerHTML = list
+              .map(
+                (item) => `
+                <button type="button" class="ed-media-item" data-media-path="${esc(item.path)}"
+                        data-media-name="${esc(item.filename)}"
+                        title="${esc(item.filename)}${item.postTitle ? ` · ${esc(item.postTitle)}` : ''}">
+                  <div class="ed-media-thumb-box">
+                    <img src="${esc(item.path)}" alt="${esc(item.filename)}" loading="lazy" />
+                  </div>
+                  <div class="ed-media-caption">
+                    <span class="ed-media-name">${esc(item.filename)}</span>
+                    ${item.postTitle ? `<span class="ed-media-owner">${esc(item.postTitle)}</span>` : ''}
+                  </div>
+                </button>`
+              )
+              .join('');
+          }
+        }
+      } catch (error) {
+        if (seq >= coverModalSeq && activeCoverModal === backdrop) {
+          if (countLabel) countLabel.textContent = '读取失败';
+          grid.innerHTML = `<p class="ed-media-empty ed-media-empty--error">媒体库读取失败（${esc(
+            (error as Error).message
+          )}），可以使用下方上传区或手动填写路径。</p>`;
+        }
+      }
+    })();
+
+    grid.addEventListener('click', (e) => {
+      const btn = (e.target as HTMLElement).closest<HTMLButtonElement>('[data-media-path]');
+      if (!btn) return;
+      const picked = btn.dataset.mediaPath ?? '';
+      if (!picked) return;
+      applyCover(picked);
+      toast(`已从媒体库选择封面：${btn.dataset.mediaName ?? picked}`);
+    });
+  }
+
+  const uploadInput = backdrop.querySelector<HTMLInputElement>('#st-cover-modal-upload');
+  const dropzone = backdrop.querySelector<HTMLElement>('#st-cover-dropzone');
+
+  const handleUploadFile = async (file: File | undefined) => {
+    if (!file) return;
+    if (!isImageFile(file)) {
+      toast('请选择图片文件', true);
+      return;
+    }
+    dropzone?.classList.add('is-dragover');
+    try {
+      if (state.gh) {
+        setBusy(true, '压缩并上传封面…');
+        const prepared = await prepareImage(file);
+        const rel = await uploadPostAsset(state.gh, prepared, d.entry.id, state.postAssetFiles);
+        if (!state.postAssetFiles.includes(rel)) state.postAssetFiles.push(rel);
+        applyCover(rel);
+        toast(`封面已上传并归档到 ${rel}`);
+      } else {
+        const rel = `../../assets/posts/${file.name.replace(/\s+/g, '-')}`;
+        applyCover(rel);
+        toast(`已加载封面：${file.name}`);
+      }
+    } catch (err) {
+      dropzone?.classList.remove('is-dragover');
+      reportError(err);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  dropzone?.addEventListener('click', (e) => {
+    if ((e.target as HTMLElement).closest('input')) return;
+    uploadInput?.click();
+  });
+  dropzone?.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter' && e.key !== ' ') return;
+    e.preventDefault();
+    uploadInput?.click();
+  });
+  uploadInput?.addEventListener('change', () => {
+    const file = uploadInput.files?.[0];
+    uploadInput.value = '';
+    void handleUploadFile(file);
+  });
+  dropzone?.addEventListener('dragover', (e) => {
+    if (!e.dataTransfer || !Array.from(e.dataTransfer.types).includes('Files')) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'copy';
+    dropzone.classList.add('is-dragover');
+  });
+  dropzone?.addEventListener('dragleave', (e) => {
+    if (e.relatedTarget && dropzone.contains(e.relatedTarget as Node)) return;
+    dropzone.classList.remove('is-dragover');
+  });
+  dropzone?.addEventListener('drop', (e) => {
+    if (!e.dataTransfer) return;
+    e.preventDefault();
+    dropzone.classList.remove('is-dragover');
+    void handleUploadFile(e.dataTransfer.files?.[0]);
+  });
+
+  backdrop.querySelector('#st-cover-modal-confirm')?.addEventListener('click', () => {
+    const src = backdrop.querySelector<HTMLInputElement>('#st-cover-modal-src')?.value ?? '';
+    const cap = backdrop.querySelector<HTMLInputElement>('#st-cover-modal-cap')?.value ?? '';
+    applyCover(src, cap);
+    toast(src.trim() ? '已更新文章封面设置' : '已设为无封面（使用昼/夜主题 SVG 图案）');
+  });
+
+  backdrop.querySelector('#st-cover-modal-blank')?.addEventListener('click', () => {
+    const cap = backdrop.querySelector<HTMLInputElement>('#st-cover-modal-cap')?.value ?? '';
+    applyCover('', cap);
+    toast('已清除封面，当前使用昼/夜主题 SVG 图案替代');
+  });
 }
 
 export function renderPostView(): void {
@@ -152,8 +598,10 @@ export function renderPostView(): void {
   const curAuto = d.fields.autoUpdated;
   const autoValue = curAuto === true ? 'on' : curAuto === false ? 'off' : 'follow';
   const railMode = String(d.fields.railMode ?? 'follow');
-  const railSpecs = (d.fields.railSpecs as RailSpecRow[]) ?? [];
-  const railTopo = (d.fields.railTopology as RailTopologyCfg) ?? {};
+  const railSpecs = (d.fields.railSpecs as RailKvItem[]) ?? [];
+  const railCfg = normalizePostRailConfig(d.fields.railTopology);
+  d.fields.railTopology = railCfg;
+  const customCards = railCfg.cards ?? [];
 
   const tags = (d.fields.tags as string[])
     .map((t) => `<span class="st-chip">${esc(t)}<button type="button" data-rm="${esc(t)}" title="移除">×</button></span>`)
@@ -167,7 +615,8 @@ export function renderPostView(): void {
 
   const entryIndex = state.posts.findIndex((p) => p.id === d.entry.id) + 1;
   const entryNo = String(Math.max(1, entryIndex)).padStart(2, '0');
-  const coverUrl = String(d.fields.cover ?? '').trim() || '/artifact/home/images/spot-default-mc.jpg';
+  const rawCover = String(d.fields.cover ?? '').trim();
+  const previewCoverUrl = rawCover ? previewCoverSrc(rawCover) : '';
 
   edit.innerHTML = `
     <div class="st-q-card">
@@ -188,227 +637,371 @@ export function renderPostView(): void {
             <h2 id="st-live-title">${esc(d.fields.title || '（未填标题）')}</h2>
           </div>
           <div class="st-head-btns">
-            <button type="button" class="stage-mini-btn" id="st-btn-preview-post">页面预览</button>
+            <button type="button" class="st-btn st-btn--preview" id="st-btn-preview-post">
+              <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true" style="vertical-align:-2px;margin-right:4px;">
+                <path d="M1.5 8s2.4-4.5 6.5-4.5S14.5 8 14.5 8s-2.4 4.5-6.5 4.5S1.5 8 1.5 8Z"/>
+                <circle cx="8" cy="8" r="2.1"/>
+              </svg>
+              <span>前台实景预览</span>
+            </button>
             <button type="button" class="stage-mini-btn st-btn--danger" id="st-del-post">删除文章</button>
           </div>
         </div>
       </div>
 
-      <!-- 第一象限：核心元数据（对应展示页顶栏、首屏双象限左栏、时间轴卡片） -->
-      <div class="st-section-box">
+      <!-- 第一象限：核心元数据（克制细线网格划分） -->
+      <div class="st-section-box st-post-meta-section">
         <div class="st-section-head">
-          <span>01 // CORE TELEMETRY · 标题、路由、时间轴坐标与分类（对应 /posts/ 与文章页首屏）</span>
+          <span>01 // CORE TELEMETRY · 文章基本信息（标题、路由、时间轴坐标与分类）</span>
           <span class="st-sec-tag">REQUIRED</span>
         </div>
-        <div class="st-grid-2">
-          <div class="st-field">
-            <label>文章标题</label>
-            <div>
-              <input class="st-input" id="st-f-title" value="${esc(d.fields.title)}" placeholder="文章主标题（中英文间自动盘古留白）" />
-            </div>
-          </div>
-          <div class="st-field">
-            <label>路由标识</label>
-            <div>
-              <div style="display:flex;gap:0.4rem;align-items:center;">
-                <input class="st-input" id="st-f-slug" value="${esc(d.entry.id)}" placeholder="英文连字符，如 mc-server" />
+
+        <div class="st-meta-sheet">
+          <!-- 第一行：文章标题 + 路由标识 -->
+          <div class="st-meta-row st-meta-row--primary">
+            <div class="st-meta-cell st-field">
+              <div class="st-meta-cell-head">
+                <label for="st-f-title">
+                  <span class="st-meta-idx">01</span>
+                  <span>文章标题</span>
+                </label>
+                <span class="st-meta-hint-inline">中英文间自动盘古留白</span>
               </div>
-              <div class="st-hint">生成路径：<code>/posts/${esc(d.entry.id)}/</code>（修改即重命名 .md 文件）</div>
+              <div class="st-meta-cell-body">
+                <input class="st-input st-meta-input" id="st-f-title" value="${esc(d.fields.title)}" placeholder="请输入文章主标题…" />
+              </div>
             </div>
-          </div>
-          <div class="st-field">
-            <label>发布日期</label>
-            <div>
-              <input class="st-input" id="st-f-date" value="${esc(d.fields.pubDate)}" placeholder="2026-03-13" />
-              <div class="st-hint">格式 YYYY-MM-DD，决定时间轴年/月/日归档位置</div>
-            </div>
-          </div>
-          <div class="st-field">
-            <label>坐标徽标</label>
-            <div>
-              <input class="st-input" id="st-f-badge" value="${esc(d.fields.entryBadge)}" placeholder="如：LATEST / ESSAY / TOOLKIT / 3D MESH" />
-              <div class="st-hint">对应归档卡片上的 <code>ENTRY #${entryNo} // BADGE</code></div>
-            </div>
-          </div>
-          <div class="st-field">
-            <label>修订日期</label>
-            <div>
-              <input class="st-input" id="st-f-updated" value="${esc(d.fields.updatedDate)}" placeholder="留空则不显示修订时间" />
-            </div>
-          </div>
-          <div class="st-field">
-            <label>自动记修订</label>
-            <div>
-              <select class="st-select" id="st-f-auto">
-                <option value="follow"${autoValue === 'follow' ? ' selected' : ''}>跟随全局（当前：${globalAuto ? '自动记录' : '不记录'}）</option>
-                <option value="on"${autoValue === 'on' ? ' selected' : ''}>始终自动记录</option>
-                <option value="off"${autoValue === 'off' ? ' selected' : ''}>本篇不自动记录</option>
-              </select>
-            </div>
-          </div>
-        </div>
 
-        <div class="st-field" style="margin-top:0.75rem;">
-          <label>象限标签</label>
-          <div>
-            <div class="st-tags" id="st-tags">
-              ${tags}
-              <input class="st-input" id="st-f-newtag" placeholder="＋ 输入标签回车添加" style="max-width:11rem" />
+            <div class="st-meta-cell st-field">
+              <div class="st-meta-cell-head">
+                <label for="st-f-slug">
+                  <span class="st-meta-idx">02</span>
+                  <span>路由标识</span>
+                </label>
+                <span class="st-meta-hint-inline"><code>/posts/${esc(d.entry.id)}/</code></span>
+              </div>
+              <div class="st-meta-cell-body">
+                <input class="st-input st-meta-input" id="st-f-slug" value="${esc(d.entry.id)}" placeholder="英文连字符，如 my-first-post" />
+              </div>
             </div>
-            ${
-              allKnownTags.length
-                ? `<div class="st-quick-tags">
-                    <span>常用标签快选：</span>
-                    ${allKnownTags
-                      .map((t) => `<button type="button" class="stage-mini-btn" data-add-tag="${esc(t)}">＋ ${esc(t)}</button>`)
-                      .join('')}
-                  </div>`
-                : ''
-            }
           </div>
-        </div>
 
-        <div class="st-grid-2" style="margin-top:0.75rem;">
-          <div class="st-field">
-            <label>发布状态</label>
-            <div class="st-check">
-              <input type="checkbox" id="st-f-draft" ${d.fields.draft ? 'checked' : ''} />
-              <span>存为草稿（不出现在公开列表、RSS 与 Sitemap 中）</span>
+          <!-- 第二行：发布日期 + 坐标徽标 + 修订日期 + 自动记修订 -->
+          <div class="st-meta-row st-meta-row--quad">
+            <div class="st-meta-cell st-field">
+              <div class="st-meta-cell-head">
+                <label for="st-f-date">
+                  <span class="st-meta-idx">03</span>
+                  <span>发布日期</span>
+                </label>
+                <span class="st-meta-hint-inline">YYYY-MM-DD</span>
+              </div>
+              <div class="st-meta-cell-body">
+                <input class="st-input st-meta-input" id="st-f-date" value="${esc(d.fields.pubDate)}" placeholder="2026-03-13" />
+              </div>
+            </div>
+
+            <div class="st-meta-cell st-field">
+              <div class="st-meta-cell-head">
+                <label for="st-f-badge">
+                  <span class="st-meta-idx">04</span>
+                  <span>坐标徽标</span>
+                </label>
+                <span class="st-meta-hint-inline">ENTRY #${entryNo}</span>
+              </div>
+              <div class="st-meta-cell-body">
+                <input class="st-input st-meta-input" id="st-f-badge" value="${esc(d.fields.entryBadge)}" placeholder="如：LATEST / ESSAY / NOTE" />
+              </div>
+            </div>
+
+            <div class="st-meta-cell st-field">
+              <div class="st-meta-cell-head">
+                <label for="st-f-updated">
+                  <span class="st-meta-idx">05</span>
+                  <span>修订日期</span>
+                </label>
+                <span class="st-meta-hint-inline">可选</span>
+              </div>
+              <div class="st-meta-cell-body">
+                <input class="st-input st-meta-input" id="st-f-updated" value="${esc(d.fields.updatedDate)}" placeholder="留空不显示修订时间" />
+              </div>
+            </div>
+
+            <div class="st-meta-cell st-field">
+              <div class="st-meta-cell-head">
+                <label for="st-f-auto">
+                  <span class="st-meta-idx">06</span>
+                  <span>自动记修订</span>
+                </label>
+                <span class="st-meta-hint-inline">保存策略</span>
+              </div>
+              <div class="st-meta-cell-body">
+                <select class="st-select st-meta-input" id="st-f-auto">
+                  <option value="follow"${autoValue === 'follow' ? ' selected' : ''}>跟随全局（${globalAuto ? '自动记录' : '不记录'}）</option>
+                  <option value="on"${autoValue === 'on' ? ' selected' : ''}>始终自动记录</option>
+                  <option value="off"${autoValue === 'off' ? ' selected' : ''}>本篇不自动记录</option>
+                </select>
+              </div>
             </div>
           </div>
-          <div class="st-field">
-            <label>主页焦点</label>
-            <div class="st-check">
-              <input type="checkbox" id="st-f-featured" ${d.fields.featured ? 'checked' : ''} />
-              <span>设为主页「01 · POSTS」右侧默认高亮焦点文章 (SPOTLIGHT)</span>
+
+          <!-- 第三行：象限分类标签 -->
+          <div class="st-meta-row st-meta-row--single">
+            <div class="st-meta-cell st-field">
+              <div class="st-meta-cell-head">
+                <label for="st-f-newtag">
+                  <span class="st-meta-idx">07</span>
+                  <span>象限标签</span>
+                </label>
+                ${
+                  allKnownTags.length
+                    ? `<div class="st-quick-tags st-meta-quick-tags">
+                        <span>常用快选：</span>
+                        ${allKnownTags
+                          .map((t) => `<button type="button" class="stage-mini-btn" data-add-tag="${esc(t)}">＋ ${esc(t)}</button>`)
+                          .join('')}
+                      </div>`
+                    : `<span class="st-meta-hint-inline">输入标签名按回车添加</span>`
+                }
+              </div>
+              <div class="st-meta-cell-body">
+                <div class="st-tags st-meta-tags-bar" id="st-tags">
+                  ${tags}
+                  <input class="st-input st-meta-tag-input" id="st-f-newtag" placeholder="＋ 输入新标签回车添加…" />
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 第四行：发布状态与主页焦点开关 -->
+          <div class="st-meta-row st-meta-row--duo">
+            <div class="st-meta-cell st-meta-cell--toggle st-field">
+              <label class="st-meta-toggle-label" for="st-f-draft">
+                <div class="st-meta-toggle-text">
+                  <span class="st-meta-toggle-title"><span class="st-meta-idx">08</span>发布状态 · 存为草稿</span>
+                  <span class="st-meta-toggle-desc">开启后仅后台可见，不出现在公开归档、RSS 与 Sitemap 中</span>
+                </div>
+                <input type="checkbox" id="st-f-draft" ${d.fields.draft ? 'checked' : ''} />
+              </label>
+            </div>
+
+            <div class="st-meta-cell st-meta-cell--toggle st-field">
+              <label class="st-meta-toggle-label" for="st-f-featured">
+                <div class="st-meta-toggle-text">
+                  <span class="st-meta-toggle-title"><span class="st-meta-idx">09</span>主页焦点 · SPOTLIGHT</span>
+                  <span class="st-meta-toggle-desc">设为主页「01 · POSTS」右侧默认高亮焦点文章</span>
+                </div>
+                <input type="checkbox" id="st-f-featured" ${d.fields.featured ? 'checked' : ''} />
+              </label>
             </div>
           </div>
         </div>
       </div>
 
-      <!-- 第二象限：导语梗概、16:9 封面与三体画布遥测接口 -->
-      <div class="st-section-box">
+      <!-- 第二象限：导语梗概、16:9 封面与三体画布遥测接口（细线网格对齐） -->
+      <div class="st-section-box st-post-meta-section">
         <div class="st-section-head">
           <span>02 // VISUAL &amp; LEAD INTERFACE · 首屏导语、16:9 宽银幕封面与三体画布遥测</span>
           <button type="button" class="stage-mini-btn" id="st-auto-lead-btn">从正文自动提取导语</button>
         </div>
 
-        <div class="st-grid-2">
-          <div>
-            <div class="st-field">
-              <label>首屏导语</label>
-              <div>
-                <textarea class="st-textarea" id="st-f-lead" rows="3" placeholder="显示在文章详细页标题下方、主页焦点摘要与归档时间轴卡片上（留空则自动抽取正文首段）">${esc(
+        <div class="st-meta-sheet st-meta-sheet--visual">
+          <div class="st-meta-visual-col st-meta-visual-col--left">
+            <div class="st-meta-cell st-field">
+              <div class="st-meta-cell-head">
+                <label for="st-f-lead">
+                  <span class="st-meta-idx">01</span>
+                  <span>首屏导语 (Lead)</span>
+                </label>
+                <span class="st-meta-hint-inline">留空则自动抽取正文首段</span>
+              </div>
+              <div class="st-meta-cell-body">
+                <textarea class="st-textarea st-meta-input" id="st-f-lead" rows="3" placeholder="显示在文章详细页标题下方、主页焦点摘要与归档时间轴卡片上…">${esc(
                   d.fields.lead
                 )}</textarea>
               </div>
             </div>
-            <div class="st-field" style="margin-top:0.65rem;">
-              <label>SEO 摘要</label>
-              <div>
-                <textarea class="st-textarea" id="st-f-desc" rows="2" placeholder="用于 RSS 源与搜索引擎 meta description">${esc(
+
+            <div class="st-meta-cell st-field">
+              <div class="st-meta-cell-head">
+                <label for="st-f-desc">
+                  <span class="st-meta-idx">02</span>
+                  <span>SEO 摘要 (Description)</span>
+                </label>
+                <span class="st-meta-hint-inline">RSS 与搜索引擎描述</span>
+              </div>
+              <div class="st-meta-cell-body">
+                <textarea class="st-textarea st-meta-input" id="st-f-desc" rows="2" placeholder="用于 RSS 源与搜索引擎 meta description…">${esc(
                   d.fields.description
                 )}</textarea>
               </div>
             </div>
-            <div class="st-field" style="margin-top:0.65rem;">
-              <label>三体副标题</label>
-              <div>
-                <input class="st-input" id="st-f-kinetic" value="${esc(d.fields.kineticCaption)}" placeholder="默认：3-BODY GRAVITY // CHAOTIC ORBIT（Mc 篇如 LOCAL : 25565 <-> FRP）" />
-                <div class="st-hint">对应文章详细页右上角《三体》引力轨迹画布底栏右侧遥测铭牌</div>
+
+            <div class="st-meta-cell st-field">
+              <div class="st-meta-cell-head">
+                <label for="st-f-kinetic">
+                  <span class="st-meta-idx">03</span>
+                  <span>三体副标题铭牌</span>
+                </label>
+                <span class="st-meta-hint-inline">文章页右上角引力轨迹画布底栏</span>
+              </div>
+              <div class="st-meta-cell-body">
+                <input class="st-input st-meta-input" id="st-f-kinetic" value="${esc(d.fields.kineticCaption)}" placeholder="默认：3-BODY GRAVITY // CHAOTIC ORBIT" />
               </div>
             </div>
           </div>
 
-          <div class="st-cover-config-box">
-            <div class="st-cover-preview-wrap">
-              <img id="st-cover-preview-img" src="${esc(coverUrl)}" alt="封面预览" onerror="this.style.opacity='0.25'" />
-              <span class="cover-ratio-pill">16:9</span>
-            </div>
-            <div class="st-field" style="margin-top:0.65rem;">
-              <label>封面图片</label>
-              <div style="display:flex;gap:0.5rem;">
-                <input class="st-input" id="st-f-cover" value="${esc(d.fields.cover)}" placeholder="图片路径或留空自动取正文首图" />
-                <label class="stage-mini-btn" style="cursor:pointer;white-space:nowrap;display:inline-flex;align-items:center;">
-                  <span>上传</span>
-                  <input type="file" id="st-upload-cover" accept="image/*" hidden />
-                </label>
+          <div class="st-meta-visual-col st-meta-visual-col--right">
+            <div class="st-meta-cell st-meta-cell--cover-preview">
+              <div class="st-meta-cell-head">
+                <span><span class="st-meta-idx">04</span><span>16:9 封面画面（无封面时显示主题 SVG）</span></span>
+                <div style="display:inline-flex;gap:0.38rem;align-items:center;">
+                  <button type="button" class="stage-mini-btn st-btn--preview" id="st-pick-cover-btn">选择 / 上传封面</button>
+                  <button type="button" class="stage-mini-btn st-btn--danger" id="st-clear-cover-btn" ${previewCoverUrl ? '' : 'disabled'} title="清除封面，恢复为昼/夜主题 SVG 图案">清除封面</button>
+                </div>
+              </div>
+              <div class="st-cover-preview-wrap st-cover-preview-clickable" id="st-cover-preview-box" role="button" tabindex="0" title="点击从媒体库选择或上传本地封面照片">
+                <img id="st-cover-preview-img" src="${esc(previewCoverUrl)}" alt="封面预览" ${previewCoverUrl ? '' : 'hidden'} onerror="this.hidden=true;var s=document.getElementById('st-cover-svg-fallback');if(s)s.hidden=false;" />
+                <div class="st-cover-svg-host" id="st-cover-svg-fallback" ${previewCoverUrl ? 'hidden' : ''}>
+                  ${THEME_COVER_SVG_HTML}
+                </div>
+                <span class="cover-ratio-pill" id="st-cover-mode-pill">${previewCoverUrl ? '16:9 COVER' : 'AUTO SVG // ∞ ↔ 黑洞'}</span>
               </div>
             </div>
-            <div class="st-field" style="margin-top:0.65rem;">
-              <label>封面图注</label>
-              <div>
-                <input class="st-input" id="st-f-covercap" value="${esc(d.fields.coverCaption)}" placeholder="如：FRP / JAVA 21 / PAPERMC" />
+
+            <div class="st-meta-cell st-field">
+              <div class="st-meta-cell-head">
+                <label for="st-f-cover">
+                  <span class="st-meta-idx">05</span>
+                  <span>封面图片路径</span>
+                </label>
+                <span class="st-meta-hint-inline">默认空白（无封面）</span>
+              </div>
+              <div class="st-meta-cell-body">
+                <input class="st-input st-meta-input" id="st-f-cover" value="${esc(rawCover)}" placeholder="默认空白（允许文章无封面，自动用昼/夜主题 SVG 替代）" />
+              </div>
+            </div>
+
+            <div class="st-meta-cell st-field">
+              <div class="st-meta-cell-head">
+                <label for="st-f-covercap">
+                  <span class="st-meta-idx">06</span>
+                  <span>封面图注说明</span>
+                </label>
+                <span class="st-meta-hint-inline">可选</span>
+              </div>
+              <div class="st-meta-cell-body">
+                <input class="st-input st-meta-input" id="st-f-covercap" value="${esc(d.fields.coverCaption)}" placeholder="如：16:9 WIDESCREEN COVER" />
               </div>
             </div>
           </div>
         </div>
       </div>
 
-      <!-- 信息悬浮窗（可折叠的高级选项）：只有标题行能开合，点内容区不会折叠 -->
+      <!-- 第三象限：高自定义信息悬浮窗（Article Right Rail） -->
       <div class="st-section-box is-collapsible${d.railOpen ? ' is-open' : ''}" id="st-rail-section">
         <div class="st-section-head" id="st-rail-head" role="button" tabindex="0" aria-expanded="${d.railOpen ? 'true' : 'false'}" aria-controls="st-rail-body" aria-label="信息悬浮窗：点击展开或收起">
-          <span>信息悬浮窗</span>
-          <span class="st-sec-mono" style="font-family:var(--mono);font-size:0.72rem;letter-spacing:0.06em;color:var(--accent);">高级 · 可折叠</span>
+          <span>03 // FLOATING RAIL STUDIO · 信息悬浮窗高自定义工作台（对应前台文章右侧伴读栏）</span>
+          <span class="st-sec-mono" style="font-family:var(--mono);font-size:0.75rem;letter-spacing:0.06em;color:var(--accent);">
+            ${railMode === 'custom' ? `独立定制 (${customCards.length} 卡片)` : railMode === 'minimal' ? '极简模式' : '跟随全局'} · 点击展开/收起
+          </span>
           <span class="st-collapse-icon">›</span>
         </div>
         <div class="st-section-body" id="st-rail-body">
-          <div style="padding-top:0.5rem;">
-
-        <div class="st-field">
-          <label>右栏模式</label>
-          <div class="st-seg-row">
-            <button type="button" class="stage-mini-btn" data-rail-mode="follow" aria-pressed="${railMode === 'follow'}">跟随全局默认</button>
-            <button type="button" class="stage-mini-btn" data-rail-mode="custom" aria-pressed="${railMode === 'custom'}">本文专属参数卡</button>
-            <button type="button" class="stage-mini-btn" data-rail-mode="topology" aria-pressed="${railMode === 'topology'}">拓扑图解</button>
-          </div>
-        </div>
-
-        <div id="st-rail-custom-editor" ${railMode === 'follow' ? 'hidden' : ''} style="margin-top:0.85rem;">
-          <div class="st-sub-kicker">速查参数表（显示在文章右侧悬浮栏）</div>
-          <div class="st-kv-editor-list" id="st-rail-specs-list">
-            ${railSpecs
-              .map(
-                (row, i) => `
-              <div class="st-kv-row">
-                <input class="st-input" data-spec-k="${i}" value="${esc(row.label)}" placeholder="参数名" />
-                <input class="st-input" data-spec-v="${i}" value="${esc(row.value)}" placeholder="参数值" />
-                <button type="button" class="stage-mini-btn st-btn--danger" data-spec-del="${i}">删除</button>
-              </div>`
-              )
-              .join('')}
-          </div>
-          <div style="margin-top:0.55rem;display:flex;gap:0.5rem;">
-            <button type="button" class="stage-mini-btn" id="st-add-spec-row">＋ 新增参数行</button>
-            <button type="button" class="stage-mini-btn" id="st-preset-mc-spec">载入服务器模板</button>
-          </div>
-
-          <div id="st-rail-topo-editor" ${railMode === 'topology' ? '' : 'hidden'} style="margin-top:0.95rem;padding-top:0.85rem;border-top:1px dashed var(--rule);">
-            <div class="st-sub-kicker">拓扑链路图节点文本</div>
-            <div class="st-grid-3">
-              <div>
-                <label class="st-mini-label">左节点</label>
-                <input class="st-input" data-topo="node1Title" value="${esc(railTopo.node1Title ?? 'LOCAL HOST')}" placeholder="主标题" style="margin-bottom:6px" />
-                <input class="st-input" data-topo="node1Sub" value="${esc(railTopo.node1Sub ?? 'Paper :25565')}" placeholder="副标题" />
-              </div>
-              <div>
-                <label class="st-mini-label">中继节点</label>
-                <input class="st-input" data-topo="node2Title" value="${esc(railTopo.node2Title ?? 'FRP RELAY')}" placeholder="主标题" style="margin-bottom:6px" />
-                <input class="st-input" data-topo="node2Sub" value="${esc(railTopo.node2Sub ?? 'Public :7000')}" placeholder="副标题" />
-              </div>
-              <div>
-                <label class="st-mini-label">终端节点</label>
-                <input class="st-input" data-topo="node3Title" value="${esc(railTopo.node3Title ?? 'PLAYERS')}" placeholder="主标题" style="margin-bottom:6px" />
-                <input class="st-input" data-topo="node3Sub" value="${esc(railTopo.node3Sub ?? 'Clients 1..N')}" placeholder="副标题" />
+          <div style="padding-top:0.6rem;">
+            <div class="st-field">
+              <label>悬浮窗模式</label>
+              <div class="st-seg-row">
+                <button type="button" class="stage-mini-btn" data-rail-mode="follow" aria-pressed="${railMode === 'follow'}">跟随全局默认</button>
+                <button type="button" class="stage-mini-btn" data-rail-mode="custom" aria-pressed="${railMode === 'custom'}">本文独立定制（推荐）</button>
+                <button type="button" class="stage-mini-btn" data-rail-mode="minimal" aria-pressed="${railMode === 'minimal'}">极简模式（仅展示本文卡片）</button>
               </div>
             </div>
-            <div class="st-grid-2" style="margin-top:0.5rem;">
-              <input class="st-input" data-topo="line1" value="${esc(railTopo.line1 ?? 'TUNNEL: 127.0.0.1:25565 -> frps:25565')}" placeholder="状态行 1" />
-              <input class="st-input" data-topo="line2" value="${esc(railTopo.line2 ?? 'STATUS: NAT BYPASSED · ZERO PUBLIC IP')}" placeholder="状态行 2" />
-            </div>
-          </div>
-        </div>
 
+            <div id="st-rail-custom-editor" ${railMode === 'follow' ? 'hidden' : ''} style="margin-top:1rem;">
+              <!-- 模块 A：文档速查卡与本文参数 -->
+              <div class="st-rail-block">
+                <div class="st-pages-subhead">
+                  <div class="st-sub-kicker">A // 文档速查与附加键值（DOC SPEC &amp; KV PARAMS）</div>
+                  <div class="st-pages-subhead-actions">
+                    <label class="st-check">
+                      <input type="checkbox" id="st-rail-show-docspec" ${railCfg.showDocSpec !== false ? 'checked' : ''} />
+                      <span>显示文档基础速查项</span>
+                    </label>
+                    <label class="st-check">
+                      <input type="checkbox" id="st-rail-sep-specs" ${railCfg.separateSpecsCard === true ? 'checked' : ''} />
+                      <span>附加参数独立成卡</span>
+                    </label>
+                  </div>
+                </div>
+
+                <div class="st-check-row" style="margin-bottom:0.65rem;">
+                  <label class="st-check"><input type="checkbox" data-rail-bool="showPublished" ${railCfg.showPublished !== false ? 'checked' : ''} /><span>发布日期 (PUBLISHED)</span></label>
+                  <label class="st-check"><input type="checkbox" data-rail-bool="showChars" ${railCfg.showChars !== false ? 'checked' : ''} /><span>字数统计 (CHARS)</span></label>
+                  <label class="st-check"><input type="checkbox" data-rail-bool="showReading" ${railCfg.showReading !== false ? 'checked' : ''} /><span>阅读时长 (READING)</span></label>
+                  <label class="st-check"><input type="checkbox" data-rail-bool="showTags" ${railCfg.showTags !== false ? 'checked' : ''} /><span>分类标签 (TAGS)</span></label>
+                </div>
+
+                <div class="st-grid-2" style="margin-bottom:0.65rem;">
+                  <div class="st-field">
+                    <label>速查卡标题</label>
+                    <div><input class="st-input" data-rail-cfg="specKicker" value="${esc(railCfg.specKicker ?? '')}" placeholder="留空使用全局默认（DOC SPEC // 文档速查卡）" /></div>
+                  </div>
+                  <div class="st-field">
+                    <label>右侧副徽标</label>
+                    <div><input class="st-input" data-rail-cfg="specBadge" value="${esc(railCfg.specBadge ?? '')}" placeholder="留空使用默认（BASELINE / CUSTOM）" /></div>
+                  </div>
+                </div>
+
+                <div class="st-sub-kicker">本文附加键值行（如：适用环境、阅读难度、耗时、项目状态）</div>
+                <div class="st-kv-editor-list" id="st-rail-specs-list">
+                  ${railSpecs
+                    .map(
+                      (row, i) => `
+                    <div class="st-kv-row">
+                      <input class="st-input" data-spec-k="${i}" value="${esc(row.label)}" placeholder="字段名（如：环境版本）" />
+                      <input class="st-input" data-spec-v="${i}" value="${esc(row.value)}" placeholder="字段值（如：Astro 7 + SQLite）" />
+                      <button type="button" class="stage-mini-btn st-btn--danger" data-spec-del="${i}">删除</button>
+                    </div>`
+                    )
+                    .join('')}
+                </div>
+                <div style="margin-top:0.55rem;display:flex;gap:0.5rem;flex-wrap:wrap;">
+                  <button type="button" class="stage-mini-btn" id="st-add-spec-row">＋ 新增键值参数行</button>
+                </div>
+              </div>
+
+              <!-- 模块 B：本文专属自定义悬浮卡片列表 -->
+              <div class="st-rail-block" style="margin-top:1rem;">
+                <div class="st-pages-subhead">
+                  <div class="st-sub-kicker">B // 本文专属悬浮卡片（支持多卡片自由组合与排序）</div>
+                  <div class="st-rail-add-bar">
+                    <button type="button" class="stage-mini-btn" data-add-widget="kv">＋ 参数表卡</button>
+                    <button type="button" class="stage-mini-btn" data-add-widget="note">＋ 伴读便签卡</button>
+                    <button type="button" class="stage-mini-btn" data-add-widget="links">＋ 参考链接卡</button>
+                    <button type="button" class="stage-mini-btn" data-add-widget="list">＋ 核心要点卡</button>
+                  </div>
+                </div>
+                <div class="st-rail-widgets-list" id="st-rail-widgets-list">
+                  ${renderRailCustomCardsEditor(customCards)}
+                </div>
+              </div>
+
+              <!-- 模块 C：全局卡片与相关文章联动 -->
+              <div class="st-rail-block" style="margin-top:1rem;" ${railMode === 'minimal' ? 'hidden' : ''}>
+                <div class="st-sub-kicker">C // 全局悬浮模块联动显示</div>
+                <div class="st-check-row">
+                  <label class="st-check">
+                    <input type="checkbox" data-rail-bool="showGlobalCards" ${railCfg.showGlobalCards !== false ? 'checked' : ''} />
+                    <span>同时展示全局伴读卡片（在「页面 → 文章」中维护的全局卡片）</span>
+                  </label>
+                  <label class="st-check">
+                    <input type="checkbox" data-rail-bool="showRelated" ${railCfg.showRelated !== false ? 'checked' : ''} />
+                    <span>底部展示「同系列文章切换」列表</span>
+                  </label>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -416,13 +1009,12 @@ export function renderPostView(): void {
       <!-- 正文编辑器 -->
       <div class="st-section-box">
         <div class="st-section-head">
-          <span>正文内容</span>
+          <span>04 // ARTICLE BODY · 正文内容编辑器</span>
           <span class="st-sec-tag">WYSIWYG ↔ Markdown</span>
         </div>
         <div id="ed-host"></div>
       </div>
     </div>`;
-
 
   // 绑定字段输入
   const bindInput = (sel: string, key: string) =>
@@ -434,11 +1026,7 @@ export function renderPostView(): void {
         if (t) t.textContent = String(d.fields.title || '（未填标题）');
       }
       if (key === 'cover') {
-        const img = $<HTMLImageElement>('#st-cover-preview-img');
-        if (img) {
-          img.style.opacity = '1';
-          img.src = String(d.fields.cover || '/artifact/home/images/spot-default-mc.jpg');
-        }
+        syncCoverUi(d);
       }
       if (d.rightTab === 'rail') renderRightRailPreview(d);
     });
@@ -452,6 +1040,22 @@ export function renderPostView(): void {
   bindInput('#st-f-kinetic', 'kineticCaption');
   bindInput('#st-f-cover', 'cover');
   bindInput('#st-f-covercap', 'coverCaption');
+
+  // 封面选择 / 上传悬浮弹窗与清除封面
+  $('#st-pick-cover-btn')?.addEventListener('click', () => openCoverPickerModal(d));
+  $('#st-cover-preview-box')?.addEventListener('click', () => openCoverPickerModal(d));
+  $('#st-cover-preview-box')?.addEventListener('keydown', (e) => {
+    if ((e as KeyboardEvent).key === 'Enter' || (e as KeyboardEvent).key === ' ') {
+      e.preventDefault();
+      openCoverPickerModal(d);
+    }
+  });
+  $('#st-clear-cover-btn')?.addEventListener('click', () => {
+    d.fields.cover = '';
+    markDirty();
+    syncCoverUi(d);
+    toast('已清除文章封面，当前使用昼/夜主题 SVG 图案');
+  });
 
   // 路由标识修改
   $<HTMLInputElement>('#st-f-slug')?.addEventListener('change', (e) => {
@@ -467,7 +1071,6 @@ export function renderPostView(): void {
       (e.target as HTMLInputElement).value = d.entry.id;
       return;
     }
-    // 第一次改名时记住旧文件；之后 A→B→C 仍以最初的 A 为准。
     if (!d.entry.prevPath) {
       d.entry.prevPath = d.entry.path;
       d.entry.prevSha = d.entry.sha;
@@ -500,8 +1103,7 @@ export function renderPostView(): void {
     markDirty();
   });
 
-  // 可折叠 section：开合只由标题行触发，点击内容区（输入框 / 下拉 / 复选 / 按钮）不会折叠。
-  // 开合状态写进 draft（d.railOpen），重渲染时由模板恢复 is-open / aria-expanded。
+  // 可折叠 section
   $$<HTMLElement>('.st-section-box.is-collapsible > .st-section-head', edit).forEach((head) => {
     const box = head.closest<HTMLElement>('.st-section-box');
     if (!box) return;
@@ -509,11 +1111,9 @@ export function renderPostView(): void {
     const setOpen = (open: boolean) => {
       box.classList.toggle('is-open', open);
       head.setAttribute('aria-expanded', open ? 'true' : 'false');
-      // 「信息悬浮窗」的开合要跨重渲染保留；其它可折叠小节若以后加入，在这里补字段即可。
       if (box.id === 'st-rail-section') d.railOpen = open;
     };
     const toggle = (e: Event) => {
-      // 标题行里将来若加了链接 / 按钮 / 表单控件，只走它们自己的行为，不触发折叠
       if ((e.target as HTMLElement).closest('a, button, input, select, textarea, label, summary, [data-no-collapse]')) {
         return;
       }
@@ -543,45 +1143,6 @@ export function renderPostView(): void {
     toast('已从正文首段自动提取导语');
   });
 
-
-  // 上传封面
-  $<HTMLInputElement>('#st-upload-cover')?.addEventListener('change', async (e) => {
-    const file = (e.target as HTMLInputElement).files?.[0];
-    if (!file) return;
-    try {
-      const input = $<HTMLInputElement>('#st-f-cover');
-      const img = $<HTMLImageElement>('#st-cover-preview-img');
-      const localUrl = URL.createObjectURL(file);
-      if (img) {
-        img.style.opacity = '1';
-        img.src = localUrl;
-      }
-
-      // v2 真实模式：上传到 src/assets/posts/<文章 slug>/，frontmatter 里写相对路径。
-      if (isV2Layout() && state.gh) {
-        setBusy(true, '压缩并上传封面…');
-        const prepared = await prepareImage(file);
-        const rel = await uploadPostAsset(state.gh, prepared, d.entry.id, state.postAssetFiles);
-        if (!state.postAssetFiles.includes(rel)) state.postAssetFiles.push(rel);
-        d.fields.cover = rel;
-        if (input) input.value = rel;
-        markDirty();
-        toast(`封面已上传并归档到 ${rel}`);
-        return;
-      }
-
-      // 经典版保持原行为：只做本地预览，不改仓库。
-      d.fields.cover = localUrl;
-      if (input) input.value = `../../assets/posts/${file.name}`;
-      markDirty();
-      toast(`已加载封面预览：${file.name}（16:9 画框已适配）`);
-    } catch (err) {
-      reportError(err);
-    } finally {
-      if (isV2Layout()) setBusy(false);
-    }
-  });
-
   // 标签增删
   $<HTMLInputElement>('#st-f-newtag')?.addEventListener('keydown', (e) => {
     if ((e as KeyboardEvent).key !== 'Enter') return;
@@ -592,7 +1153,7 @@ export function renderPostView(): void {
       (d.fields.tags as string[]).push(v);
       markDirty();
       renderPostView();
-      if (isV2Layout()) $<HTMLInputElement>('#st-f-newtag')?.focus();
+      $<HTMLInputElement>('#st-f-newtag')?.focus();
     }
     input.value = '';
   });
@@ -604,7 +1165,7 @@ export function renderPostView(): void {
         (d.fields.tags as string[]).push(t);
         markDirty();
         renderPostView();
-        if (isV2Layout()) $<HTMLInputElement>('#st-f-newtag')?.focus();
+        $<HTMLInputElement>('#st-f-newtag')?.focus();
       }
     })
   );
@@ -614,73 +1175,12 @@ export function renderPostView(): void {
       d.fields.tags = (d.fields.tags as string[]).filter((t) => t !== b.dataset.rm);
       markDirty();
       renderPostView();
-      if (isV2Layout()) $<HTMLInputElement>('#st-f-newtag')?.focus();
+      $<HTMLInputElement>('#st-f-newtag')?.focus();
     })
   );
 
-  // 右侧悬浮栏模式切换与编辑
-  edit.querySelectorAll<HTMLButtonElement>('[data-rail-mode]').forEach((btn) =>
-    btn.addEventListener('click', () => {
-      d.fields.railMode = btn.dataset.railMode ?? 'follow';
-      d.rightTab = 'rail';
-      markDirty();
-      renderPostView();
-    })
-  );
-
-  edit.querySelectorAll<HTMLInputElement>('[data-spec-k]').forEach((inp) =>
-    inp.addEventListener('input', () => {
-      const idx = Number(inp.dataset.specK);
-      if (railSpecs[idx]) railSpecs[idx]!.label = inp.value;
-      markDirty();
-      if (d.rightTab === 'rail') renderRightRailPreview(d);
-    })
-  );
-
-  edit.querySelectorAll<HTMLInputElement>('[data-spec-v]').forEach((inp) =>
-    inp.addEventListener('input', () => {
-      const idx = Number(inp.dataset.specV);
-      if (railSpecs[idx]) railSpecs[idx]!.value = inp.value;
-      markDirty();
-      if (d.rightTab === 'rail') renderRightRailPreview(d);
-    })
-  );
-
-  edit.querySelectorAll<HTMLButtonElement>('[data-spec-del]').forEach((btn) =>
-    btn.addEventListener('click', () => {
-      railSpecs.splice(Number(btn.dataset.specDel), 1);
-      markDirty();
-      renderPostView();
-    })
-  );
-
-  $('#st-add-spec-row')?.addEventListener('click', () => {
-    railSpecs.push({ label: 'NEW PARAM', value: 'Value' });
-    markDirty();
-    renderPostView();
-  });
-
-  $('#st-preset-mc-spec')?.addEventListener('click', () => {
-    d.fields.railSpecs = [
-      { label: 'JDK RUNTIME', value: 'Temurin 21 LTS' },
-      { label: 'SERVER CORE', value: 'Paper 1.21.x' },
-      { label: 'HEAP MEMORY', value: '-Xms4G -Xmx4G' },
-      { label: 'GC POLICY', value: 'G1GC (Aikars)' },
-      { label: 'DEFAULT PORT', value: 'TCP 25565' },
-    ];
-    markDirty();
-    renderPostView();
-  });
-
-  edit.querySelectorAll<HTMLInputElement>('[data-topo]').forEach((inp) =>
-    inp.addEventListener('input', () => {
-      const k = inp.dataset.topo as keyof RailTopologyCfg;
-      railTopo[k] = inp.value as never;
-      d.fields.railTopology = railTopo;
-      markDirty();
-      if (d.rightTab === 'rail') renderRightRailPreview(d);
-    })
-  );
+  // 信息悬浮窗：事件绑定
+  wireRailEditorEvents(edit, d, railCfg, railSpecs, customCards);
 
   $('#st-btn-preview-post')?.addEventListener('click', () => previewCurrentPost());
   $('#st-del-post')?.addEventListener('click', () => {
@@ -701,16 +1201,296 @@ export function renderPostView(): void {
   if (isV2Layout()) applyV2PostLayout(d);
 }
 
-function renderRightDock(d: NonNullable<Draft['post']>): void {
+function wireRailEditorEvents(
+  root: HTMLElement,
+  d: PostDraftUi,
+  railCfg: PostRailConfig,
+  railSpecs: RailKvItem[],
+  customCards: RailWidgetCard[]
+): void {
+  const syncRail = (fullRerender = false) => {
+    railCfg.cards = customCards;
+    d.fields.railTopology = railCfg;
+    markDirty();
+    if (fullRerender) {
+      d.railOpen = true;
+      renderPostView();
+    } else if (d.rightTab === 'rail') {
+      renderRightRailPreview(d);
+    }
+  };
+
+  root.querySelectorAll<HTMLButtonElement>('[data-rail-mode]').forEach((btn) =>
+    btn.addEventListener('click', () => {
+      d.fields.railMode = btn.dataset.railMode ?? 'follow';
+      d.rightTab = 'rail';
+      d.railOpen = true;
+      markDirty();
+      renderPostView();
+    })
+  );
+
+  $<HTMLInputElement>('#st-rail-show-docspec', root)?.addEventListener('change', (e) => {
+    railCfg.showDocSpec = (e.target as HTMLInputElement).checked;
+    syncRail(false);
+  });
+
+  $<HTMLInputElement>('#st-rail-sep-specs', root)?.addEventListener('change', (e) => {
+    railCfg.separateSpecsCard = (e.target as HTMLInputElement).checked;
+    syncRail(false);
+  });
+
+  root.querySelectorAll<HTMLInputElement>('[data-rail-bool]').forEach((inp) =>
+    inp.addEventListener('change', () => {
+      const k = inp.dataset.railBool as keyof PostRailConfig;
+      (railCfg as Record<string, unknown>)[k] = inp.checked;
+      syncRail(false);
+    })
+  );
+
+  root.querySelectorAll<HTMLInputElement>('[data-rail-cfg]').forEach((inp) =>
+    inp.addEventListener('input', () => {
+      const k = inp.dataset.railCfg as keyof PostRailConfig;
+      (railCfg as Record<string, unknown>)[k] = inp.value;
+      syncRail(false);
+    })
+  );
+
+  root.querySelectorAll<HTMLInputElement>('[data-spec-k]').forEach((inp) =>
+    inp.addEventListener('input', () => {
+      const idx = Number(inp.dataset.specK);
+      if (railSpecs[idx]) railSpecs[idx]!.label = inp.value;
+      syncRail(false);
+    })
+  );
+
+  root.querySelectorAll<HTMLInputElement>('[data-spec-v]').forEach((inp) =>
+    inp.addEventListener('input', () => {
+      const idx = Number(inp.dataset.specV);
+      if (railSpecs[idx]) railSpecs[idx]!.value = inp.value;
+      syncRail(false);
+    })
+  );
+
+  root.querySelectorAll<HTMLButtonElement>('[data-spec-del]').forEach((btn) =>
+    btn.addEventListener('click', () => {
+      railSpecs.splice(Number(btn.dataset.specDel), 1);
+      syncRail(true);
+    })
+  );
+
+  $('#st-add-spec-row', root)?.addEventListener('click', () => {
+    railSpecs.push({ label: '参数项', value: '参数内容' });
+    d.rightTab = 'rail';
+    syncRail(true);
+  });
+
+  root.querySelectorAll<HTMLButtonElement>('[data-add-widget]').forEach((btn) =>
+    btn.addEventListener('click', () => {
+      const type = (btn.dataset.addWidget ?? 'note') as RailWidgetType;
+      customCards.push(createDefaultWidget(type));
+      if (d.fields.railMode === 'follow') d.fields.railMode = 'custom';
+      d.rightTab = 'rail';
+      syncRail(true);
+      toast('已添加本文专属悬浮卡片，可在右侧实时预览效果');
+    })
+  );
+
+  root.querySelectorAll<HTMLInputElement>('[data-rc-enabled]').forEach((inp) =>
+    inp.addEventListener('change', () => {
+      const idx = Number(inp.dataset.rcEnabled);
+      if (customCards[idx]) customCards[idx]!.enabled = inp.checked;
+      syncRail(false);
+    })
+  );
+
+  root.querySelectorAll<HTMLSelectElement>('[data-rc-type]').forEach((sel) =>
+    sel.addEventListener('change', () => {
+      const idx = Number(sel.dataset.rcType);
+      const card = customCards[idx];
+      if (!card) return;
+      const nextType = sel.value as RailWidgetType;
+      card.type = nextType;
+      if (nextType === 'kv' && (!card.items || !card.items.length)) {
+        card.items = [{ label: '参数名', value: '参数值' }];
+      } else if (nextType === 'links' && (!card.links || !card.links.length)) {
+        card.links = [{ label: '相关链接', url: 'https://', note: '参考' }];
+      } else if (nextType === 'list' && (!card.bullets || !card.bullets.length)) {
+        card.bullets = ['核心要点 1', '核心要点 2'];
+      }
+      syncRail(true);
+    })
+  );
+
+  root.querySelectorAll<HTMLButtonElement>('[data-rc-move]').forEach((btn) =>
+    btn.addEventListener('click', () => {
+      const [idxStr, dirStr] = (btn.dataset.rcMove ?? '').split(':');
+      const idx = Number(idxStr);
+      const nextIdx = idx + Number(dirStr);
+      if (idx < 0 || nextIdx < 0 || idx >= customCards.length || nextIdx >= customCards.length) return;
+      const temp = customCards[idx]!;
+      customCards[idx] = customCards[nextIdx]!;
+      customCards[nextIdx] = temp;
+      syncRail(true);
+    })
+  );
+
+  root.querySelectorAll<HTMLButtonElement>('[data-rc-del]').forEach((btn) =>
+    btn.addEventListener('click', () => {
+      customCards.splice(Number(btn.dataset.rcDel), 1);
+      syncRail(true);
+    })
+  );
+
+  root.querySelectorAll<HTMLInputElement>('[data-rc-field]').forEach((inp) =>
+    inp.addEventListener('input', () => {
+      const [idxStr, key] = (inp.dataset.rcField ?? '').split('.');
+      const card = customCards[Number(idxStr)];
+      if (card && (key === 'kicker' || key === 'badge')) {
+        card[key] = inp.value;
+        syncRail(false);
+      }
+    })
+  );
+
+  root.querySelectorAll<HTMLTextAreaElement>('[data-rc-content]').forEach((ta) =>
+    ta.addEventListener('input', () => {
+      const card = customCards[Number(ta.dataset.rcContent)];
+      if (card) {
+        card.content = ta.value;
+        syncRail(false);
+      }
+    })
+  );
+
+  root.querySelectorAll<HTMLTextAreaElement>('[data-rc-bullets]').forEach((ta) =>
+    ta.addEventListener('input', () => {
+      const card = customCards[Number(ta.dataset.rcBullets)];
+      if (card) {
+        card.bullets = ta.value
+          .split('\n')
+          .map((s) => s.trim())
+          .filter(Boolean);
+        syncRail(false);
+      }
+    })
+  );
+
+  root.querySelectorAll<HTMLInputElement>('[data-rc-kv-k]').forEach((inp) =>
+    inp.addEventListener('input', () => {
+      const [cIdx, rIdx] = (inp.dataset.rcKvK ?? '').split('.').map(Number);
+      const item = customCards[cIdx]?.items?.[rIdx];
+      if (item) {
+        item.label = inp.value;
+        syncRail(false);
+      }
+    })
+  );
+
+  root.querySelectorAll<HTMLInputElement>('[data-rc-kv-v]').forEach((inp) =>
+    inp.addEventListener('input', () => {
+      const [cIdx, rIdx] = (inp.dataset.rcKvV ?? '').split('.').map(Number);
+      const item = customCards[cIdx]?.items?.[rIdx];
+      if (item) {
+        item.value = inp.value;
+        syncRail(false);
+      }
+    })
+  );
+
+  root.querySelectorAll<HTMLButtonElement>('[data-rc-kv-del]').forEach((btn) =>
+    btn.addEventListener('click', () => {
+      const [cIdx, rIdx] = (btn.dataset.rcKvDel ?? '').split('.').map(Number);
+      customCards[cIdx]?.items?.splice(rIdx, 1);
+      syncRail(true);
+    })
+  );
+
+  root.querySelectorAll<HTMLButtonElement>('[data-rc-kv-add]').forEach((btn) =>
+    btn.addEventListener('click', () => {
+      const cIdx = Number(btn.dataset.rcKvAdd);
+      const card = customCards[cIdx];
+      if (!card) return;
+      if (!card.items) card.items = [];
+      card.items.push({ label: '参数名', value: '参数值' });
+      syncRail(true);
+    })
+  );
+
+  root.querySelectorAll<HTMLInputElement>('[data-rc-lk-label]').forEach((inp) =>
+    inp.addEventListener('input', () => {
+      const [cIdx, lIdx] = (inp.dataset.rcLkLabel ?? '').split('.').map(Number);
+      const item = customCards[cIdx]?.links?.[lIdx];
+      if (item) {
+        item.label = inp.value;
+        syncRail(false);
+      }
+    })
+  );
+
+  root.querySelectorAll<HTMLInputElement>('[data-rc-lk-note]').forEach((inp) =>
+    inp.addEventListener('input', () => {
+      const [cIdx, lIdx] = (inp.dataset.rcLkNote ?? '').split('.').map(Number);
+      const item = customCards[cIdx]?.links?.[lIdx];
+      if (item) {
+        item.note = inp.value;
+        syncRail(false);
+      }
+    })
+  );
+
+  root.querySelectorAll<HTMLInputElement>('[data-rc-lk-url]').forEach((inp) =>
+    inp.addEventListener('input', () => {
+      const [cIdx, lIdx] = (inp.dataset.rcLkUrl ?? '').split('.').map(Number);
+      const item = customCards[cIdx]?.links?.[lIdx];
+      if (item) {
+        item.url = inp.value;
+        syncRail(false);
+      }
+    })
+  );
+
+  root.querySelectorAll<HTMLButtonElement>('[data-rc-lk-del]').forEach((btn) =>
+    btn.addEventListener('click', () => {
+      const [cIdx, lIdx] = (btn.dataset.rcLkDel ?? '').split('.').map(Number);
+      customCards[cIdx]?.links?.splice(lIdx, 1);
+      syncRail(true);
+    })
+  );
+
+  root.querySelectorAll<HTMLButtonElement>('[data-rc-lk-add]').forEach((btn) =>
+    btn.addEventListener('click', () => {
+      const cIdx = Number(btn.dataset.rcLkAdd);
+      const card = customCards[cIdx];
+      if (!card) return;
+      if (!card.links) card.links = [];
+      card.links.push({ label: '参考链接', url: 'https://', note: '外部资源' });
+      syncRail(true);
+    })
+  );
+}
+
+function renderRightDock(d: PostDraftUi): void {
   const panel = $('#st-preview');
   if (!panel) return;
   const activeTab = d.rightTab ?? 'format';
 
   panel.innerHTML = `
     <div class="st-col-inner">
-      <div class="st-dock-tabs">
-        <button type="button" class="st-dock-tab" data-dock-tab="format" aria-selected="${activeTab === 'format'}">格式工具</button>
-        <button type="button" class="st-dock-tab" data-dock-tab="rail" aria-selected="${activeTab === 'rail'}">右侧悬浮栏</button>
+      <div class="st-dock-tabs" role="tablist" aria-label="右侧工具面板切换">
+        <button type="button" class="st-dock-tab" data-dock-tab="format" role="tab" aria-selected="${activeTab === 'format'}">
+          <svg viewBox="0 0 16 16" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M2.5 3.8h11M2.5 8h7.2M2.5 12.2h9.2"/>
+          </svg>
+          <span>格式工具</span>
+        </button>
+        <button type="button" class="st-dock-tab" data-dock-tab="rail" role="tab" aria-selected="${activeTab === 'rail'}">
+          <svg viewBox="0 0 16 16" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <rect x="2" y="2.5" width="12" height="11" rx="1.6"/>
+            <line x1="9.2" y1="2.5" x2="9.2" y2="13.5"/>
+          </svg>
+          <span>信息悬浮窗</span>
+        </button>
       </div>
       <div id="ed-bar-host" ${activeTab === 'format' ? '' : 'hidden'}></div>
       <div id="st-rail-preview-host" ${activeTab === 'rail' ? '' : 'hidden'}></div>
@@ -766,15 +1546,12 @@ function renderRightDock(d: NonNullable<Draft['post']>): void {
   }
 }
 
-function renderRightRailPreview(d: NonNullable<Draft['post']>): void {
+function renderRightRailPreview(d: PostDraftUi): void {
   const host = $('#st-rail-preview-host');
   if (!host) return;
 
   const siteData = (state.draft.site ?? state.site?.data ?? {}) as Record<string, unknown>;
-  const railCfg = (siteData.articleRail ?? {}) as Record<string, unknown>;
-  const docSpecCfg = (railCfg.docSpec ?? {}) as Record<string, unknown>;
-  const globalTopo = (railCfg.topology ?? {}) as Record<string, unknown>;
-  const customCards = Array.isArray(railCfg.customCards) ? (railCfg.customCards as Array<Record<string, unknown>>) : [];
+  const globalRail = (siteData.articleRail ?? {}) as ArticleRailConfig;
 
   const mdText = d.editor?.getMarkdown() ?? d.body;
   const { chars, minutes } = readingTime(mdText);
@@ -785,115 +1562,89 @@ function renderRightRailPreview(d: NonNullable<Draft['post']>): void {
   const tagText = tags.length ? tags.join(' · ') : '未分类';
 
   const railMode = String(d.fields.railMode ?? 'follow');
-  const postSpecs = (d.fields.railSpecs as RailSpecRow[]) ?? [];
-  const postTopo = (d.fields.railTopology as RailTopologyCfg) ?? {};
+  const postSpecs = (d.fields.railSpecs as RailKvItem[]) ?? [];
+  const postCfg = normalizePostRailConfig(d.fields.railTopology);
 
-  const showTopo =
-    railMode === 'topology' ||
-    (railMode === 'follow' && (d.entry.id === 'mc-server' || globalTopo.globalEnabled === true));
-
-  const n1T = postTopo.node1Title || String(globalTopo.node1Title ?? 'LOCAL HOST');
-  const n1S = postTopo.node1Sub || String(globalTopo.node1Sub ?? 'Paper :25565');
-  const n2T = postTopo.node2Title || String(globalTopo.node2Title ?? 'FRP RELAY');
-  const n2S = postTopo.node2Sub || String(globalTopo.node2Sub ?? 'Public :7000');
-  const n3T = postTopo.node3Title || String(globalTopo.node3Title ?? 'PLAYERS');
-  const n3S = postTopo.node3Sub || String(globalTopo.node3Sub ?? 'Clients 1..N');
-  const l1 = postTopo.line1 || String(globalTopo.line1 ?? 'TUNNEL: 127.0.0.1:25565 -> frps:25565');
-  const l2 = postTopo.line2 || String(globalTopo.line2 ?? 'STATUS: NAT BYPASSED · ZERO PUBLIC IP');
-
-  let rows: RailSpecRow[] = [];
-  let specKicker = String(docSpecCfg.kicker ?? 'DOC SPEC // 文档速查卡');
-  if ((railMode === 'custom' || railMode === 'topology') && postSpecs.length > 0) {
-    rows = postSpecs;
-    specKicker = 'SPEC SHEET // 环境速查卡';
-  } else {
-    if (docSpecCfg.showPublished !== false) rows.push({ label: 'PUBLISHED', value: dateText });
-    if (docSpecCfg.showChars !== false) rows.push({ label: 'CHARS', value: `${chars.toLocaleString('zh-CN')} 字` });
-    if (docSpecCfg.showReading !== false) rows.push({ label: 'READING', value: `约 ${minutes} 分钟` });
-    if (docSpecCfg.showTags !== false) rows.push({ label: 'TAGS', value: tagText });
-    const extraRows = Array.isArray(docSpecCfg.customRows) ? (docSpecCfg.customRows as RailSpecRow[]) : [];
-    rows.push(...extraRows);
-  }
+  const railSlots = renderArticleRailSlots({
+    slug: d.entry.id,
+    dateText,
+    chars,
+    minutes,
+    tagText,
+    railMode,
+    railSpecs: postSpecs,
+    railConfig: postCfg as unknown as Record<string, unknown>,
+    globalRail,
+    relatedPosts: state.posts.map((p, idx) => ({
+      slug: p.id,
+      title: String(p.parsed.data.title ?? p.id),
+      tags: Array.isArray(p.parsed.data.tags) ? p.parsed.data.tags.map(String) : [],
+      indexNo: idx + 1,
+    })),
+    totalPostsCount: state.posts.length,
+    isStudioDockPreview: true,
+  });
 
   host.innerHTML = `
     <div class="st-rail-preview-wrap">
-      <div class="st-hint" style="margin-bottom:0.65rem;">
-        实时模拟文章详细页右侧悬浮伴读栏（<code>.article-RightRail-q</code>）。全局卡片可在顶部「站点」→「文章右侧悬浮栏」中统一配置。
+      <div class="st-rail-dock-quick">
+        <div class="st-rail-dock-quick-head">
+          <span>快捷模式与卡片构建</span>
+          <button type="button" class="stage-mini-btn" id="st-dock-open-rail-sec">展开左侧详细配置</button>
+        </div>
+        <div class="st-seg-row" style="margin-top:0.4rem;">
+          <button type="button" class="stage-mini-btn" data-dock-rail-mode="follow" aria-pressed="${railMode === 'follow'}">跟随全局</button>
+          <button type="button" class="stage-mini-btn" data-dock-rail-mode="custom" aria-pressed="${railMode === 'custom'}">独立定制</button>
+          <button type="button" class="stage-mini-btn" data-dock-rail-mode="minimal" aria-pressed="${railMode === 'minimal'}">极简</button>
+        </div>
+        <div class="st-rail-dock-add-grid">
+          <button type="button" class="ed-btn" data-dock-add-card="kv">＋ 参数速查卡</button>
+          <button type="button" class="ed-btn" data-dock-add-card="note">＋ 伴读便签卡</button>
+          <button type="button" class="ed-btn" data-dock-add-card="links">＋ 参考链接卡</button>
+          <button type="button" class="ed-btn" data-dock-add-card="list">＋ 核心要点卡</button>
+        </div>
       </div>
 
-      ${
-        showTopo
-          ? `<div class="rail-blueprint-card" style="margin-bottom:0.65rem;">
-              <div class="rail-card-kicker">
-                <span>TOPOLOGY // 穿透链路图解</span>
-                <span>TCP : 25565</span>
-              </div>
-              <svg viewBox="0 0 240 130" style="width:100%; height:auto; display:block;">
-                <rect x="8" y="14" width="66" height="40" rx="2" fill="none" stroke="currentColor" stroke-opacity="0.35"/>
-                <text x="16" y="31" font-family="monospace" font-size="8.5" fill="#d97757">${esc(n1T)}</text>
-                <text x="16" y="44" font-family="monospace" font-size="8" fill="currentColor" opacity="0.7">${esc(n1S)}</text>
-                <rect x="87" y="14" width="66" height="40" rx="2" fill="none" stroke="#d97757" stroke-width="1.3"/>
-                <text x="96" y="31" font-family="monospace" font-size="8.5" fill="#d97757">${esc(n2T)}</text>
-                <text x="96" y="44" font-family="monospace" font-size="8" fill="currentColor" opacity="0.7">${esc(n2S)}</text>
-                <rect x="166" y="14" width="66" height="40" rx="2" fill="none" stroke="currentColor" stroke-opacity="0.35"/>
-                <text x="175" y="31" font-family="monospace" font-size="8.5" fill="#788c5d">${esc(n3T)}</text>
-                <text x="175" y="44" font-family="monospace" font-size="8" fill="currentColor" opacity="0.7">${esc(n3S)}</text>
-                <line x1="74" y1="34" x2="87" y2="34" stroke="#d97757" stroke-width="1.4"/>
-                <line x1="153" y1="34" x2="166" y2="34" stroke="#d97757" stroke-width="1.4"/>
-                <rect x="8" y="72" width="224" height="46" rx="2" fill="none" stroke="currentColor" stroke-opacity="0.2" stroke-dasharray="3 3"/>
-                <text x="18" y="90" font-family="monospace" font-size="8.5" fill="currentColor" opacity="0.75">${esc(l1)}</text>
-                <text x="18" y="106" font-family="monospace" font-size="8.5" fill="#d97757">${esc(l2)}</text>
-              </svg>
-            </div>`
-          : ''
-      }
-
-      <div class="rail-blueprint-card" style="margin-bottom:0.65rem;">
-        <div class="rail-card-kicker">
-          <span>${esc(specKicker)}</span>
-          <span>BASELINE</span>
-        </div>
-        <ul class="rail-kv-list">
-          ${rows.map((r) => `<li><span>${esc(r.label)}</span><strong>${esc(r.value)}</strong></li>`).join('')}
-        </ul>
-      </div>
-
-      ${customCards
-        .filter((c) => c.enabled !== false)
-        .map(
-          (c) => `
-          <div class="rail-blueprint-card" style="margin-bottom:0.65rem;">
-            <div class="rail-card-kicker">
-              <span>${esc(c.kicker ?? 'CUSTOM CARD')}</span>
-              <span>${esc(c.badge ?? 'INFO')}</span>
-            </div>
-            <p style="margin:0;font-size:1.125rem;line-height:1.65;color:var(--muted);">${esc(c.content ?? '')}</p>
-          </div>`
-        )
-        .join('')}
-
-      <div class="rail-blueprint-card">
-        <div class="rail-card-kicker">
-          <span>ARCHIVE // 同系列文章切换</span>
-          <span>${state.posts.length} ENTRIES</span>
-        </div>
-        <ul class="rail-related-list">
-          ${state.posts
-            .filter((p) => p.id !== d.entry.id)
-            .slice(0, 3)
-            .map(
-              (p, i) => `
-              <li>
-                <div class="rail-rel-mock">
-                  <span class="r-idx">ENTRY #0${i + 1}</span>
-                  <span class="r-tit">${esc(p.parsed.data.title ?? p.id)}</span>
-                </div>
-              </li>`
-            )
-            .join('')}
-        </ul>
+      <div class="st-sub-kicker" style="margin:0.85rem 0 0.45rem;">LIVE RAIL PREVIEW // 前台文章右侧悬浮窗 1:1 实时预览</div>
+      <div class="st-rail-live-cards">
+        ${railSlots.topCardsHtml}
+        ${railSlots.specAndCustomHtml}
+        ${railSlots.relatedCardHtml}
       </div>
     </div>`;
+
+  host.querySelector('#st-dock-open-rail-sec')?.addEventListener('click', () => {
+    d.railOpen = true;
+    renderPostView();
+    const sec = $('#st-rail-section');
+    sec?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  });
+
+  host.querySelectorAll<HTMLButtonElement>('[data-dock-rail-mode]').forEach((btn) =>
+    btn.addEventListener('click', () => {
+      d.fields.railMode = btn.dataset.dockRailMode ?? 'follow';
+      d.railOpen = d.fields.railMode !== 'follow';
+      markDirty();
+      renderPostView();
+    })
+  );
+
+  host.querySelectorAll<HTMLButtonElement>('[data-dock-add-card]').forEach((btn) =>
+    btn.addEventListener('click', () => {
+      const type = (btn.dataset.dockAddCard ?? 'note') as RailWidgetType;
+      const cfg = normalizePostRailConfig(d.fields.railTopology);
+      if (!cfg.cards) cfg.cards = [];
+      cfg.cards.push(createDefaultWidget(type));
+      d.fields.railTopology = cfg;
+      if (d.fields.railMode === 'follow') d.fields.railMode = 'custom';
+      d.railOpen = true;
+      markDirty();
+      renderPostView();
+      const sec = $('#st-rail-section');
+      sec?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      toast('已添加悬浮卡片并展开左侧配置区');
+    })
+  );
 }
 
 export function previewCurrentPost(): void {
@@ -901,11 +1652,40 @@ export function previewCurrentPost(): void {
   if (!d) return;
   const pubDate = String(d.fields.pubDate ?? '');
   const when = /^\d{4}-\d{2}-\d{2}$/.test(pubDate) ? new Date(`${pubDate}T00:00:00`) : null;
+  const idx = state.posts.findIndex((p) => p.id === d.entry.id);
+  const entryNo = String(idx >= 0 ? idx + 1 : 1).padStart(2, '0');
+  const newer = idx > 0 ? state.posts[idx - 1] : null;
+  const older = idx >= 0 && idx < state.posts.length - 1 ? state.posts[idx + 1] : null;
+
+  const siteData = (state.draft.site ?? state.site?.data ?? {}) as Record<string, unknown>;
+  const globalRail = (siteData.articleRail ?? {}) as ArticleRailConfig;
+  const siteConfig = (siteData.site ?? {}) as Partial<SiteConfig>;
+
   void openPreview({
     id: d.entry.id,
+    entryNo,
     title: String(d.fields.title ?? ''),
-    dateText: when ? chineseFullDate(when) : '',
+    lead: String(d.fields.lead ?? ''),
+    description: String(d.fields.description ?? ''),
+    dateText: when ? chineseFullDate(when) : pubDate || '未设日期',
+    tags: Array.isArray(d.fields.tags) ? (d.fields.tags as string[]) : [],
+    entryBadge: String(d.fields.entryBadge ?? ''),
+    kineticCaption: String(d.fields.kineticCaption ?? ''),
     bodyMarkdown: d.editor?.getMarkdown() ?? d.body,
+    railMode: String(d.fields.railMode ?? 'follow'),
+    railSpecs: Array.isArray(d.fields.railSpecs) ? (d.fields.railSpecs as RailKvItem[]) : [],
+    railConfig: (d.fields.railTopology ?? {}) as Record<string, unknown>,
+    globalRail,
+    siteConfig,
+    relatedPosts: state.posts.map((p, i) => ({
+      slug: p.id,
+      title: String(p.parsed.data.title ?? p.id),
+      tags: Array.isArray(p.parsed.data.tags) ? p.parsed.data.tags.map(String) : [],
+      indexNo: i + 1,
+    })),
+    totalPostsCount: state.posts.length,
+    newerPost: newer ? { slug: newer.id, title: String(newer.parsed.data.title ?? newer.id) } : null,
+    olderPost: older ? { slug: older.id, title: String(older.parsed.data.title ?? older.id) } : null,
     fallbackId: state.posts.find((p) => p.id !== d.entry.id)?.id ?? '',
   });
 }
@@ -955,9 +1735,7 @@ function removePost(entry: PostEntry): void {
 export function postDraftEdited(): boolean {
   const d = state.draft.post;
   if (!d) return false;
-  // 只改了路由也算未保存改动 —— 否则切走时会被静默丢掉。
   if (d.entry.prevPath && d.entry.prevPath !== d.entry.path) return true;
-  // 跟"打开时的快照"比，而不是跟文件原值比：默认值不会被误判成用户改动。
   if (JSON.stringify(d.fields) !== JSON.stringify(d.baseline)) return true;
   const body = d.editor?.getMarkdown() ?? d.body;
   return normalizeHtml(renderMarkdown(body)) !== normalizeHtml(renderMarkdown(d.body));
@@ -999,7 +1777,6 @@ export async function savePostCurrent(gh: Github): Promise<boolean> {
   const bodySame = normalizeHtml(renderMarkdown(body)) === normalizeHtml(renderMarkdown(d.body));
 
   const fieldsChanged = JSON.stringify(d.fields) !== JSON.stringify(d.baseline);
-  // 只改路由时字段和正文都没变，但保存仍然必须走 —— 否则改名永远不会提交。
   const renamed = !!(d.entry.prevPath && d.entry.prevPath !== d.entry.path);
   const hasRealEdit = isNew || renamed || fieldsChanged || !bodySame;
 
@@ -1012,7 +1789,6 @@ export async function savePostCurrent(gh: Github): Promise<boolean> {
     d.fields.updatedDate = isoDate(new Date());
   }
 
-  // 跟打开时的快照比：只写用户真正动过的字段，不会把 UI 默认值带进 frontmatter。
   const changed = diffFields(d.baseline, d.fields, [...POST_FIELDS]);
   await savePost(gh, d.entry, changed, bodySame ? d.body : body);
   return true;

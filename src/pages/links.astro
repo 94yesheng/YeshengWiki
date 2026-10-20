@@ -9,7 +9,6 @@ import { getSetting } from '../server/repositories/settings';
 import { listLinks } from '../server/repositories/links';
 
 const site = getSetting<SiteConfig>('site', staticSite);
-// 需求 5：过滤掉未实现的纯示例占位项（如 example.com），只展示真实友链
 const links = listLinks()
   .filter((item) => item.id !== 'example' && !item.url.includes('example.com'))
   .sort((a, b) => a.name.localeCompare(b.name, 'zh-Hans-CN'));
@@ -22,10 +21,24 @@ interface ColophonCard {
   desc: string;
 }
 
-const dossier = getSetting<{ colophon?: ColophonCard[] }>('authorDossier', {});
+interface AuthorDossierConfig {
+  monogram?: string;
+  title?: string;
+  subCoord?: string;
+  bio?: string;
+  chips?: string[];
+  colophon?: ColophonCard[];
+}
+
+const dossier = getSetting<AuthorDossierConfig>('authorDossier', {});
 const colophon = (Array.isArray(dossier.colophon) ? dossier.colophon : []).filter(
   (item) => typeof item?.title === 'string' && typeof item?.desc === 'string'
 );
+const dossierChips = (Array.isArray(dossier.chips) ? dossier.chips : [])
+  .map((s) => String(s ?? '').trim())
+  .filter(Boolean);
+const hasDossier = Boolean(dossier.title?.trim() || dossier.bio?.trim());
+
 const copyDoneJson = JSON.stringify(c('links.copyDone')).replace(/</g, '\\u003c');
 const siteBase = site.url.replace(/\/+$/, '');
 const cardInfoJson = JSON.stringify(
@@ -78,11 +91,32 @@ const cardInfoJson = JSON.stringify(
         )
       }
 
+      {
+        hasDossier && (
+          <div class="site-card-box" style="margin-bottom: var(--space-4);">
+            <div class="site-card-main">
+              <div class="site-card-title-row">
+                <h3>{dossier.title || `关于「我」 · ${site.author}`}</h3>
+                <span class="site-card-badge">{dossier.subCoord || 'AUTHOR DOSSIER'}</span>
+              </div>
+              {dossier.bio && <p class="site-card-desc">{dossier.bio}</p>}
+              {dossierChips.length > 0 && (
+                <div class="dossier-chips-row">
+                  {dossierChips.map((chip) => (
+                    <span class="dossier-chip-pill">{chip}</span>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        )
+      }
+
       <div class="site-card-box">
         <div class="site-card-main">
           <div class="site-card-title-row">
             <h3>{c('links.cardTitle')}</h3>
-            <span class="site-card-badge">YESHENG.WIKI</span>
+            <span class="site-card-badge">{c('links.cardBadge')}</span>
           </div>
           <p class="site-card-desc">
             {c('links.cardIntro')}
@@ -96,7 +130,7 @@ const cardInfoJson = JSON.stringify(
         </div>
         <div class="site-card-actions">
           <button type="button" class="action-btn" id="copy-site-card-btn">{c('links.copyBtn')}</button>
-          <a class="action-btn action-btn--secondary" href="/rss.xml">打开 RSS 全文订阅源 →</a>
+          <a class="action-btn action-btn--secondary" href="/rss.xml">{c('links.rssBtn')}</a>
         </div>
       </div>
     </section>
@@ -222,6 +256,22 @@ const cardInfoJson = JSON.stringify(
     color: var(--muted);
     font-size: var(--text-sm);
     line-height: 1.85;
+  }
+
+  .dossier-chips-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.45rem;
+    margin-top: var(--space-3);
+  }
+
+  .dossier-chip-pill {
+    font-size: var(--text-xs);
+    color: var(--muted);
+    padding: 0.15rem 0.6rem;
+    border: 1px solid var(--rule);
+    background: var(--paper);
+    border-radius: 2px;
   }
 
   .site-card-desc code,
