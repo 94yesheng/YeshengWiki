@@ -24,6 +24,14 @@ Manage the background server with `astro dev stop`, `astro dev status`, and `ast
 npm run dev     # BLOG_DYNAMIC=1 astro dev → http://localhost:4321
 npm run build   # BLOG_DYNAMIC=1 astro build → dist-dynamic/
 npm run check   # 类型检查（CI 也跑）
+```
+
+部署前先在当前 shell 里设好环境变量（仓库不写真实地址/密钥/目录）：
+
+```powershell
+$env:BLOG_SERVER  = "<SERVER_IP>"
+$env:BLOG_SSH_KEY = "<SSH_KEY_PATH>"
+$env:BLOG_APP_DIR = "<APP_DIR>"      # 服务器代码目录
 powershell -File scripts\deploy-server.ps1 -Service blog-staging   # 部署 staging
 powershell -File scripts\deploy-server.ps1                          # 部署生产
 ```

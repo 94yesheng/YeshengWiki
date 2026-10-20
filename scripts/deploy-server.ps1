@@ -4,13 +4,14 @@ param(
     [string]$Key = $env:BLOG_SSH_KEY,
     [ValidatePattern('^[a-z0-9-]+$')]
     [string]$Service = "blog",
-    [string]$AppDir = "/srv/blog-app"
+    [string]$AppDir = $(if ($env:BLOG_APP_DIR) { $env:BLOG_APP_DIR } else { '/srv/blog-app' })
 )
 
 # 部署前先设置环境变量（不要把真实值写进仓库）：
-#   $env:BLOG_SERVER   = "<SERVER_IP>"     # 服务器地址
-#   $env:BLOG_SSH_KEY  = "<SSH_KEY_PATH>"  # SSH 私钥路径
-# 也可以用 -Server / -Key 参数显式传入覆盖。
+#   $env:BLOG_SERVER   = "<SERVER_IP>"      # 服务器地址
+#   $env:BLOG_SSH_KEY  = "<SSH_KEY_PATH>"   # SSH 私钥路径
+#   $env:BLOG_APP_DIR  = "<APP_DIR>"        # 代码目录（默认 /srv/blog-app）
+# 也可以用 -Server / -Key / -AppDir 参数显式传入覆盖。
 #
 # 部署“代码”到服务器：上传源码 → npm ci → build:dynamic → 重启 systemd。
 # 不碰 SQLite 与 uploads（内容在数据库里）。
