@@ -6,8 +6,8 @@
 > - 生产动态版已切换，直接访问 `http://<SERVER_IP>/` 生效
 > - 生产服务 `blog.service`（127.0.0.1:4322），数据 `/srv/blog-data`
 > - Nginx 已改为动态反代；静态配置备份在 `/root/blog-static.conf.bak`
-> - 域名仍指向旧主机；HTTPS 待 DNS 切换后签
-> - **域名绑定暂缓（2026-10-19 决定）：旧博客数据尚未迁移，迁移完成前不切 DNS；新站暂用 `http://<SERVER_IP>/` 访问**
+> - 域名已切到本机（`www` / `@` 的 A 记录 → `<SERVER_IP>`），HTTPS 已签（Let's Encrypt，certbot 自动续期）
+> - 旧博客数据已迁移（19 篇文章 + 友链），`https://www.yesheng.wiki/` 已生效
 > - `/admin/` 已 301 到 `/studio/`
 > - SSH 已改为仅密钥登录（`/etc/ssh/sshd_config.d/00-hardening.conf`，密码登录关闭）；
 >   忘记密钥时用华为云 VNC 控制台恢复
@@ -120,9 +120,9 @@ nginx -t && systemctl reload nginx
 - [x] 切 Nginx
 - [x] 备份 cron
 - [x] 退役 `/admin/`（301 到 `/studio/`）
-- [ ] 旧博客数据迁移（文章 / 照片 / 友链；迁移完成前不切 DNS）
-- [ ] DNS 改到 `<SERVER_IP>`（`www` A，`@` A）
-- [ ] certbot 签 HTTPS
+- [x] 旧博客数据迁移（19 篇文章 + 友链，2026-10-20）
+- [x] DNS 改到 `<SERVER_IP>`（`www` A，`@` A，2026-10-20）
+- [x] certbot 签 HTTPS（Let's Encrypt，自动续期，2026-10-20）
 - [x] 退役 `vault` / GitHub Actions FTP 流水线（已删除 Sveltia/vault，CI 只做检查）
 - [x] SSH 仅密钥 + fail2ban
 - [x] README/CLAUDE 更新为动态架构（2026-10-19）

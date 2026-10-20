@@ -2,15 +2,15 @@
 
 > 仓库：`94yesheng/YeshengWiki`（公开仓库；**内容数据不在仓库里**）
 > 本地路径：`D:\blog`
-> 线上：已部署（动态版），域名暂未绑定。
+> 线上：<https://www.yesheng.wiki/>（动态版，已启用 HTTPS）。
 > 文档更新：2026-10-20
 
 > **当前状态**
 >
 > - 站点已从「静态 Astro + GitHub CMS」重构为 **Astro SSR + SQLite + 自建后台**，生产跑在
 >   自有服务器上（systemd + Nginx 反代）。
-> - **DNS 尚未切换**：`www.yesheng.wiki` 仍指向旧静态主机，所以域名看到的还是旧站；
->   新动态版暂时没有域名可用。
+> - **域名已切换**：`www.yesheng.wiki` 与 `yesheng.wiki` 都指向本机，HTTP 自动 301 到
+>   HTTPS（Let's Encrypt 证书，certbot 自动续期）。
 > - 生产库里目前是 **19 篇文章（5 公开 / 14 草稿）**、1 条友链、57 张正文配图、7 个设置块；
 >   照片墙（`photo_walls`）仍为空，等整理后上传。
 > - 设计与实现细节见 [docs/dynamic-refactor.md](docs/dynamic-refactor.md)。

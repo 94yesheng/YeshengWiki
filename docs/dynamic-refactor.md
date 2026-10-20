@@ -41,7 +41,7 @@
 - 直接访问 `http://<SERVER_IP>/` 已是动态版；`/admin/` 301 到 `/studio/`
 - 备份：`/usr/local/bin/blog-backup` + `/etc/cron.d/blog-backup`，目录 `/srv/backups`
 - 已验证：全部页面 200、生产后台登录、FS 写入/删除、公开页即时反映、图片 `/uploads` 200
-- 待办：域名 A 记录切到 `<SERVER_IP>`，然后 certbot 签 HTTPS
+- 已完成：域名 A 记录已切到 `<SERVER_IP>`，certbot 已签 HTTPS（2026-10-20）
 
 ## 1. 决策（默认按推荐方案）
 
