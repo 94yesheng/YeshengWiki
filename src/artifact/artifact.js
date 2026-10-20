@@ -298,6 +298,11 @@
     cancelAnimationFrame(transAnimId);
     var toDark = targetTheme === 'dark';
     transStage.dataset.active = 'true';
+    if (transVeil) {
+      /* 预先锁定遮罩底色为目标主题纯色，避免 p=0.42 切换 --paper 时遮罩自身发生颜色跳变引起闪烁 */
+      transVeil.style.backgroundColor = toDark ? THEME_COLOR.dark : THEME_COLOR.light;
+      transVeil.style.opacity = '0';
+    }
     if (transBadge) {
       transBadge.textContent = toDark
         ? 'SINGULARITY COLLAPSE // 无限流形 ∞ 坍缩至卡冈图雅黑洞'
@@ -305,7 +310,7 @@
     }
 
     var startTs = performance.now();
-    var duration = 860;
+    var duration = 760;
     var themeSwapped = false;
 
     function stepTransition(now) {
@@ -313,21 +318,20 @@
       var p = Math.min(1, elapsed / duration);
       var ease = 1 - Math.pow(1 - p, 3);
 
-      // 计算全屏遮盖层的柔和透明度曲线：在 p ~ 0.42 达到峰值 0.94，然后平滑褪去
+      // 计算全屏遮盖层的平滑透明度曲线：在 p = 0.40 达到 1.0 完全覆盖，使底层内容框与纯色背景在同一帧 0ms 无感切换
       var veilAlpha = 0;
-      if (p < 0.42) {
-        veilAlpha = Math.sin((p / 0.42) * (Math.PI / 2)) * 0.94;
+      if (p < 0.40) {
+        veilAlpha = Math.sin((p / 0.40) * (Math.PI / 2));
       } else {
-        veilAlpha = Math.cos(((p - 0.42) / 0.58) * (Math.PI / 2)) * 0.94;
+        veilAlpha = Math.cos(((p - 0.40) / 0.60) * (Math.PI / 2));
       }
-      veilAlpha = Math.max(0, Math.min(0.96, veilAlpha));
+      veilAlpha = Math.max(0, Math.min(1, veilAlpha));
 
       if (transVeil) {
         transVeil.style.opacity = veilAlpha.toFixed(3);
       }
 
-      // 当全屏遮盖达到最高点时，无缝切换 DOM 主题，用户完全察觉不到生硬的闪烁
-      if (p >= 0.42 && !themeSwapped) {
+      if (p >= 0.40 && !themeSwapped) {
         themeSwapped = true;
         if (typeof onPeakCoverage === 'function') {
           onPeakCoverage();
@@ -353,16 +357,19 @@
       ctx.scale(dpr, dpr);
       ctx.clearRect(0, 0, W, H);
 
-      // 全屏平滑遮盖底色渐变，衬托过渡氛围
-      var coverGrad = ctx.createRadialGradient(cx, cy, 0, cx, cy, Math.hypot(W, H) * 0.65);
+      // 全屏均匀底色 + 中心柔和氛围光晕，保证屏幕边缘与中心内容框完全同步过渡
+      ctx.fillStyle = toDark
+        ? 'rgba(18, 18, 17, ' + (veilAlpha * 0.96).toFixed(3) + ')'
+        : 'rgba(250, 249, 245, ' + (veilAlpha * 0.96).toFixed(3) + ')';
+      ctx.fillRect(0, 0, W, H);
+
+      var coverGrad = ctx.createRadialGradient(cx, cy, 0, cx, cy, Math.hypot(W, H) * 0.55);
       if (toDark) {
-        coverGrad.addColorStop(0, 'rgba(18, 18, 17, ' + (veilAlpha * 0.92).toFixed(3) + ')');
-        coverGrad.addColorStop(0.7, 'rgba(217, 119, 87, ' + (veilAlpha * 0.22).toFixed(3) + ')');
-        coverGrad.addColorStop(1, 'rgba(18, 18, 17, ' + (veilAlpha * 0.88).toFixed(3) + ')');
+        coverGrad.addColorStop(0, 'rgba(217, 119, 87, ' + (veilAlpha * 0.16).toFixed(3) + ')');
+        coverGrad.addColorStop(1, 'rgba(18, 18, 17, 0)');
       } else {
-        coverGrad.addColorStop(0, 'rgba(250, 249, 245, ' + (veilAlpha * 0.92).toFixed(3) + ')');
-        coverGrad.addColorStop(0.7, 'rgba(242, 179, 126, ' + (veilAlpha * 0.24).toFixed(3) + ')');
-        coverGrad.addColorStop(1, 'rgba(250, 249, 245, ' + (veilAlpha * 0.88).toFixed(3) + ')');
+        coverGrad.addColorStop(0, 'rgba(242, 179, 126, ' + (veilAlpha * 0.18).toFixed(3) + ')');
+        coverGrad.addColorStop(1, 'rgba(250, 249, 245, 0)');
       }
       ctx.fillStyle = coverGrad;
       ctx.fillRect(0, 0, W, H);
@@ -993,7 +1000,8 @@
     }
     if (nextView === 'article' && !articleView) {
       var articleDest =
-        (ARTICLE_DB[param] && ARTICLE_DB[param].path) || '/posts/';
+        (ARTICLE_DB[param] && ARTICLE_DB[param].path) ||
+        (param ? '/posts/' + encodeURIComponent(param) + '/' : '/posts/');
       window.location.href = articleDest;
       return;
     }
@@ -1266,14 +1274,43 @@
   var tlRandomReadBtn = document.getElementById('tl-random-read-btn');
   if (tlRandomReadBtn) {
     tlRandomReadBtn.addEventListener('click', function () {
-      var keys = Object.keys(ARTICLE_DB);
-      if (!keys.length) {
+      var domEntries = Array.from(document.querySelectorAll('[data-tl-entry]:not([hidden])'));
+      if (!domEntries.length) {
+        domEntries = Array.from(document.querySelectorAll('[data-tl-entry]'));
+      }
+      var candidates = [];
+      domEntries.forEach(function (el) {
+        var slug = el.getAttribute('data-article-key') || '';
+        var titleLink = el.querySelector('.tl-card-title a');
+        var href = (titleLink && titleLink.getAttribute('href')) || (slug ? '/posts/' + slug + '/' : '');
+        var title = titleLink ? titleLink.textContent.trim() : slug;
+        if (href && href !== '/posts/') {
+          candidates.push({ slug: slug, url: href, title: title });
+        }
+      });
+      if (!candidates.length) {
+        Object.keys(ARTICLE_DB).forEach(function (k) {
+          var item = ARTICLE_DB[k];
+          if (item && (item.path || item.slug)) {
+            candidates.push({
+              slug: k,
+              url: item.path || ('/posts/' + k + '/'),
+              title: item.title || k
+            });
+          }
+        });
+      }
+      if (!candidates.length) {
         showToast('暂无文章，先去 /studio/ 写一篇');
         return;
       }
-      var rk = keys[Math.floor(Math.random() * keys.length)];
-      setViewMode('article', rk);
-      showToast('随机漫游至文章《' + ARTICLE_DB[rk].title + '》');
+      var chosen = candidates[Math.floor(Math.random() * candidates.length)];
+      showToast('随机漫游至文章《' + chosen.title + '》');
+      if (articleView && ARTICLE_DB[chosen.slug] && ARTICLE_DB[chosen.slug].prose) {
+        setViewMode('article', chosen.slug);
+      } else {
+        window.location.href = chosen.url;
+      }
     });
   }
 
@@ -1529,6 +1566,8 @@
     var spotCoord = document.getElementById('spot-coord-badge');
     var spotLead = document.getElementById('spot-lead-text');
     var spotReadBtn = document.getElementById('spot-read-btn');
+    var spotCoverFrame = document.getElementById('spot-cover-frame');
+    var spotCoverCaptionBar = document.getElementById('spot-cover-caption-bar');
     var spotCoverImg = document.getElementById('spot-cover-img');
     var spotCoverSvg = document.getElementById('spot-cover-svg');
     var spotCoverLink = document.getElementById('spot-cover-link');
@@ -1544,11 +1583,20 @@
     }
     if (spotReadBtn) spotReadBtn.href = spotPath;
     if (spotCoverLink) spotCoverLink.href = spotPath;
+    if (spotCoverSvg && spotCoverSvg.tagName === 'A') spotCoverSvg.href = spotPath;
     if (spotDate) spotDate.textContent = data.date;
     if (spotTags) spotTags.textContent = data.tags;
     if (spotCoord) spotCoord.textContent = data.coord;
     if (spotLead) spotLead.textContent = data.excerpt;
     var hasCover = Boolean(data.cover && String(data.cover).trim());
+    if (spotCoverFrame) {
+      spotCoverFrame.hidden = !hasCover;
+      spotCoverFrame.style.display = hasCover ? '' : 'none';
+    }
+    if (spotCoverCaptionBar) {
+      spotCoverCaptionBar.hidden = !hasCover;
+      spotCoverCaptionBar.style.display = hasCover ? '' : 'none';
+    }
     if (spotCoverImg) {
       if (hasCover) {
         spotCoverImg.src = data.cover;
@@ -2120,7 +2168,7 @@
   function drawGargantuaParticleModel(ctx, cx, cy, W, H, dt) {
     var minDim = Math.min(W, H);
     var Rs = minDim * 0.136;
-    var tiltRad = 1.385 + Math.sin(state.time * 0.22) * 0.018 + mouse.sny * 0.045;
+    var tiltRad = 1.335 + Math.sin(state.time * 0.22) * 0.018 + mouse.sny * 0.045;
     var rollRad = -0.21 + Math.cos(state.time * 0.16) * 0.016 + mouse.snx * 0.045;
     var cr = Math.cos(rollRad), sr = Math.sin(rollRad);
 
@@ -2147,99 +2195,49 @@
     ctx.fill();
     ctx.restore();
 
-    // 2. 中央事件视界黑球本体 + 连续光子环亮线（置于流线与粒子底层，避免右侧 r > Rs 处粒子跨层闪现）
-    ctx.save();
-    var photonGlow = ctx.createRadialGradient(cx - Rs * 0.08, cy, Rs * 0.94, cx, cy, Rs * 1.32);
-    photonGlow.addColorStop(0, 'rgba(255, 225, 185, 0.46)');
-    photonGlow.addColorStop(0.32, 'rgba(217, 119, 87, 0.20)');
-    photonGlow.addColorStop(1, 'rgba(217, 119, 87, 0)');
-    ctx.fillStyle = photonGlow;
-    ctx.beginPath();
-    ctx.arc(cx, cy, Rs * 1.32, 0, Math.PI * 2);
-    ctx.fill();
-
-    var abyssGrad = ctx.createRadialGradient(cx - Rs * 0.22, cy - Rs * 0.20, Rs * 0.05, cx, cy, Rs);
-    abyssGrad.addColorStop(0, '#100f0e');
-    abyssGrad.addColorStop(0.55, '#070706');
-    abyssGrad.addColorStop(0.92, '#020202');
-    abyssGrad.addColorStop(1, '#000000');
-    ctx.beginPath();
-    ctx.arc(cx, cy, Rs, 0, Math.PI * 2);
-    ctx.fillStyle = abyssGrad;
-    ctx.fill();
-
-    ctx.beginPath();
-    ctx.arc(cx, cy, Rs * 1.03, 0, Math.PI * 2);
-    ctx.strokeStyle = 'rgba(255, 232, 198, 0.52)';
-    ctx.lineWidth = 1.25;
-    ctx.stroke();
-    ctx.restore();
-
-    // 3. 连续闭合的 2π 吸积盘与上下引力透镜流线（采用 C² Hermite 平滑过渡 s²(3-2s)，彻底消除左右两侧 y=0 处的折角断层）
+    // 2. 绘制黑洞后半盘（phi ∈ [π, 2π]）的上下引力透镜椭圆拱桥流线（位于黑球底层，被黑球自然遮挡）
     ctx.save();
     var diskRingNorms = [0.06, 0.18, 0.34, 0.52, 0.72, 0.90];
-    var loopSteps = 128;
-
-    // 3a. 下方次级引力透镜闭合流线环
-    for (var bIdx = 0; bIdx < diskRingNorms.length; bIdx++) {
-      var rnB = diskRingNorms[bIdx];
-      var rValB = rInner + rnB * (rOuter - rInner);
-      var botArchHB = Rs * (1.04 + 0.64 * Math.pow(rnB, 0.90)) + rValB * 0.11 * (1 - rnB);
-      ctx.beginPath();
-      for (var stB = 0; stB <= loopSteps; stB++) {
-        var phiB = (stB / loopSteps) * Math.PI * 2;
-        var cosB = Math.cos(phiB), sinB = Math.sin(phiB);
-        var lxB = rValB * cosB;
-        var sBackB = Math.max(0, -sinB);
-        var sBackSmoothB = sBackB * sBackB * (3 - 2 * sBackB);
-        var sFrontB = Math.max(0, sinB);
-        var sFrontSmoothB = sFrontB * sFrontB * (3 - 2 * sFrontB);
-        var lyB =
-          -rValB * sinB * Math.cos(tiltRad) * 0.76 +
-          sBackSmoothB * botArchHB -
-          sFrontSmoothB * (Rs * 0.14 * (1 - rnB * 0.5));
-        var spB = toScreen(lxB, lyB);
-        if (stB === 0) ctx.moveTo(spB.x, spB.y);
-        else ctx.lineTo(spB.x, spB.y);
+    for (var bArch = 0; bArch < 2; bArch++) {
+      for (var rnIdx = 0; rnIdx < diskRingNorms.length; rnIdx++) {
+        var rn = diskRingNorms[rnIdx];
+        var rVal = rInner + rn * (rOuter - rInner);
+        // 保持饱满的偏椭圆短半轴，使外侧光环自然呈椭圆弧而非生硬直线
+        var ellipRy = rVal * (0.235 + 0.045 * (1 - rn));
+        var topArchH = Rs * (1.08 + 0.76 * Math.pow(rn, 0.88)) + rVal * 0.14 * (1 - rn);
+        var botArchH = Rs * (1.04 + 0.64 * Math.pow(rn, 0.90)) + rVal * 0.12 * (1 - rn);
+        ctx.beginPath();
+        for (var st = 0; st <= 72; st++) {
+          var phi = Math.PI + (st / 72) * Math.PI;
+          var cosP = Math.cos(phi), sinP = Math.sin(phi);
+          var s = Math.max(0, -sinP);
+          // sin(s * π/2) 在 s=0 处一阶导数有限且饱满，消除 s^0.84 导数无穷大造成的右侧断层，同时保留偏椭圆曲率
+          var sEllip = Math.sin(s * Math.PI * 0.5);
+          var lx = rVal * cosP;
+          var ly;
+          if (bArch === 0) {
+            var archH0 = ellipRy + (topArchH - ellipRy) * Math.pow(s, 0.65);
+            ly = -sEllip * archH0;
+          } else {
+            var archH1 = ellipRy * 0.72 + (botArchH - ellipRy * 0.72) * Math.pow(s, 0.65);
+            ly = sEllip * archH1;
+          }
+          var sp = toScreen(lx, ly);
+          if (st === 0) ctx.moveTo(sp.x, sp.y);
+          else ctx.lineTo(sp.x, sp.y);
+        }
+        var archAlpha = (1 - rn * 0.65) * (bArch === 0 ? 0.28 : 0.20);
+        ctx.strokeStyle = 'rgba(242, 179, 126, ' + archAlpha.toFixed(3) + ')';
+        ctx.lineWidth = bArch === 0 ? 1.15 : 0.85;
+        ctx.stroke();
       }
-      ctx.closePath();
-      var botAlpha = (1 - rnB * 0.65) * 0.19;
-      ctx.strokeStyle = 'rgba(242, 179, 126, ' + botAlpha.toFixed(3) + ')';
-      ctx.lineWidth = 0.85;
-      ctx.stroke();
-    }
-
-    // 3b. 主赤道吸积盘 + 上方主引力透镜拱桥一体化闭合流线环
-    for (var rnIdx = 0; rnIdx < diskRingNorms.length; rnIdx++) {
-      var rn = diskRingNorms[rnIdx];
-      var rVal = rInner + rn * (rOuter - rInner);
-      var topArchH = Rs * (1.08 + 0.78 * Math.pow(rn, 0.88)) + rVal * 0.14 * (1 - rn);
-      ctx.beginPath();
-      for (var st = 0; st <= loopSteps; st++) {
-        var phi = (st / loopSteps) * Math.PI * 2;
-        var cosP = Math.cos(phi), sinP = Math.sin(phi);
-        var lx = rVal * cosP;
-        var baseFlatY = rVal * sinP * Math.cos(tiltRad) * 0.82;
-        var s = Math.max(0, -sinP);
-        var sSmooth = s * s * (3 - 2 * s);
-        var fSin = Math.max(0, sinP);
-        var fDip = fSin * fSin * Math.exp(-(lx * lx) / (2 * (Rs * 1.25) * (Rs * 1.25)));
-        var ly = baseFlatY * (1 - sSmooth * 0.72) - sSmooth * topArchH + fDip * Rs * 0.05;
-        var sp = toScreen(lx, ly);
-        if (st === 0) ctx.moveTo(sp.x, sp.y);
-        else ctx.lineTo(sp.x, sp.y);
-      }
-      ctx.closePath();
-      var mainAlpha = (1 - rn * 0.62) * 0.31;
-      ctx.strokeStyle = 'rgba(244, 182, 124, ' + mainAlpha.toFixed(3) + ')';
-      ctx.lineWidth = 1.12;
-      ctx.stroke();
     }
     ctx.restore();
 
-    // 4. 计算全部黑洞纯粒子的 C² 连续三维投影轨迹（无 phi=0/2π 折角断层、无跨层闪现）
+    // 3. 计算全部黑洞纯粒子的连续三维投影位置（分为黑球后方 backParticles 与黑球正前方 frontParticles）
     var count = Math.min(state.particleCount, MAX_PARTICLES);
-    var renderParticles = [];
+    var backParticles = [];
+    var frontParticles = [];
 
     for (var i = 0; i < count; i++) {
       var pt = particles[i];
@@ -2250,41 +2248,48 @@
       var cosP = Math.cos(pt.phi);
       var sinP = Math.sin(pt.phi);
       var lx, ly;
+      var isFrontDisk = false;
 
       if (pt.branch === 2) {
-        var rHalo = Rs * (1.05 + 0.50 * Math.pow(pt.rNorm, 1.45));
+        var rHalo = Rs * (1.04 + 0.50 * Math.pow(pt.rNorm, 1.45));
         lx = rHalo * cosP * (1.12 + 0.22 * pt.rNorm);
         ly = rHalo * sinP * (1.02 + 0.10 * pt.rNorm) + pt.cz * 2.0;
+        isFrontDisk = sinP >= 0;
       } else {
         var r = Math.max(Rs * 1.06, rInner + pt.rNorm * (rOuter - rInner) + pt.bhJitter * Rs * 0.035);
         lx = r * cosP;
-        var sBack = Math.max(0, -sinP);
-        var sBackSmooth = sBack * sBack * (3 - 2 * sBack);
-        var sFront = Math.max(0, sinP);
-        var sFrontSmooth = sFront * sFront * (3 - 2 * sFront);
+        var pEllipRy = r * (0.235 + 0.045 * (1 - pt.rNorm));
 
-        if (pt.branch === 0) {
-          /* 主吸积盘（前半盘）+ 上方引力透镜拱桥（后半盘），在 sinP = 0 处位置与一阶导数 100% 连续 */
-          var flatY0 = r * sinP * Math.cos(tiltRad) * 0.82;
-          var frontDip0 = sFront * sFront * Math.exp(-(lx * lx) / (2 * (Rs * 1.25) * (Rs * 1.25)));
-          var topArchH0 = Rs * (1.08 + 0.78 * Math.pow(pt.rNorm, 0.88)) + r * 0.14 * (1 - pt.rNorm);
-          ly = flatY0 * (1 - sBackSmooth * 0.72) - sBackSmooth * topArchH0 + frontDip0 * Rs * 0.05 + pt.cz * 2.05;
+        if (sinP >= 0) {
+          isFrontDisk = true;
+          var frontDip = sinP * Math.exp(-(lx * lx) / (2 * (Rs * 1.25) * (Rs * 1.25)));
+          if (pt.branch === 0) {
+            ly = pEllipRy * sinP + frontDip * Rs * 0.06 + pt.cz * 2.05;
+          } else {
+            // 下拱桥分支在前半盘沿赤道盘内侧偏椭圆轨迹平滑过渡，保持速度方向连续且横跨黑球正前方
+            ly = -pEllipRy * 0.42 * sinP + frontDip * Rs * 0.08 + pt.cz * 2.05;
+          }
         } else {
-          /* 下方引力透镜拱桥（后半盘）+ 赤道内盘过渡（前半盘），消除右侧 y=0 处速度反向折返断层 */
-          var botArchH1 = Rs * (1.04 + 0.66 * Math.pow(pt.rNorm, 0.90)) + r * 0.12 * (1 - pt.rNorm);
-          ly =
-            -r * sinP * Math.cos(tiltRad) * 0.76 +
-            sBackSmooth * botArchH1 -
-            sFrontSmooth * (Rs * 0.14 * (1 - pt.rNorm * 0.5)) +
-            pt.cz * 2.05;
-        }
+          isFrontDisk = false;
+          var s = -sinP;
+          var sEllip = Math.sin(s * Math.PI * 0.5);
+          if (pt.branch === 0) {
+            var pTopArchH = Rs * (1.08 + 0.76 * Math.pow(pt.rNorm, 0.88)) + r * 0.14 * (1 - pt.rNorm);
+            var pArchH0 = pEllipRy + (pTopArchH - pEllipRy) * Math.pow(s, 0.65);
+            ly = -sEllip * pArchH0 + pt.cz * 2.05;
+          } else {
+            var pBotArchH = Rs * (1.04 + 0.64 * Math.pow(pt.rNorm, 0.90)) + r * 0.12 * (1 - pt.rNorm);
+            var pArchH1 = pEllipRy * 0.72 + (pBotArchH - pEllipRy * 0.72) * Math.pow(s, 0.65);
+            ly = sEllip * pArchH1 + pt.cz * 2.05;
+          }
 
-        var dCenter = Math.hypot(lx, ly);
-        var minR = Rs * (1.02 + 0.03 * sBackSmooth);
-        if (dCenter < minR && dCenter > 0.001) {
-          var pushScale = 1 + ((minR / dCenter) - 1) * sBackSmooth;
-          lx *= pushScale;
-          ly *= pushScale;
+          var dCenter = Math.hypot(lx, ly);
+          var minR = Rs * (1.02 + 0.03 * sEllip);
+          if (dCenter < minR && dCenter > 0.001) {
+            var pushScale = 1 + ((minR / dCenter) - 1) * sEllip;
+            lx *= pushScale;
+            ly *= pushScale;
+          }
         }
       }
 
@@ -2304,29 +2309,91 @@
         colorRGB = '217, 119, 87';
       }
 
-      renderParticles.push({
+      var item = {
         x: sp.x + pt.dx,
         y: sp.y + pt.dy,
         r: pt.size * (0.82 + 0.28 * innerHeat) + pt.glow * 0.4,
         colorRGB: colorRGB,
         alpha: alpha,
         innerHeat: innerHeat
-      });
+      };
+
+      if (isFrontDisk) frontParticles.push(item);
+      else backParticles.push(item);
     }
 
-    for (var k = 0; k < renderParticles.length; k++) {
-      var p = renderParticles[k];
-      if (p.r > 1.85 || p.innerHeat > 0.5) {
+    function renderPureParticles(list) {
+      for (var k = 0; k < list.length; k++) {
+        var p = list[k];
+        if (p.r > 1.85 || p.innerHeat > 0.5) {
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, p.r * 2.2, 0, Math.PI * 2);
+          ctx.fillStyle = 'rgba(' + p.colorRGB + ', ' + (p.alpha * 0.18).toFixed(3) + ')';
+          ctx.fill();
+        }
         ctx.beginPath();
-        ctx.arc(p.x, p.y, p.r * 2.2, 0, Math.PI * 2);
-        ctx.fillStyle = 'rgba(' + p.colorRGB + ', ' + (p.alpha * 0.18).toFixed(3) + ')';
+        ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(' + p.colorRGB + ', ' + p.alpha.toFixed(3) + ')';
         ctx.fill();
       }
-      ctx.beginPath();
-      ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
-      ctx.fillStyle = 'rgba(' + p.colorRGB + ', ' + p.alpha.toFixed(3) + ')';
-      ctx.fill();
     }
+
+    // 先绘制后半盘粒子（被中央黑洞视界遮挡）
+    renderPureParticles(backParticles);
+
+    // 4. 中央事件视界黑球本体 + 紧贴视界边缘的连续光子环亮线（位于后半盘之上、前半盘之下）
+    ctx.save();
+    var photonGlow = ctx.createRadialGradient(cx - Rs * 0.08, cy, Rs * 0.94, cx, cy, Rs * 1.26);
+    photonGlow.addColorStop(0, 'rgba(255, 225, 185, 0.44)');
+    photonGlow.addColorStop(0.35, 'rgba(217, 119, 87, 0.18)');
+    photonGlow.addColorStop(1, 'rgba(217, 119, 87, 0)');
+    ctx.fillStyle = photonGlow;
+    ctx.beginPath();
+    ctx.arc(cx, cy, Rs * 1.26, 0, Math.PI * 2);
+    ctx.fill();
+
+    var abyssGrad = ctx.createRadialGradient(cx - Rs * 0.22, cy - Rs * 0.20, Rs * 0.05, cx, cy, Rs);
+    abyssGrad.addColorStop(0, '#100f0e');
+    abyssGrad.addColorStop(0.55, '#070706');
+    abyssGrad.addColorStop(0.92, '#020202');
+    abyssGrad.addColorStop(1, '#000000');
+    ctx.beginPath();
+    ctx.arc(cx, cy, Rs, 0, Math.PI * 2);
+    ctx.fillStyle = abyssGrad;
+    ctx.fill();
+
+    ctx.beginPath();
+    ctx.arc(cx, cy, Rs * 1.03, 0, Math.PI * 2);
+    ctx.strokeStyle = 'rgba(255, 232, 198, 0.52)';
+    ctx.lineWidth = 1.25;
+    ctx.stroke();
+    ctx.restore();
+
+    // 5. 横跨黑球正前方的偏椭圆赤道吸积盘连续流线 + 前景纯粒子流
+    ctx.save();
+    for (var fnIdx = 0; fnIdx < diskRingNorms.length; fnIdx++) {
+      var fn = diskRingNorms[fnIdx];
+      var rFront = rInner + fn * (rOuter - rInner);
+      var fEllipRy = rFront * (0.235 + 0.045 * (1 - fn));
+      ctx.beginPath();
+      for (var fst = 0; fst <= 72; fst++) {
+        var fPhi = (fst / 72) * Math.PI;
+        var fCos = Math.cos(fPhi), fSin = Math.sin(fPhi);
+        var flx = rFront * fCos;
+        var fDip = fSin * Math.exp(-(flx * flx) / (2 * (Rs * 1.25) * (Rs * 1.25)));
+        var fly = fEllipRy * fSin + fDip * Rs * 0.06;
+        var fsp = toScreen(flx, fly);
+        if (fst === 0) ctx.moveTo(fsp.x, fsp.y);
+        else ctx.lineTo(fsp.x, fsp.y);
+      }
+      var fAlpha = (1 - fn * 0.62) * 0.31;
+      ctx.strokeStyle = 'rgba(244, 182, 124, ' + fAlpha.toFixed(3) + ')';
+      ctx.lineWidth = 1.15;
+      ctx.stroke();
+    }
+    ctx.restore();
+
+    renderPureParticles(frontParticles);
   }
 
   /* ----------------------------------------------------------------------

@@ -290,48 +290,4 @@
     </button>
   </div>
 
-  <!-- 左下角：昼夜流形与三体控制面板 -->
-  <aside class="math-lab" id="math-lab" data-collapsed="true" aria-label="昼夜粒子场参数设置">
-    <div class="math-lab-head" id="math-lab-head">
-      <div class="math-lab-title">
-        <span class="math-lab-symbol">∞</span>
-        <span>流形丝带与立体三体控制台</span>
-      </div>
-      <button type="button" class="math-lab-toggle" id="math-lab-toggle" aria-label="展开或收起面板">展开 +</button>
-    </div>
-
-    <div class="math-lab-body">
-      <div class="lab-group">
-        <div class="lab-label">
-          <span>01 · 昼夜流形切换（全屏遮盖过渡）</span>
-          <span class="lab-val" id="lab-mode-indicator">DAY // INFINITY</span>
-        </div>
-        <div class="lab-seg">
-          <button type="button" class="lab-btn" data-theme-mode="light" aria-pressed="true">白天 · 立体无限流形</button>
-          <button type="button" class="lab-btn" data-theme-mode="dark" aria-pressed="false">夜间 · 卡冈图雅黑洞</button>
-        </div>
-      </div>
-
-      <div class="lab-group">
-        <div class="lab-label">
-          <span>02 · 空间粒子数量 (N)</span>
-          <span class="lab-val" id="val-density">560 粒子</span>
-        </div>
-        <input type="range" class="lab-slider" id="slider-density" min="300" max="780" step="20" value="560" />
-      </div>
-
-      <div class="lab-group">
-        <div class="lab-label">
-          <span>03 · 流形演化速率 (ω)</span>
-          <span class="lab-val" id="val-speed">1.0x</span>
-        </div>
-        <input type="range" class="lab-slider" id="slider-speed" min="0.3" max="2.2" step="0.1" value="1.0" />
-      </div>
-
-      <div class="lab-group">
-        <button type="button" class="lab-btn" id="btn-replay-loader" style="width:100%; text-align:center;">重播无边框三维无限加载动画</button>
-      </div>
-    </div>
-  </aside>
-
   <div class="toast-msg" id="toast-msg" role="status" aria-live="polite"></div>

@@ -8,6 +8,7 @@ html {
   -webkit-text-size-adjust: 100%;
   scroll-behavior: smooth;
   scroll-padding-top: var(--nav-h);
+  background: var(--paper);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -27,7 +28,7 @@ body {
   font-size: var(--text-base);
   line-height: 1.95;
   text-rendering: optimizeLegibility;
-  transition: background-color var(--dur-fast, 200ms) var(--ease), color var(--dur-fast, 200ms) var(--ease);
+  transition: none;
   position: relative;
 }
 
@@ -290,7 +291,7 @@ a { color: inherit; text-decoration: none; }
   box-shadow:
     0 10px 32px -18px rgba(20, 20, 19, 0.16),
     inset 0 1px 0 0 color-mix(in srgb, #ffffff 36%, transparent);
-  transition: background var(--dur-fast, 200ms) ease, border-color var(--dur-fast, 200ms) ease;
+  transition: none;
 }
 
 :root[data-theme='dark'] .site-nav-bar {
@@ -515,21 +516,14 @@ a { color: inherit; text-decoration: none; }
 
 
 /* ==========================================================================
-   2026-10-20 昼夜模式统一色彩过渡速度 & 无封面文章主题 SVG 占位图
+   2026-10-20 Round 4 昼夜切换 0ms 同帧同步 & 无封面文章平面线条 Logo
    ========================================================================== */
 html[data-theme-switching="true"],
 html[data-theme-switching="true"] body,
 html[data-theme-switching="true"] *:not(.theme-transition-stage):not(.theme-transition-veil):not(.theme-transition-canvas):not(.infinity-loader):not(.loader-infinity-canvas),
 html[data-theme-switching="true"] *::before,
 html[data-theme-switching="true"] *::after {
-  transition:
-    background-color 220ms cubic-bezier(0.22, 0.61, 0.36, 1),
-    background 220ms cubic-bezier(0.22, 0.61, 0.36, 1),
-    color 220ms cubic-bezier(0.22, 0.61, 0.36, 1),
-    border-color 220ms cubic-bezier(0.22, 0.61, 0.36, 1),
-    box-shadow 220ms cubic-bezier(0.22, 0.61, 0.36, 1),
-    fill 220ms cubic-bezier(0.22, 0.61, 0.36, 1),
-    stroke 220ms cubic-bezier(0.22, 0.61, 0.36, 1) !important;
+  transition: none !important;
 }
 
 .theme-transition-veil {
@@ -541,41 +535,25 @@ html[data-theme-switching="true"] *::after {
   opacity: 0;
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
+  transition: none;
 }
 
 .cover-theme-fallback {
   position: relative;
   width: 100%;
   height: 100%;
-  min-height: 6.5rem;
-  aspect-ratio: 16 / 9;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: color-mix(in srgb, var(--paper) 92%, var(--canvas));
+  background: transparent;
   color: var(--accent);
-  overflow: hidden;
 }
 .cover-theme-fallback .cover-fallback-svg {
-  width: 100%;
-  height: 100%;
+  width: min(14rem, 70%);
+  height: auto;
   display: none;
 }
 .cover-theme-fallback .planar-wm--infinity { display: block; }
 .cover-theme-fallback .planar-wm--blackhole { display: none; }
 :root[data-theme="dark"] .cover-theme-fallback .planar-wm--infinity { display: none; }
 :root[data-theme="dark"] .cover-theme-fallback .planar-wm--blackhole { display: block; }
-
-.cover-fallback-badge {
-  position: absolute;
-  left: 0.65rem;
-  bottom: 0.45rem;
-  font-family: var(--mono);
-  font-size: 0.62rem;
-  letter-spacing: 0.08em;
-  color: var(--faint);
-  pointer-events: none;
-}
-.cover-fallback-badge .badge-night { display: none; }
-:root[data-theme="dark"] .cover-fallback-badge .badge-day { display: none; }
-:root[data-theme="dark"] .cover-fallback-badge .badge-night { display: inline; }

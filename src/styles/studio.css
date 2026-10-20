@@ -5285,22 +5285,84 @@
 }
 
 
-/* ---------- 11. 昼夜切换统一色彩速度 & 文章封面弹窗与主题 SVG 预览 ---------- */
+/* ---------- 11. Round 4 优化：昼夜同帧同步、无封面平面线条 Logo、登录页隐藏旧水印、正文编辑区字号对齐前台 ---------- */
+html {
+  background: var(--paper);
+}
+
 html[data-theme-switching="true"],
 html[data-theme-switching="true"] body,
 html[data-theme-switching="true"] *:not(.theme-transition-stage):not(.theme-transition-veil):not(.theme-transition-canvas),
 html[data-theme-switching="true"] *::before,
 html[data-theme-switching="true"] *::after {
-  transition:
-    background-color 220ms cubic-bezier(0.22, 0.61, 0.36, 1),
-    background 220ms cubic-bezier(0.22, 0.61, 0.36, 1),
-    color 220ms cubic-bezier(0.22, 0.61, 0.36, 1),
-    border-color 220ms cubic-bezier(0.22, 0.61, 0.36, 1),
-    box-shadow 220ms cubic-bezier(0.22, 0.61, 0.36, 1),
-    fill 220ms cubic-bezier(0.22, 0.61, 0.36, 1),
-    stroke 220ms cubic-bezier(0.22, 0.61, 0.36, 1) !important;
+  transition: none !important;
 }
 
+/* 登录门户展示时，隐藏页面级无限/黑洞背景水印，只展示星辰与星体交互背景 */
+.st-body:has(.st-login) .st-planar-watermark {
+  display: none !important;
+}
+
+/* 需求 7：后台文章编辑器中的正文编辑部分文字字号与前台文章详细页正文（.article-prose-q）完全一致 */
+.ed-shell {
+  --text-xs:   1.125rem;
+  --text-sm:   1.1875rem;
+  --text-base: 1.25rem;
+  --text-md:   1.375rem;
+  --text-lg:   1.5rem;
+  --text-xl:   1.75rem;
+}
+
+.ed-area {
+  font-family: var(--song);
+  font-size: 1.25rem !important; /* 20px，与前台文章详细页 .article-prose-q p 字号完全一致 */
+  line-height: 1.98 !important;
+}
+
+.ed-area p,
+.ed-area li {
+  font-size: 1.25rem !important;
+  line-height: 1.98 !important;
+}
+
+.ed-area h2 {
+  font-family: var(--kai);
+  font-size: 1.75rem !important; /* 与前台 .article-prose-q h2 (--text-xl) 一致 */
+  line-height: 1.35;
+}
+
+.ed-area h3 {
+  font-family: var(--kai);
+  font-size: 1.5rem !important;  /* 与前台 .article-prose-q h3 (--text-lg) 一致 */
+  line-height: 1.45;
+}
+
+.ed-area h4 {
+  font-family: var(--kai);
+  font-size: 1.375rem !important;/* 与前台 .article-prose-q h4 (--text-md) 一致 */
+  line-height: 1.5;
+}
+
+.ed-area blockquote p {
+  font-size: 1.1875rem !important;
+  line-height: 1.85 !important;
+}
+
+.ed-area pre {
+  font-size: 0.95rem !important;
+  line-height: 1.68 !important;
+}
+
+.ed-area table {
+  font-size: 1.04rem !important;
+}
+
+.ed-source {
+  font-size: 1.25rem !important; /* Markdown 源码编辑区字号同步放大至与前台正文一致 */
+  line-height: 1.92 !important;
+}
+
+/* 封面设置按钮栏与无封面简约平面线条 Logo 预览 */
 .st-cover-picker-actions {
   display: flex;
   align-items: center;
@@ -5342,37 +5404,22 @@ html[data-theme-switching="true"] *::after {
   position: relative;
   width: 100%;
   height: 100%;
-  aspect-ratio: 16 / 9;
+  min-height: 7.5rem;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: color-mix(in srgb, var(--paper) 92%, var(--canvas));
+  background: transparent;
   color: var(--accent);
-  overflow: hidden;
 }
 .cover-theme-fallback[hidden] {
   display: none !important;
 }
 .cover-theme-fallback .cover-fallback-svg {
-  width: 100%;
-  height: 100%;
+  width: min(12.5rem, 68%);
+  height: auto;
   display: none;
 }
 .cover-theme-fallback .planar-wm--infinity { display: block; }
 .cover-theme-fallback .planar-wm--blackhole { display: none; }
 :root[data-theme="dark"] .cover-theme-fallback .planar-wm--infinity { display: none; }
 :root[data-theme="dark"] .cover-theme-fallback .planar-wm--blackhole { display: block; }
-
-.cover-fallback-badge {
-  position: absolute;
-  left: 0.65rem;
-  bottom: 0.42rem;
-  font-family: var(--mono);
-  font-size: 0.6rem;
-  letter-spacing: 0.08em;
-  color: var(--faint);
-  pointer-events: none;
-}
-.cover-fallback-badge .badge-night { display: none; }
-:root[data-theme="dark"] .cover-fallback-badge .badge-day { display: none; }
-:root[data-theme="dark"] .cover-fallback-badge .badge-night { display: inline; }

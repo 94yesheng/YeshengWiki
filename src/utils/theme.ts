@@ -2,7 +2,7 @@
  * 白天 / 夜间 —— 全站一处，访客页和后台共用。
  *
  * playThemeTransition(nextTheme, onPeakCoverage) —— 结合「无限环（∞）」与「黑洞奇点」主题的昼夜切换过渡动画，
- * 并通过 data-theme-switching 同步全站所有元素的颜色切换速率，彻底消除前后台切换时的颜色速度割裂感。
+ * 并通过 data-theme-switching 锁定全站所有元素在遮罩峰值同一帧 0ms 无缝切换，彻底消除内容框与底部纯色背景的速度差与闪烁感。
  */
 
 export const THEME_COLOR = { light: '#faf9f5', dark: '#141413' } as const;
@@ -31,7 +31,7 @@ export function syncThemeColor(): void {
 let transRaf = 0;
 let switchingCleanupTimer = 0;
 
-function beginUnifiedColorSwitch(nextTheme: 'light' | 'dark'): void {
+function commitInstantThemeSwitch(nextTheme: 'light' | 'dark'): void {
   if (typeof document === 'undefined') return;
   const root = document.documentElement;
   root.dataset.themeSwitching = 'true';
@@ -45,13 +45,11 @@ function beginUnifiedColorSwitch(nextTheme: 'light' | 'dark'): void {
   window.clearTimeout(switchingCleanupTimer);
   switchingCleanupTimer = window.setTimeout(() => {
     delete root.dataset.themeSwitching;
-  }, 280);
+  }, 120);
 }
 
 /**
  * 结合无限（∞）与黑洞（Singularity）主题的昼夜切换过渡动画
- * 白天 → 黑夜：双焦点无限环向中心旋转坍缩为黑洞事件视界与倾斜吸积环
- * 黑夜 → 白天：黑洞奇点闪耀并向外展开为伯努利双纽线无限环
  */
 export function playThemeTransition(
   targetTheme: 'light' | 'dark',
@@ -75,6 +73,10 @@ export function playThemeTransition(
   cancelAnimationFrame(transRaf);
   const toDark = targetTheme === 'dark';
   stage.dataset.active = 'true';
+  if (veil) {
+    veil.style.backgroundColor = toDark ? THEME_COLOR.dark : THEME_COLOR.light;
+    veil.style.opacity = '0';
+  }
   if (badge) {
     badge.textContent = toDark
       ? 'SINGULARITY COLLAPSE // 无限流形 ∞ 坍缩至黑洞奇点'
@@ -82,7 +84,7 @@ export function playThemeTransition(
   }
 
   const startTs = performance.now();
-  const duration = 740;
+  const duration = 680;
   let themeSwapped = false;
 
   const step = (now: number) => {
@@ -91,16 +93,16 @@ export function playThemeTransition(
 
     let veilAlpha = 0;
     if (p < 0.38) {
-      veilAlpha = Math.sin((p / 0.38) * (Math.PI / 2)) * 0.92;
+      veilAlpha = Math.sin((p / 0.38) * (Math.PI / 2));
     } else {
-      veilAlpha = Math.cos(((p - 0.38) / 0.62) * (Math.PI / 2)) * 0.92;
+      veilAlpha = Math.cos(((p - 0.38) / 0.62) * (Math.PI / 2));
     }
-    veilAlpha = Math.max(0, Math.min(0.95, veilAlpha));
+    veilAlpha = Math.max(0, Math.min(1, veilAlpha));
     if (veil) {
       veil.style.opacity = veilAlpha.toFixed(3);
     }
 
-    if (p >= 0.36 && !themeSwapped) {
+    if (p >= 0.38 && !themeSwapped) {
       themeSwapped = true;
       onPeakCoverage?.();
     }
@@ -127,17 +129,19 @@ export function playThemeTransition(
       ctx.scale(dpr, dpr);
       ctx.clearRect(0, 0, W, H);
 
-      const maxWaveR = Math.hypot(W, H) * 0.65;
-      const waveR = Math.max(8, ease * maxWaveR);
-      const waveGrad = ctx.createRadialGradient(cx, cy, 0, cx, cy, waveR);
+      ctx.fillStyle = toDark
+        ? `rgba(20, 20, 19, ${(veilAlpha * 0.96).toFixed(3)})`
+        : `rgba(250, 249, 245, ${(veilAlpha * 0.96).toFixed(3)})`;
+      ctx.fillRect(0, 0, W, H);
+
+      const maxWaveR = Math.hypot(W, H) * 0.55;
+      const waveGrad = ctx.createRadialGradient(cx, cy, 0, cx, cy, maxWaveR);
       if (toDark) {
-        waveGrad.addColorStop(0, `rgba(18, 18, 17, ${(veilAlpha * 0.9).toFixed(3)})`);
-        waveGrad.addColorStop(0.7, `rgba(217, 119, 87, ${(veilAlpha * 0.2).toFixed(3)})`);
-        waveGrad.addColorStop(1, `rgba(18, 18, 17, ${(veilAlpha * 0.85).toFixed(3)})`);
+        waveGrad.addColorStop(0, `rgba(217, 119, 87, ${(veilAlpha * 0.16).toFixed(3)})`);
+        waveGrad.addColorStop(1, 'rgba(20, 20, 19, 0)');
       } else {
-        waveGrad.addColorStop(0, `rgba(250, 249, 245, ${(veilAlpha * 0.9).toFixed(3)})`);
-        waveGrad.addColorStop(0.7, `rgba(242, 179, 126, ${(veilAlpha * 0.22).toFixed(3)})`);
-        waveGrad.addColorStop(1, `rgba(250, 249, 245, ${(veilAlpha * 0.85).toFixed(3)})`);
+        waveGrad.addColorStop(0, `rgba(242, 179, 126, ${(veilAlpha * 0.18).toFixed(3)})`);
+        waveGrad.addColorStop(1, 'rgba(250, 249, 245, 0)');
       }
       ctx.fillStyle = waveGrad;
       ctx.fillRect(0, 0, W, H);
@@ -203,7 +207,6 @@ export function playThemeTransition(
         const infPx = (a * 1.15 * ctK) / denK;
         const infPy = (b * 1.15 * stK * ctK) / denK;
         const diskR = bhR * (1.25 + (k % 5) * 0.34);
-        /* 整数倍频率 (ang * 2.0)，确保 0 ↔ 2π 周期闭合无右侧断层 */
         const bhPx = diskR * Math.cos(ang * 2.0);
         const bhPy = diskR * Math.sin(ang * 2.0) * 0.28;
 
@@ -235,8 +238,7 @@ export function playThemeTransition(
 /** 切换主题并记住；返回切换后的主题 */
 export function toggleTheme(): 'light' | 'dark' {
   const next = isDark() ? 'light' : 'dark';
-  /* 立即同步开启统一颜色过渡锁并切换主题变量，保证前后台所有元素以完全相同的速率同步过渡 */
-  beginUnifiedColorSwitch(next);
+  commitInstantThemeSwitch(next);
   playThemeTransition(next);
   return next;
 }

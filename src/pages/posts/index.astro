@@ -2,7 +2,7 @@
 /**
  * 文章归档子页 —— SSR 版。
  * 时间轴、标签计数、统计、首屏文案和右栏快跳全部由 SQLite 动态生成；
- * 当文章未设置封面时，自动渲染符合昼夜主题的 SVG 图案（昼：无限流形 ∞，夜：卡冈图雅黑洞）。
+ * 当文章未设置封面时，右侧不显示封面缩略图，将文章梗概的文字栏直接横向拉伸至原来有封面的位置。
  */
 export const prerender = false;
 
@@ -14,7 +14,6 @@ import { applyArtifactSite, getSiteConfig } from '../../server/site';
 import { groupByYearMonth } from '../../utils/timeline';
 import { chineseDay, chineseMonth, chineseYear, readingTime } from '../../utils/date';
 import { cjkSpacing } from '../../utils/typography';
-import { THEME_COVER_SVG_HTML } from '../../utils/cover-svg';
 
 const posts = listPosts();
 const total = posts.length;
@@ -103,11 +102,15 @@ function entryHtml(post: Post, indexInMonth: number): string {
   const tagText = post.tags.length ? post.tags.join(' · ') : c('posts.uncategorized');
   const lead = leadFor(post);
   const cover = coverFor(post);
-  const thumbInnerHtml = cover
-    ? `<img src="${esc(cover)}" alt="${esc(post.title)}" loading="lazy" />`
-    : THEME_COVER_SVG_HTML;
+  const cardClass = cover ? 'tl-item tl-post-card' : 'tl-item tl-post-card tl-post-card--no-cover';
+  const thumbHtml = cover
+    ? `\n  <a class="tl-card-thumb" aria-label="阅读《${esc(post.title)}》" href="/posts/${post.slug}/">
+    <img src="${esc(cover)}" alt="${esc(post.title)}" loading="lazy" />
+    <span class="photo-ratio-badge">16:9</span>
+  </a>`
+    : '';
 
-  return `<article class="tl-item tl-post-card" style="--i:${indexInMonth}" data-tl-entry data-article-key="${esc(
+  return `<article class="${cardClass}" style="--i:${indexInMonth}" data-tl-entry data-article-key="${esc(
     post.slug
   )}" data-tags="${esc(post.tags.join(','))}" data-search="${esc(
     `${post.title} ${post.tags.join(' ')} ${lead}`
@@ -133,11 +136,7 @@ function entryHtml(post: Post, indexInMonth: number): string {
         <span aria-hidden="true">-&gt;</span>
       </a>
     </div>
-  </div>
-  <a class="tl-card-thumb" aria-label="阅读《${esc(post.title)}》" href="/posts/${post.slug}/">
-    ${thumbInnerHtml}
-    <span class="photo-ratio-badge">16:9</span>
-  </a>
+  </div>${thumbHtml}
 </article>`;
 }
 
