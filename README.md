@@ -127,9 +127,8 @@ D:\blog\
 │   ├── styles/                  # tokens / base / prose / gallery / fab / studio(-v2) / artifact-prose
 │   ├── studio/                  # 自建后台：app/state/content/editor/exif/… + views/ + v2/
 │   ├── utils/                   # date / audio-meta / cover-svg / article-rail / timeline / typography / theme
-│   ├── content/                 # 【迁移来源】旧 .md / .json，运行时不再读取
-│   ├── content.config.ts        # 旧内容集合定义（迁移来源，页面不再使用）
-│   ├── assets/                  # 【迁移来源】旧文章图 / 照片原图
+│   ├── content/                 # 【迁移来源】旧 .md / .json，只给 migrate-to-db.mjs
+│   ├── assets/                  # 【迁移来源】旧文章图 / 照片原图，只给 migrate-to-db.mjs
 │   ├── types.d.ts               # `*.sql?raw` 等模块类型声明
 │   ├── site.data.json           # 【迁移来源】旧站点设置
 │   └── site.config.ts           # 上面那份的读取层（现在只做 SSR 兜底）
@@ -336,6 +335,8 @@ Schema 唯一来源是 [db/schema.sql](db/schema.sql)（`src/server/schema.ts` �
 - 2026-10-21：删除根目录误提交的 PNG `2`（当前树已移除，历史记录仍在 Git 里）；
   清理 9 个不再引用的旧内容组件与 2 个配套 utils。
 - 2026-10-21：README / CLAUDE / AGENTS 与现状对齐（占位符路径、媒体数、设置块、链接映射）。
+- 2026-10-21：删除无调用的 `src/content.config.ts`；构建不再同步 content collections。
+  `src/content/` 与 `src/assets/` 保留，但只作为 `scripts/migrate-to-db.mjs` 的迁移源。
 
 **待办**
 
