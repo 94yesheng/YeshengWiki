@@ -78,55 +78,71 @@ node scripts/migrate-to-db.mjs --db data/blog.db --uploads data/uploads --fresh
 
 ```
 D:\blog\
-├── astro.config.mjs        # site / 输出目录 / SSR adapter（BLOG_DYNAMIC 开关）
-├── package.json            # 依赖与命令
-├── db/schema.sql           # ★SQLite schema 的唯一来源★（被 ?raw 打进 bundle）
-├── .env.example            # 动态版运行参数示例
-├── CLAUDE.md / AGENTS.md   # AI 助手的项目约定（同一份内容）
-├── README.md               # 本文档
+├── astro.config.mjs             # site / 输出目录 / SSR adapter（BLOG_DYNAMIC 开关）
+├── package.json / package-lock.json # 依赖与命令
+├── tsconfig.json                # 继承 astro/tsconfigs/strict（排除生成物、public、.work、demo）
+├── .env.example                 # 动态版运行参数示例
+├── CLAUDE.md / AGENTS.md        # AI 助手的项目约定（同一份内容）
+├── README.md                    # 本文档
+├── .github/workflows/deploy.yml # CI：push main 时跑 npm run check + build:dynamic（只校验，不部署）
+├── db/
+│   └── schema.sql               # ★SQLite schema 的唯一来源★（被 ?raw 打进 bundle）
 ├── docs/
-│   ├── dynamic-refactor.md # 动态化重构设计与进度
-│   ├── cutover.md          # 切线上清单（DNS / HTTPS / 回滚 / 备份）
-│   ├── 1panel.md           # 1Panel 运维面板的访问与边界
-│   ├── nginx-dynamic.conf  # 线上 Nginx 反代配置（部署用）
-│   └── studio-typography.md
+│   ├── dynamic-refactor.md      # 动态化重构设计与进度
+│   ├── cutover.md               # 切线上清单（DNS / HTTPS / 回滚 / 备份）
+│   ├── 1panel.md                # 1Panel 运维面板的访问与边界
+│   ├── nginx-dynamic.conf       # 线上 Nginx 反代配置示例（路径按实际部署目录替换）
+│   └── studio-typography.md     # 后台 UI 字号与字体清单（改后台排版前先看）
 ├── scripts/
-│   ├── deploy-server.ps1   # 部署：打包源码 → scp → 服务器 npm ci + build:dynamic + 重启
-│   ├── migrate-to-db.mjs   # src/content + src/assets → SQLite + uploads
-│   ├── backfill-post-lead.mjs # 从 WordPress 摘要回填 lead / description（一次性迁移）
-│   ├── import-artifact.mjs # 【慎用】从设计源重新生成 artifact 页面模板
-│   └── artifact-patches/   # 生成器的补丁片段（动画回滚、UI 微调、模型替换）
+│   ├── deploy-server.ps1        # 部署：打包源码 → scp → npm ci + build:dynamic + 重启
+│   ├── migrate-to-db.mjs        # src/content + src/assets → SQLite + uploads
+│   ├── import-wordpress.mjs     # WordPress 导出 → SQLite（slug 表与 301 映射共用一份）
+│   ├── migrate-pages-settings.mjs # 旧设置 → site_settings.pages（幂等，可重复跑）
+│   ├── backfill-post-lead.mjs   # 从 WordPress 摘要回填 lead / description（一次性）
+│   ├── import-artifact.mjs      # 【慎用】从设计源重新生成 artifact 页面模板
+│   └── artifact-patches/        # 生成器补丁片段（只有 animation-rollback 等入 Git）
 ├── src/
-│   ├── middleware.ts       # /uploads/* 兜底 + /api/* 路由 + 安全响应头
-│   ├── pages/              # ★文件名 = 网址★（全部 SSR 读库）
+│   ├── middleware.ts            # 旧链接 301 + /uploads 兜底 + /api 路由 + 安全响应头
+│   ├── pages/                   # ★文件名 = 网址★（全部 SSR 读库）
+│   │   ├── index.astro          # 主页（五屏）
+│   │   ├── posts/               # 文章列表 + [...slug] 详情
+│   │   ├── photos.astro / links.astro / programs.astro
+│   │   ├── studio.astro / studio-v2.astro # 两个后台入口（noindex）
+│   │   └── rss.xml.js / sitemap.xml.ts / sitemap-index.xml.ts
 │   ├── server/
-│   │   ├── schema.ts       # 读 db/schema.sql
-│   │   ├── db.ts           # 连接、WAL、迁移、单例
-│   │   ├── auth.ts         # scrypt、会话、CSRF、登录限流
-│   │   ├── bootstrap.ts    # 启动时建库/迁移/播种管理员
-│   │   ├── site.ts         # getSiteConfig() / applyArtifactSite()：站点设置 → 页面
-│   │   ├── legacy-redirects.ts/json # 旧 WordPress 链接 → 新地址 301（唯一映射表）
-│   │   ├── uploads.ts      # 本地 /uploads 兜底（生产由 Nginx 直发）
+│   │   ├── schema.ts            # 读 db/schema.sql
+│   │   ├── db.ts                # 连接、WAL、迁移、单例
+│   │   ├── auth.ts              # scrypt、会话、CSRF、登录限流
+│   │   ├── bootstrap.ts         # 启动时建库/迁移/播种管理员
+│   │   ├── site.ts              # getSiteConfig() / applyArtifactSite()：站点设置 → 页面
+│   │   ├── pages/index.ts       # 子页文案字段定义与默认值（后台「页面」板块）
+│   │   ├── legacy-redirects.ts + .json # 旧 WordPress 链接 → 新地址 301（唯一映射表）
+│   │   ├── uploads.ts           # 本地 /uploads 兜底（生产由 Nginx 直发）
 │   │   ├── markdown.ts / post-markdown.ts
 │   │   ├── api/{router,fs,http}.ts
-│   │   └── repositories/{posts,photos,links,settings}.ts
-│   ├── layouts/            # BaseLayout（纸墨壳）/ ArtifactLayout（HUD 独立壳）
-│   ├── components/         # 单文件组件 + divergence-meter/
-│   ├── artifact/           # 生成器产出的 CSS/JS/模板 + 主页 partial（已插服务端占位符）
-│   ├── styles/             # tokens / base / prose / gallery / fab / studio / artifact-prose
-│   ├── studio/             # 自建后台：app/state/content/editor/exif/… + views/ + v2/
-│   ├── utils/              # date / audio-meta / cover-svg / article-rail / posts / photos / timeline / typography / theme
-│   ├── content/            # 【迁移来源】旧 .md / .json，运行时不再读取
-│   ├── assets/             # 【迁移来源】旧文章图 / 照片原图
-│   ├── site.data.json      # 【迁移来源】旧站点设置
-│   └── site.config.ts      # 上面那份的读取层（现在只做 SSR 兜底）
-├── public/                 # 原样复制到站点根（favicon、artifact 静态图、studio 资源）
-├── dist-dynamic/           # 动态构建产物（上线跑的这份；不进 Git）
-├── dist/                   # 静态构建产物（遗留；不进 Git）
-├── .work/                  # 本地验证脚手架与截图（不进 Git）
-└── data/                   # 本地 SQLite + uploads（不进 Git）
+│   │   └── repositories/{posts,photos,links,media,settings}.ts
+│   ├── layouts/                 # BaseLayout（纸墨壳）/ ArtifactLayout（HUD 独立壳）
+│   ├── components/              # HomeArtifact、SiteHeader/Footer、FloatingMenu、LinkCard + divergence-meter/
+│   ├── artifact/                # 生成器产出的 CSS/JS/模板 + home/ partial（已插服务端占位符）
+│   ├── styles/                  # tokens / base / prose / gallery / fab / studio(-v2) / artifact-prose
+│   ├── studio/                  # 自建后台：app/state/content/editor/exif/… + views/ + v2/
+│   ├── utils/                   # date / audio-meta / cover-svg / article-rail / timeline / typography / theme
+│   ├── content/                 # 【迁移来源】旧 .md / .json，运行时不再读取
+│   ├── content.config.ts        # 旧内容集合定义（迁移来源，页面不再使用）
+│   ├── assets/                  # 【迁移来源】旧文章图 / 照片原图
+│   ├── types.d.ts               # `*.sql?raw` 等模块类型声明
+│   ├── site.data.json           # 【迁移来源】旧站点设置
+│   └── site.config.ts           # 上面那份的读取层（现在只做 SSR 兜底）
+├── public/                      # 原样复制到站点根：favicon、HUD 首页兜底图、studio 占位图
+├── dist-dynamic/                # 动态构建产物（上线跑的这份；不进 Git）
+├── dist/                        # 静态构建产物（遗留；不进 Git）
+├── .work/                       # 本地验证脚手架与截图（不进 Git）
+├── data/                        # 本地 SQLite + uploads（不进 Git）
+└── demo/ mockups/ .backup/      # 本地设计源 / 样板 / 回滚备份（gitignore，不进仓库）
 ```
 
+> 说明：`public/` 会被原样复制到站点根——`artifact/home/images` 是仓库自带的 HUD 首页兜底图，
+> `studio/photo-placeholder.svg` 是后台占位图；文章图与照片图都在 `uploads/`，生产由 Nginx 直发。
 > `public/.htaccess` 是静态时代的遗留（Apache 配置，Nginx 不读它），留着只作参考。
 
 ---
