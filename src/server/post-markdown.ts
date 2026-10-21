@@ -94,16 +94,18 @@ export function parsePostMarkdown(raw: string, slug: string): ParsedPost {
   };
 }
 
-/** 老数据没有 raw_markdown 时，从列重建一份可编辑的 Markdown。 */
-export function buildPostMarkdown(post: Post): string {
-  if (post.rawMarkdown?.trim()) return post.rawMarkdown;
+/**
+ * 从结构化字段合成标准 Markdown（frontmatter + bodyMarkdown），
+ * 保证 REST API 修改与 Studio /api/fs 读取始终同源一致。
+ */
+export function synthesizePostMarkdown(post: PostInput | Post): string {
   const data: Record<string, unknown> = {
     title: post.title,
     pubDate: post.pubDate,
   };
   if (post.description) data.description = post.description;
   if (post.lead) data.lead = post.lead;
-  if (post.tags.length) data.tags = post.tags;
+  if (post.tags && post.tags.length) data.tags = post.tags;
   if (post.entryBadge) data.entryBadge = post.entryBadge;
   if (post.cover) data.cover = post.cover;
   if (post.coverCaption) data.coverCaption = post.coverCaption;
@@ -112,8 +114,13 @@ export function buildPostMarkdown(post: Post): string {
   if (post.updatedDate) data.updatedDate = post.updatedDate;
   if (post.kineticCaption) data.kineticCaption = post.kineticCaption;
   if (post.railMode) data.railMode = post.railMode;
-  if (post.railSpecs) data.railSpecs = post.railSpecs;
-  if (post.railTopology) data.railTopology = post.railTopology;
-  if (post.autoUpdated !== null) data.autoUpdated = post.autoUpdated;
+  if (post.railSpecs && post.railSpecs.length) data.railSpecs = post.railSpecs;
+  if (post.railTopology && Object.keys(post.railTopology).length) data.railTopology = post.railTopology;
+  if (post.autoUpdated !== undefined && post.autoUpdated !== null) data.autoUpdated = post.autoUpdated;
   return `---\n${YAML.dump(data, { lineWidth: -1, noRefs: true })}---\n${post.bodyMarkdown}`;
+}
+
+/** 供后台虚拟文件接口读取可编辑的 Markdown。 */
+export function buildPostMarkdown(post: Post): string {
+  return synthesizePostMarkdown(post);
 }

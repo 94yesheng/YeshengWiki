@@ -124,15 +124,15 @@ D:\blog\
 │   ├── layouts/                 # BaseLayout（纸墨壳）/ ArtifactLayout（HUD 独立壳）
 │   ├── components/              # HomeArtifact、SiteHeader/Footer、FloatingMenu、LinkCard + divergence-meter/
 │   ├── artifact/                # 生成器产出的 CSS/JS/模板 + home/ partial（已插服务端占位符）
-│   ├── styles/                  # tokens / base / prose / gallery / fab / studio(-v2) / artifact-prose
+│   ├── styles/                  # tokens / base / fab / studio(-v2) / artifact-prose
 │   ├── studio/                  # 自建后台：app/state/content/editor/exif/… + views/ + v2/
-│   ├── utils/                   # date / audio-meta / cover-svg / article-rail / timeline / typography / theme
+│   ├── utils/                   # date / audio-meta / cover-svg / article-rail / timeline / typography / theme / loader / friend-links
 │   ├── content/                 # 【迁移来源】旧 .md / .json，只给 migrate-to-db.mjs
 │   ├── assets/                  # 【迁移来源】旧文章图 / 照片原图，只给 migrate-to-db.mjs
 │   ├── types.d.ts               # `*.sql?raw` 等模块类型声明
 │   ├── site.data.json           # 【迁移来源】旧站点设置
 │   └── site.config.ts           # 上面那份的读取层（现在只做 SSR 兜底）
-├── public/                      # 原样复制到站点根：favicon、HUD 首页兜底图、studio 占位图
+├── public/                      # 原样复制到站点根：favicon、HUD 首页兜底图、studio 占位图、artifact 外链 CSS/JS
 ├── dist-dynamic/                # 动态构建产物（上线跑的这份；不进 Git）
 ├── dist/                        # 静态构建产物（遗留；不进 Git）
 ├── .work/                       # 本地验证脚手架与截图（不进 Git）
@@ -141,7 +141,9 @@ D:\blog\
 ```
 
 > 说明：`public/` 会被原样复制到站点根——`artifact/home/images` 是仓库自带的 HUD 首页兜底图，
-> `studio/photo-placeholder.svg` 是后台占位图；文章图与照片图都在 `uploads/`，生产由 Nginx 直发。
+> `artifact/artifact.{css,js}` 是从 `src/artifact/` 同步的外链资源（`/artifact/` 下由 middleware
+> 动态回源，生产 Nginx 直接发静态文件）；`studio/photo-placeholder.svg` 是后台占位图；
+> 文章图与照片图都在 `uploads/`，生产由 Nginx 直发。
 > `public/.htaccess` 是静态时代的遗留（Apache 配置，Nginx 不读它），留着只作参考。
 
 ---
@@ -161,6 +163,7 @@ D:\blog\
 | `/rss.xml` | `src/pages/rss.xml.js` | — | `posts`（不含草稿） |
 | `/sitemap.xml` `/sitemap-index.xml` | `src/pages/sitemap*.ts` | — | 动态生成，排除 `/studio*` |
 | `/uploads/*` | Nginx alias（本地走 middleware） | — | 上传目录（web root 之外） |
+| `/artifact/artifact.{css,js}` | middleware 回源 / Nginx 静态 | — | HUD 外链资源，带 `?v=<hash>` 指纹长缓存 |
 | `/admin/*` | — | — | **已退役**：Nginx 301 → `/studio/`，文件也已删除 |
 | 旧 WordPress 链接 | `src/server/legacy-redirects.ts` | — | `?p=ID` / 中文百分号 slug / `?page_id=ID` → 301 到新地址（middleware 在路由前处理） |
 
@@ -188,6 +191,7 @@ Schema 唯一来源是 [db/schema.sql](db/schema.sql)（`src/server/schema.ts` �
 | `photo_walls` | 照片墙（一面墙一行） |
 | `photos` | 单张照片 + EXIF / 直方图 |
 | `links` | 友链 |
+| `link_applications` | 友链互换申请（公开提交 → 后台审核 / 批准 / 删除） |
 | `site_settings` | 七个设置块：`site` / `home` / `authorDossier` / `articleRail` / `programs` / `studio` / `pages`（子页文案） |
 | `media` | 上传文件元数据（图片 + 音频，供媒体库与文章选图/选曲） |
 | `schema_migrations` | 迁移版本 |
@@ -199,6 +203,8 @@ Schema 唯一来源是 [db/schema.sql](db/schema.sql)（`src/server/schema.ts` �
 - `posts.version` 做**乐观锁**：保存时带上读到的版本，服务端不匹配就 `409`。
 - `posts.draft = 1` 不出现在公开列表 / RSS / sitemap。
 - `photo_walls.date` 允许空串（未标注时间）。
+- Schema 版本由 `src/server/schema.ts` 的 `SCHEMA_VERSION` 控制（当前 `2`）；启动时自动套用
+  `db/schema.sql` 并补齐旧库缺列，`link_applications` 是 v2 新增表。
 - `src/content/` 与 `src/assets/` 是**迁移来源**，运行时不再读取；改内容请走 `/studio/`。
 
 ---
@@ -213,6 +219,7 @@ Schema 唯一来源是 [db/schema.sql](db/schema.sql)（`src/server/schema.ts` �
 | 传输层 | 后台把原来的 `Github` 调用换成 `/api/fs` 虚拟文件接口（`ApiGithub extends Github`），视图层几乎没改 |
 | 上传 | `/api/fs` 二进制模式写 `uploads/`，浏览器端 Sharp 压缩 + EXIF 解析 |
 | 媒体库 | 「媒体库」按文章归档展示 `uploads/posts/<slug>/` 下的图片与音频（`GET /api/media`），可复制链接 / 试听 / 新窗口打开 / 删除；上传音频会自动读取标签填标题与作者 |
+| 友链申请 | 友链页公开提交到 `link_applications`（限流 + 蜜罐 + 50 条待审上限）；后台「友链」板块查看并批准 / 删除 |
 | 页面 | 「页面」板块集中调整 主页 / 文章 / 相册 / 项目 / 友链 的标题、导语、空态与统计文案，共 **74 个字段**（写 `site_settings.pages`，`GET|PUT /api/pages`），保存即时生效 |
 | 改账号/密码 | 「设置 → 05 账户与安全」，需当前密码 + CSRF；改完其它设备会话失效 |
 
@@ -245,13 +252,17 @@ Schema 唯一来源是 [db/schema.sql](db/schema.sql)（`src/server/schema.ts` �
 |---|---|---|
 | GET | `/api/health` | 健康检查（DB + 版本） |
 | POST | `/api/auth/login` | 账号密码登录，建会话 |
-| POST | `/api/auth/logout` | 销毁会话 |
+| POST | `/api/auth/logout` | 销毁会话（需 CSRF） |
 | GET | `/api/auth/me` | 当前用户 + CSRF |
 | POST/PUT | `/api/auth/account` | 改管理员账号/密码 |
 | GET/POST/PUT/DELETE | `/api/posts[/id]` | 文章列表 / 新建 / 保存 / 删除 |
-| GET | `/api/walls` | 照片墙列表 |
-| GET/PUT | `/api/links` | 友链整体读写 |
-| GET/PUT | `/api/settings/[key]` | 站点设置分块读写 |
+| GET | `/api/walls` | 照片墙列表（需登录） |
+| GET/PUT | `/api/links` | 友链读取（公开）/ 整体保存（CSRF） |
+| POST | `/api/links/apply` | 公开提交友链申请（限流 + 蜜罐 + 50 条待审上限） |
+| GET | `/api/links/applications` | 友链申请列表（需登录） |
+| POST | `/api/links/applications/[id]/approve` | 批准申请并写入 `links`（需登录） |
+| DELETE | `/api/links/applications/[id]` | 删除申请（需登录） |
+| GET/PUT | `/api/settings/[key]` | 站点设置分块读写（需登录） |
 | * | `/api/fs/*` | 后台虚拟文件接口（文章、照片墙、设置、上传都走它） |
 
 ---
@@ -263,7 +274,7 @@ Schema 唯一来源是 [db/schema.sql](db/schema.sql)（`src/server/schema.ts` �
 | | 纸墨体系 | HUD / 蓝图画布体系 |
 |---|---|---|
 | 用在哪 | `/links/` `/programs/` | `/`、`/posts/`、`/posts/<slug>/`、`/photos/`、`/studio/`（后台为独立 HUD 实现） |
-| 壳 | `BaseLayout` | `ArtifactLayout`（自己写 `<html>`，CSS/JS 用 `?raw` + `is:inline` 内联） |
+| 壳 | `BaseLayout` | `ArtifactLayout`（自己写 `<html>`；模板用 `?raw` 注入，CSS/JS 走 `/artifact/artifact.{css,js}?v=<hash>` 外链） |
 | 比喻 | 中文书籍：纸 + 墨 + 一枚印 | 航天器蓝图 + 遥测面板 |
 
 ### 8.1 纸墨体系
@@ -283,9 +294,13 @@ Schema 唯一来源是 [db/schema.sql](db/schema.sql)（`src/server/schema.ts` �
 - 三张 canvas（DPR 封顶 2，只在窗口变化时重算尺寸）：
   - 主页白天 `DAY // 纯粒子无限环`；夜间 `NIGHT // 卡冈图雅黑洞`；文章页 `立体三体`。
   - 都按 `renderFrame` 的 `dt===0` 约定支持 `prefers-reduced-motion`。
-- 加载 / 切换：loader 粒子从奇点绽放收束（~1.05s）；昼夜切换用 veil + 形变（~0.86s）；纸墨页也复用同一套 loader。
+- 加载 / 切换：loader 粒子从奇点绽放收束（~1.05s，实现在 `src/utils/loader.ts`）；昼夜切换用 veil + 形变（~0.86s）；纸墨页也复用同一套 loader。
 - 主页五屏（hero / 文章 / 照片 / 程序 / 友链）+ 滚动吸附（阈值 0.2 屏，300ms easeOutCubic，用户一动就让位，实现在 `src/artifact/home-snap.js`）。
 - 文章页：顶栏 + 双象限 hero + 三栏工作区 + 上下篇；正文由 `<Content />` 渲染，样式在 `src/styles/artifact-prose.css`。
+- 资源加载：HUD 的 CSS/JS 不再逐页内联，改为 `/artifact/artifact.css?v=<hash>` 与
+  `/artifact/artifact.js?v=<hash>`；带版本号时 middleware 下发一年 immutable 缓存，
+  `public/artifact/` 里是对应静态副本（生产 Nginx 直接命中）。`artifact-prose.css` 已与
+  `artifact.css` 去重，只保留文章页独有的排版规则。
 - 后端注入：`src/server/site.ts` 的 `getSiteConfig()` / `applyArtifactSite()` 在 SSR 时替换
   artifact 模板里的站名、作者、导航、页脚；静态配置只做兜底。
 - 当前正式视觉：主页英雄区用「相交双环 ∞」徽标；白天页脚固定为「方案三 · 纸墨律动」；
@@ -308,6 +323,7 @@ Schema 唯一来源是 [db/schema.sql](db/schema.sql)（`src/server/schema.ts` �
 | 给文章加伴读音乐 | `/studio/` 文章编辑器 → 右栏「信息悬浮窗」→ 音乐卡 → 从媒体库选音频（自动读标签）或本地上传 |
 | 换浏览器标签小图标（favicon） | /studio/ → **设置** → 01 BRAND & SEO → 「站点图标」：从本地上传（SVG/PNG/ICO/WebP）或从媒体库选择，保存后刷新页面 |
 | 加友链 | `/studio/` 友链板块（生产已有 1 条：云鹿庐） |
+| 审核友链申请 | `/studio/` 友链板块查看待审列表，批准后写入 `links`，也可直接删除 |
 | 从 WordPress 导入旧数据 | `node scripts/import-wordpress.mjs --export .work/wp-export --db <库> --uploads <上传目录>`；先加 `--dry-run` 看清单。正文图片落到 `uploads/posts/<slug>/`，草稿 / 私密统一按 `draft` 入库 |
 | 加旧链接 301 | 改 `src/server/legacy-redirects.json`（唯一映射表，导入脚本也读它），部署后生效 |
 | 改站名 / 导航 / 自我介绍 | `/studio/` → 站点设置（写 `site_settings.site`）；关于「我」的档案卡在「设置 → 03」 |
@@ -337,6 +353,12 @@ Schema 唯一来源是 [db/schema.sql](db/schema.sql)（`src/server/schema.ts` �
 - 2026-10-21：README / CLAUDE / AGENTS 与现状对齐（占位符路径、媒体数、设置块、链接映射）。
 - 2026-10-21：删除无调用的 `src/content.config.ts`；构建不再同步 content collections。
   `src/content/` 与 `src/assets/` 保留，但只作为 `scripts/migrate-to-db.mjs` 的迁移源。
+- 2026-10-21：合入优化版（B1–B7 / S1–S6 / P1–P6 / 4.1 / 4.2 / 4.4）：
+  `$` 替换修复、`raw_markdown` 双向同步、透明图上传、相关文章标签权重、源码模式保存、
+  RSS 全文、Token 占位符；登录限流 / 异步 scrypt / 友链申请限流与审核 / SVG 防护 /
+  照片墙事务；HUD 资源外链缓存、列表查询瘦身、上传流式响应、Studio 预取、音频 Range、
+  Canvas 可见性暂停；抽离 loader / friend-links / audio-meta / theme 桥接；
+  编辑器监听器清理与粘贴截图。Schema 升到 v2（新增 `link_applications`）。
 
 **待办**
 
@@ -365,7 +387,10 @@ Schema 唯一来源是 [db/schema.sql](db/schema.sql)（`src/server/schema.ts` �
   真实值只放在部署环境变量和服务器上的受保护文件里。
 - `.work/` 是本地验证脚手架与截图（`mock-github.mjs`、`page-shot.mjs`、`artifact-check.mjs`、
   `kai-audit.mjs`、`account-test.mjs`、`1panel-login-check.mjs` 等），不进仓库。
-- 构建后 HUD 页约 270–305 KB（图片已外置），Nginx 已开 gzip；可再上 brotli。
+- 构建后 HUD 页的 CSS/JS 已外链到 `/artifact/`，HTML 不再内联 ~300 KB；带 `?v=` 指纹时
+  middleware 下发一年 immutable 缓存，Nginx 直接发 `public/artifact/` 静态副本。
+- 改 `src/artifact/artifact.css` / `artifact.js` 后，要同步 `public/artifact/` 下的同名副本；
+  `scripts/import-artifact.mjs` 会自动写，但重跑前先看 8.2 的警告。
 - `demo/` 是外部设计源（生成器输入），已被 `.gitignore` 排除；构建不依赖它。
 
 ---

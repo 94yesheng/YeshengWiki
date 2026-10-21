@@ -114,10 +114,10 @@
                   <path d="M2.5 7A11.5 3.5 0 0 0 25.5 7" transform="rotate(-11 14 7)" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
                 </svg>
               </span>
-              <span>PHOTO SHOWCASE STAGE // 照片子页 · 一屏自适应光学检视台</span>
+              <span>@@PHOTOS_TOPBAR_TITLE@@</span>
             </div>
             <div class="q-topbar-cell q-topbar-cell--center" id="photos-detail-topbar-title">
-              /photos/ · 横向框与竖向框双模态智能适配 · 最大化无裁切展示 · 右侧信息栏联动伸缩
+              @@PHOTOS_TOPBAR_NOTE@@
             </div>
             <div class="q-topbar-cell q-topbar-cell--right">
               <span>FRAME MODE: <strong class="telemetry-accent" id="insp-orient-mode-badge">LANDSCAPE // 横向适配框</strong></span>
@@ -171,7 +171,7 @@
             <div class="photos-inspector-info-cell" id="photos-inspector-info-cell">
               <div class="insp-info-top-block">
                 <div class="rail-card-kicker">
-                  <span>PHOTO SPECIFICATION // 影像档案与拍摄信息</span>
+                  <span>@@PHOTOS_SPEC_TITLE@@</span>
                   <span id="insp-group-badge">LATEST GROUP #01</span>
                 </div>
                 <div class="insp-layout-badge-row">
@@ -222,7 +222,7 @@
               <!-- 快速缩略图切换胶片条（方便在一屏内直接点击切换横/竖照片并观察画框与右侧信息栏伸缩动画） -->
               <div class="insp-filmstrip-box">
                 <div class="histogram-head">
-                  <span>QUICK FILMSTRIP // 快速切换影像（#02 为 3:4 竖向画框）</span>
+                  <span>@@PHOTOS_FILMSTRIP_TITLE@@</span>
                   <span class="telemetry-accent">CLICK TO SWITCH</span>
                 </div>
                 <div class="insp-filmstrip-row" id="insp-filmstrip-row">
@@ -232,7 +232,7 @@
 
               <div class="photo-histogram-box">
                 <div class="histogram-head">
-                  <span>LUMINANCE &amp; SPECTRUM // 影调直方分布</span>
+                  <span>@@PHOTOS_HIST_TITLE@@</span>
                   <span class="telemetry-accent" id="insp-ev-text">EV -0.3 · HIGH DYNAMIC</span>
                 </div>
                 <div class="histogram-bars" id="insp-histogram-bars" aria-hidden="true">
@@ -268,7 +268,7 @@
               @@PHOTO_FILTERS@@
             </div>
           <div style="font-family:var(--mono); font-size:0.72rem; color:var(--faint);">
-            CLICK CARD TO INSPECT ABOVE // 点击任意卡片自动滚回上方一屏画框检视
+            @@PHOTOS_GRID_HINT@@
           </div>
         </div>
 

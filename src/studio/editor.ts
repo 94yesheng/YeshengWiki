@@ -25,6 +25,7 @@ export interface EditorHandle {
   setMode(mode: 'visual' | 'markdown' | 'split'): void;
   getMode(): 'visual' | 'markdown' | 'split';
   remount(areaHost: HTMLElement, barHost: HTMLElement): void;
+  destroy(): void;
 }
 
 export interface EditorOptions {
@@ -108,6 +109,9 @@ const ALIGN_BUTTONS = [
   { kind: 'right', title: '右对齐' },
 ] as const;
 
+let activeEditorCleanup: (() => void) | null = null;
+let pasteSeq = 0;
+
 export function createEditor(
   areaHost: HTMLElement,
   barHost: HTMLElement,
@@ -115,6 +119,10 @@ export function createEditor(
   onInputOrOpts: (() => void) | EditorOptions,
   legacyImageHint?: () => string
 ): EditorHandle {
+  if (activeEditorCleanup) {
+    activeEditorCleanup();
+    activeEditorCleanup = null;
+  }
   const opts: EditorOptions =
     typeof onInputOrOpts === 'function'
       ? { onInput: onInputOrOpts }
@@ -1553,10 +1561,62 @@ export function createEditor(
     opts.onInput();
   });
 
+  function extractClipboardImages(dt: DataTransfer | null): File[] {
+    if (!dt) return [];
+    const rawFiles: File[] = [];
+    if (dt.files && dt.files.length > 0) {
+      for (const f of Array.from(dt.files)) {
+        if (isImageFile(f)) rawFiles.push(f);
+      }
+    }
+    if (rawFiles.length === 0 && dt.items) {
+      for (const item of Array.from(dt.items)) {
+        if (item.kind === 'file' && item.type.startsWith('image/')) {
+          const f = item.getAsFile();
+          if (f) rawFiles.push(f);
+        }
+      }
+    }
+    return rawFiles.map((file) => {
+      if (!file.name || /^image\.[a-z0-9]+$/i.test(file.name)) {
+        pasteSeq += 1;
+        const ext = (file.type.split('/')[1] || 'png').replace(/[^a-z0-9]/gi, '') || 'png';
+        return new File([file], `paste-${Date.now()}-${pasteSeq}.${ext}`, {
+          type: file.type || `image/${ext}`,
+          lastModified: file.lastModified || Date.now(),
+        });
+      }
+      return file;
+    });
+  }
+
   area.addEventListener('paste', (e) => {
+    const images = extractClipboardImages(e.clipboardData);
+    if (images.length > 0) {
+      e.preventDefault();
+      captureSelection();
+      const targetRange = savedRange ? savedRange.cloneRange() : null;
+      void (async () => {
+        const items = await uploadImages(images);
+        if (items.length) insertImages(items, targetRange);
+      })();
+      return;
+    }
     e.preventDefault();
     const text = e.clipboardData?.getData('text/plain') ?? '';
     document.execCommand('insertText', false, text);
+  });
+
+  sourceArea.addEventListener('paste', (e) => {
+    const images = extractClipboardImages(e.clipboardData);
+    if (images.length === 0) return;
+    e.preventDefault();
+    void (async () => {
+      const items = await uploadImages(images);
+      if (!items.length) return;
+      const md = items.map((it) => `![${it.alt}](${it.src})`).join('\n\n');
+      insertMarkdownBlock(`\n\n${md}\n\n`);
+    })();
   });
 
   function dropHasFiles(dt: DataTransfer | null): boolean {
@@ -1624,7 +1684,7 @@ export function createEditor(
   area.addEventListener('focus', () => updateTableTools());
   area.addEventListener('click', () => updateTableTools());
 
-  document.addEventListener('selectionchange', () => {
+  const onSelectionChange = (): void => {
     if (!area.isConnected) return;
     const sel = window.getSelection();
     if (sel && sel.rangeCount > 0) {
@@ -1635,7 +1695,19 @@ export function createEditor(
     }
     updateTableTools();
     syncToolbar();
-  });
+  };
+  document.addEventListener('selectionchange', onSelectionChange);
+
+  const destroyEditor = (): void => {
+    document.removeEventListener('selectionchange', onSelectionChange);
+    closeDrawer();
+    if (tocActiveTimer !== undefined) window.clearTimeout(tocActiveTimer);
+    if (headingFlashTimer !== undefined) window.clearTimeout(headingFlashTimer);
+    if (activeEditorCleanup === destroyEditor) {
+      activeEditorCleanup = null;
+    }
+  };
+  activeEditorCleanup = destroyEditor;
 
   function changed(): void {
     if (mode !== 'markdown') syncVisualToSource();
@@ -1704,5 +1776,6 @@ export function createEditor(
     },
     setMarkdown,
     isEmpty: () => (area.textContent ?? '').trim() === '' && area.querySelectorAll('img, hr').length === 0,
+    destroy: destroyEditor,
   };
 }

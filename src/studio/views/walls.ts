@@ -591,7 +591,9 @@ async function uploadImages(w: WallEntry, files: File[]): Promise<void> {
       }
       // 先用压缩后的字节生成本地预览：上传完立刻能看到图，不必再等一次 GitHub API。
       const blobUrl = URL.createObjectURL(
-        new Blob([new Uint8Array(prepared.bytes).buffer as ArrayBuffer], { type: 'image/jpeg' })
+        new Blob([new Uint8Array(prepared.bytes).buffer as ArrayBuffer], {
+          type: prepared.mime || mimeOf(savedName),
+        })
       );
       previewCache.set(savedName, blobUrl);
 

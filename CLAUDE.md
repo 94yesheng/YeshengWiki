@@ -45,6 +45,9 @@ powershell -File scripts\deploy-server.ps1                          # 部署生�
 - 站点设置统一走 `src/server/site.ts`（`getSiteConfig()` / `applyArtifactSite()`），静态配置只做兜底。
 - 旧链接 301 的唯一映射表是 `src/server/legacy-redirects.json`（middleware 用它，`import-wordpress.mjs` 也读它）；
   加旧链接只改这张表，**不要再复制一份到 Nginx**（部署脚本只推代码）。
+- HUD 的 `artifact.css` / `artifact.js` 同时存在 `src/artifact/` 与 `public/artifact/`；
+  改完要同步两份（`import-artifact.mjs` 会自动写，但重跑前先看 `src/artifact` 的占位符警告）。
+- Schema 版本在 `src/server/schema.ts`（当前 2）；`link_applications` 是友链申请审核表。
 - `/programs/` 空态是正常状态（内容由站长在后台补，别自己造内容）；统计 / 评论暂缓，方案见 README 第 10 节。
 - 楷体 ≥20px（硬规则）；配色只改 `src/styles/tokens.css`。
 - 只改 `src/` 与配置；`dist*/`、`.astro/`、`.work/`、`data/` 都是生成物或本地数据，不进仓库。

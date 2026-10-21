@@ -88,6 +88,7 @@ const railSlots = renderArticleRailSlots({
   chars,
   minutes,
   tagText,
+  tags,
   railMode: post.railMode,
   railSpecs: post.railSpecs,
   railConfig: post.railTopology,
@@ -132,7 +133,7 @@ for (const [key, value] of Object.entries(slots)) {
   html = html.split(token).join(value);
 }
 if (!html.includes('@@PROSE@@')) throw new Error('article.html 缺少 @@PROSE@@ 占位符');
-html = html.replace('@@PROSE@@', proseHtml);
+html = html.split('@@PROSE@@').join(proseHtml);
 
 if (rail.threeBody?.eraBadge) {
   html = html.replace(

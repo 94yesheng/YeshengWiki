@@ -256,3 +256,11 @@ export function toggleTheme(): 'light' | 'dark' {
   });
   return next;
 }
+
+if (typeof window !== "undefined") {
+  (window as unknown as Record<string, unknown>).__YeshengTheme = {
+    playThemeTransition,
+    toggleTheme,
+    isDark,
+  };
+}

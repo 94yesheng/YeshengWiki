@@ -986,6 +986,9 @@ const write = (file, text) => {
 console.log('[import-artifact] 写出：');
 write(path.join(OUT, 'artifact.css'), css + '\n');
 write(path.join(OUT, 'artifact.js'), js + '\n');
+fs.mkdirSync(path.join(ROOT, 'public', 'artifact'), { recursive: true });
+write(path.join(ROOT, 'public', 'artifact', 'artifact.css'), css + '\n');
+write(path.join(ROOT, 'public', 'artifact', 'artifact.js'), js + '\n');
 
 write(path.join(HOME_OUT, 'loader.html'), loader + '\n');
 write(path.join(HOME_OUT, 'header.html'), [header, rulerRaw].join('\n') + '\n');

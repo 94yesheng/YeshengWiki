@@ -2081,6 +2081,7 @@ function renderRightRailPreview(d: PostDraftUi): void {
     chars,
     minutes,
     tagText,
+    tags,
     railMode,
     railSpecs: postSpecs,
     railConfig: postCfg as unknown as Record<string, unknown>,
@@ -2317,6 +2318,7 @@ export function postDraftEdited(): boolean {
   if (d.entry.prevPath && d.entry.prevPath !== d.entry.path) return true;
   if (JSON.stringify(d.fields) !== JSON.stringify(d.baseline)) return true;
   const body = d.editor?.getMarkdown() ?? d.body;
+  if (d.editor?.getMode() === 'markdown' && body.trim() !== d.body.trim()) return true;
   return normalizeHtml(renderMarkdown(body)) !== normalizeHtml(renderMarkdown(d.body));
 }
 
@@ -2353,7 +2355,9 @@ export async function savePostCurrent(gh: Github): Promise<boolean> {
   }
 
   const body = d.editor?.getMarkdown() ?? d.body;
-  const bodySame = normalizeHtml(renderMarkdown(body)) === normalizeHtml(renderMarkdown(d.body));
+  const bodySame =
+    body.trim() === d.body.trim() &&
+    normalizeHtml(renderMarkdown(body)) === normalizeHtml(renderMarkdown(d.body));
 
   const fieldsChanged = JSON.stringify(d.fields) !== JSON.stringify(d.baseline);
   const renamed = !!(d.entry.prevPath && d.entry.prevPath !== d.entry.path);

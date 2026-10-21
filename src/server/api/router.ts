@@ -11,13 +11,14 @@ import {
   createSession,
   destroySession,
   getAuth,
+  getClientIp,
   hasValidCsrf,
-  hashPassword,
+  hashPasswordAsync,
   isRateLimited,
   recordFailure,
   SESSION_COOKIE,
   setSessionCookie,
-  verifyPassword,
+  verifyPasswordAsync,
   type AuthContext,
 } from '../auth';
 import { getDb } from '../db';
@@ -68,6 +69,8 @@ interface LinkApplyBody {
   description?: string;
   avatar?: string;
   tag?: string;
+  website?: string;
+  honeypot?: string;
 }
 
 const SLUG_RE = /^[a-z0-9][a-z0-9-_]*$/;
@@ -111,6 +114,8 @@ export async function handleApi(context: APIContext): Promise<Response | null> {
 
   // /api/walls
   if (parts[0] === 'walls' && method === 'GET') {
+    const auth = getAuth(context);
+    if (!auth) return fail('未登录', 401);
     return json({ walls: listWalls({ includeEmpty: true }) });
   }
 
@@ -132,9 +137,18 @@ export async function handleApi(context: APIContext): Promise<Response | null> {
       }
     }
 
-    // 访客提交友链申请（公开接口）
+    // 访客提交友链申请（公开接口：带 IP 速率限制、蜜罐校验与待审队列上限）
     if (parts.length === 2 && parts[1] === 'apply' && method === 'POST') {
+      const ipKey = `link-apply:${getClientIp(context)}`;
+      if (isRateLimited(ipKey, 5, 10 * 60 * 1000)) {
+        return fail('提交过于频繁，请稍后再试', 429);
+      }
+
       const body = await readJson<LinkApplyBody>(context.request);
+      if (body?.website || body?.honeypot) {
+        return json({ ok: true }, 201);
+      }
+
       const owner = String(body?.owner ?? '').trim();
       const name = String(body?.name ?? '').trim();
       const url = String(body?.url ?? '').trim();
@@ -152,7 +166,14 @@ export async function handleApi(context: APIContext): Promise<Response | null> {
         return fail('填写的字段长度超出限制', 400);
       }
 
+      const existingApps = listLinkApplications();
+      const pendingCount = existingApps.filter((a) => a.status === 'pending').length;
+      if (pendingCount >= 50) {
+        return fail('当前待审核友链申请较多，请稍后再试', 429);
+      }
+
       try {
+        recordFailure(ipKey, 10 * 60 * 1000);
         const application = createLinkApplication({
           owner,
           name,
@@ -254,7 +275,11 @@ export async function handleApi(context: APIContext): Promise<Response | null> {
 
   // /api/settings[/key]
   if (parts[0] === 'settings') {
-    if (method === 'GET' && parts.length === 1) return json({ settings: getSettings() });
+    if (method === 'GET' && parts.length === 1) {
+      const auth = getAuth(context);
+      if (!auth) return fail('未登录', 401);
+      return json({ settings: getSettings() });
+    }
     if (method === 'PUT' && parts.length === 2) {
       const denied = requireCsrf(context);
       if (denied) return denied;
@@ -300,14 +325,14 @@ async function login(context: APIContext): Promise<Response> {
 
   if (!username || !password) return fail('请输入账号和密码', 400);
 
-  const key = `${context.clientAddress || 'unknown'}:${username}`;
+  const key = `${getClientIp(context)}:${username}`;
   if (isRateLimited(key)) return fail('尝试次数过多，请 10 分钟后再试', 429);
 
   const row = getDb()
     .prepare('SELECT id, username, password_hash FROM users WHERE username = ?')
     .get(username) as { id: number; username: string; password_hash: string } | undefined;
 
-  if (!row || !verifyPassword(password, row.password_hash)) {
+  if (!row || !(await verifyPasswordAsync(password, row.password_hash))) {
     recordFailure(key);
     return fail('账号或密码不对', 401);
   }
@@ -320,6 +345,9 @@ async function login(context: APIContext): Promise<Response> {
 
 async function logout(context: APIContext): Promise<Response> {
   const auth = getAuth(context);
+  if (auth && !hasValidCsrf(context, auth)) {
+    return fail('CSRF 校验失败', 403);
+  }
   const token = context.cookies.get(SESSION_COOKIE)?.value;
   if (token) destroySession(token);
   clearSessionCookie(context);
@@ -350,7 +378,7 @@ async function changeAccount(context: APIContext): Promise<Response> {
   if (newPassword && newPassword.length < 8) return fail('新密码至少 8 位', 400);
   if (newPassword.length > 200) return fail('新密码太长', 400);
 
-  const key = `account:${auth.user.id}:${context.clientAddress || 'unknown'}`;
+  const key = `account:${auth.user.id}:${getClientIp(context)}`;
   if (isRateLimited(key)) return fail('尝试次数过多，请 10 分钟后再试', 429);
 
   const db = getDb();
@@ -359,7 +387,7 @@ async function changeAccount(context: APIContext): Promise<Response> {
     .get(auth.user.id) as { id: number; username: string; password_hash: string } | undefined;
   if (!row) return fail('账号不存在', 404);
 
-  if (!verifyPassword(currentPassword, row.password_hash)) {
+  if (!(await verifyPasswordAsync(currentPassword, row.password_hash))) {
     recordFailure(key);
     return fail('当前密码不对', 400);
   }
@@ -376,7 +404,7 @@ async function changeAccount(context: APIContext): Promise<Response> {
     if (occupied) return fail('这个账号已被占用', 409);
   }
 
-  const passwordHash = passwordChanged ? hashPassword(newPassword) : row.password_hash;
+  const passwordHash = passwordChanged ? await hashPasswordAsync(newPassword) : row.password_hash;
 
   try {
     db.transaction(() => {

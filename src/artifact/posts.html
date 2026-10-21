@@ -115,7 +115,7 @@
             <span>POSTS TIMELINE SUBPAGE // 文章归档子页面 · 时间轴设计语言</span>
           </div>
           <div class="q-topbar-cell q-topbar-cell--center">
-            /posts/ · 主页 → 文章子页面（时间轴归档） → 文章详细页 三层架构
+            @@POSTS_TOPBAR_NOTE@@
           </div>
           <div class="q-topbar-cell q-topbar-cell--right">
             <span>TIMELINE AXIS: <strong class="telemetry-accent">@@AXIS_YEARS@@</strong> · @@AXIS_COUNT@@ ENTRIES</span>
@@ -125,10 +125,10 @@
         <!-- 文章子页首部概览区 -->
         <div class="posts-subpage-hero">
           <div class="posts-subpage-hero-left q-joint">
-            <span class="spot-kicker" style="margin:0;">LAYER 02 // CHRONICLE TIMELINE ARCHIVE</span>
-            <h1 class="posts-subpage-title">文章归档 · 时间轴纪事</h1>
+            <span class="spot-kicker" style="margin:0;">@@POSTS_HERO_KICKER@@</span>
+            <h1 class="posts-subpage-title">@@POSTS_HERO_TITLE@@</h1>
             <p class="posts-subpage-lead">
-              按时间从近及远排列的全部长短文字。沿左侧时间轴（年 → 月 → 日）展开归档，支持点击年份或月份节点平滑折叠/展开、按标签或关键词过滤；点击任意文章条目即可进入第三层「文章详细页」阅读全文。
+              @@POSTS_HERO_LEAD@@
             </p>
           </div>
 
@@ -158,7 +158,7 @@
               @@TAG_CHIPS@@
             </div>
           <div class="posts-tl-controls">
-            <input type="search" class="tl-search-input" id="tl-search-input" placeholder="检索标题 / 摘要 / 标签..." aria-label="检索时间轴文章" />
+            <input type="search" class="tl-search-input" id="tl-search-input" placeholder="@@POSTS_SEARCH_PLACEHOLDER@@" aria-label="检索时间轴文章" />
             <button type="button" class="stage-mini-btn" id="tl-expand-all-btn">展开全部</button>
             <button type="button" class="stage-mini-btn" id="tl-collapse-months-btn">折叠月份</button>
           </div>
@@ -206,10 +206,10 @@
                   <span>EXPLORE</span>
                 </div>
                 <p style="margin:0; font-size:0.95rem; line-height:1.6; color:var(--muted);">
-                  不知道先读哪一篇？可以随机抽选一篇归档文章直接进入详细页伴读视图：
+                  @@POSTS_RANDOM_TEXT@@
                 </p>
                 <button type="button" class="q-read-btn" id="tl-random-read-btn" style="width:100%; justify-content:center; margin-top:0.25rem;">
-                  <span>随机抽选一篇阅读</span>
+                  <span>@@POSTS_RANDOM_BTN@@</span>
                   <span aria-hidden="true">-&gt;</span>
                 </button>
               </div>

@@ -4,5 +4,5 @@
  */
 import schemaSql from '../../db/schema.sql?raw';
 
-export const SCHEMA_VERSION = 1;
+export const SCHEMA_VERSION = 2;
 export const SCHEMA_SQL = schemaSql;

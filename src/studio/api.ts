@@ -25,6 +25,9 @@ async function errorOf(res: Response): Promise<string> {
 }
 
 export class ApiGithub extends Github {
+  /** listDir 预取缓存：消除打开后台或保存时的 N+1 瀑布流请求 */
+  private readonly prefetchCache = new Map<string, RemoteFile>();
+
   constructor(private readonly csrf: string) {
     super('', { owner: 'local', repo: 'local', branch: 'main' });
   }
@@ -34,6 +37,11 @@ export class ApiGithub extends Github {
   }
 
   async getFile(path: string): Promise<RemoteFile | null> {
+    const cached = this.prefetchCache.get(path);
+    if (cached) {
+      this.prefetchCache.delete(path);
+      return cached;
+    }
     const res = await fetch(this.fsUrl(path), { headers: { 'X-CSRF-Token': this.csrf } });
     if (res.status === 404) return null;
     if (!res.ok) throw new Error(await errorOf(res));
@@ -58,8 +66,20 @@ export class ApiGithub extends Github {
     });
     if (res.status === 404) return [];
     if (!res.ok) throw new Error(await errorOf(res));
-    const data = (await res.json()) as { entries?: DirEntry[] };
-    return Array.isArray(data.entries) ? data.entries : [];
+    const data = (await res.json()) as {
+      entries?: Array<DirEntry & { text?: string }>;
+    };
+    const entries = Array.isArray(data.entries) ? data.entries : [];
+    for (const entry of entries) {
+      if (typeof entry.text === 'string') {
+        this.prefetchCache.set(entry.path, {
+          path: entry.path,
+          sha: entry.sha,
+          text: entry.text,
+        });
+      }
+    }
+    return entries.map(({ name, path, sha, type }) => ({ name, path, sha, type }));
   }
 
   async putText(
@@ -68,6 +88,7 @@ export class ApiGithub extends Github {
     commitMessage: string,
     sha?: string
   ): Promise<void> {
+    this.prefetchCache.delete(path);
     const res = await fetch(this.fsUrl(path), {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': this.csrf },
@@ -91,6 +112,7 @@ export class ApiGithub extends Github {
   }
 
   async deleteFile(path: string, sha: string, commitMessage: string): Promise<void> {
+    this.prefetchCache.delete(path);
     const res = await fetch(this.fsUrl(path), {
       method: 'DELETE',
       headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': this.csrf },

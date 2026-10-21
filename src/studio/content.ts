@@ -417,6 +417,7 @@ export async function saveSite(gh: Github, file: SiteFile): Promise<void> {
 export interface PreparedImage {
   bytes: Uint8Array;
   filename: string;
+  mime: string;
   width: number;
   height: number;
   originalBytes: number;
@@ -450,12 +451,26 @@ export async function prepareImage(file: File, maxEdge = 2560, quality = 0.88): 
   ctx.drawImage(bitmap, 0, 0, width, height);
   bitmap.close?.();
 
-  const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/jpeg', quality));
+  // PNG / WebP / GIF 优先编码为 WebP（若浏览器不支持 WebP 编码则回退 PNG），保留透明通道避免背景变黑
+  const keepAlpha =
+    /^image\/(png|webp|gif)$/i.test(file.type) || /\.(png|webp|gif)$/i.test(file.name);
+  let targetMime = keepAlpha ? 'image/webp' : 'image/jpeg';
+  let blob = await new Promise<Blob | null>((resolve) =>
+    canvas.toBlob(resolve, targetMime, quality)
+  );
+  if (keepAlpha && (!blob || blob.type !== 'image/webp')) {
+    targetMime = 'image/png';
+    blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/png'));
+  }
   if (!blob) throw new Error('图片压缩失败');
+  const actualMime = blob.type || targetMime;
+  const ext =
+    actualMime === 'image/webp' ? '.webp' : actualMime === 'image/png' ? '.png' : '.jpg';
   const bytes = new Uint8Array(await blob.arrayBuffer());
   return {
     bytes,
-    filename: `${safeFilename(file.name)}.jpg`,
+    filename: `${safeFilename(file.name)}${ext}`,
+    mime: actualMime,
     width,
     height,
     originalBytes: file.size,
@@ -468,12 +483,14 @@ export async function uploadPhoto(
   datePrefix: string,
   existing: string[]
 ): Promise<string> {
+  const ext = /\.[a-z0-9]+$/i.exec(prepared.filename)?.[0] ?? '.jpg';
+  const extRe = new RegExp(`${ext.replace('.', '\\.')}$`, 'i');
   const base = datePrefix ? `${datePrefix}-${prepared.filename}` : prepared.filename;
   let name = base;
   let n = 1;
   while (existing.includes(name)) {
     n += 1;
-    name = base.replace(/\.jpg$/, `-${n}.jpg`);
+    name = base.replace(extRe, `-${n}${ext}`);
   }
   await gh.putBinary(`${DIRS.photos}/${name}`, prepared.bytes, `content: 上传照片 ${name}`);
   return name;
@@ -507,13 +524,14 @@ export async function uploadPostAsset(
 ): Promise<string> {
   const safeSlug = safeFilename(postSlug || 'post');
   const folder = safeSlug && safeSlug !== '.' && safeSlug !== '..' ? safeSlug : 'post';
+  const ext = /\.[a-z0-9]+$/i.exec(prepared.filename)?.[0] ?? '.jpg';
   const existingNames = new Set(existing.map(postAssetName));
   let n = 1;
-  let name = `${folder}-${String(n).padStart(2, '0')}.jpg`;
+  let name = `${folder}-${String(n).padStart(2, '0')}${ext}`;
   // 同时避开旧版扁平文件名与新版归档目录里的同名文件
   while (existingNames.has(`${folder}/${name}`) || existingNames.has(name)) {
     n += 1;
-    name = `${folder}-${String(n).padStart(2, '0')}.jpg`;
+    name = `${folder}-${String(n).padStart(2, '0')}${ext}`;
   }
   await gh.putBinary(`${DIRS.postAssets}/${folder}/${name}`, prepared.bytes, `content: 上传文章配图 ${folder}/${name}`);
   return `../../assets/posts/${folder}/${name}`;

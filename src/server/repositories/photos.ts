@@ -240,20 +240,22 @@ function writePhotos(wallId: number, photos: PhotoInput[]): void {
 
 export function createWall(input: WallInput): PhotoWall {
   const db = getDb();
-  const info = db
-    .prepare(
-      `INSERT INTO photo_walls (slug, title, date, place, note, sort_order)
-       VALUES (@slug, @title, @date, @place, @note, @sortOrder)`
-    )
-    .run({
-      slug: input.slug,
-      title: input.title,
-      date: input.date ?? null,
-      place: input.place ?? '',
-      note: input.note ?? '',
-      sortOrder: input.sortOrder ?? 0,
-    });
-  writePhotos(Number(info.lastInsertRowid), input.photos);
+  db.transaction(() => {
+    const info = db
+      .prepare(
+        `INSERT INTO photo_walls (slug, title, date, place, note, sort_order)
+         VALUES (@slug, @title, @date, @place, @note, @sortOrder)`
+      )
+      .run({
+        slug: input.slug,
+        title: input.title,
+        date: input.date ?? null,
+        place: input.place ?? '',
+        note: input.note ?? '',
+        sortOrder: input.sortOrder ?? 0,
+      });
+    writePhotos(Number(info.lastInsertRowid), input.photos);
+  })();
   return getWallBySlug(input.slug)!;
 }
 
@@ -277,19 +279,28 @@ export function updateWall(
     note: input.note ?? current.note,
     sortOrder: input.sortOrder ?? current.sort_order,
   };
-  db.prepare(
-    `UPDATE photo_walls SET slug = @slug, title = @title, date = @date, place = @place,
-      note = @note, sort_order = @sortOrder, version = version + 1,
-      updated_at = datetime('now') WHERE id = @id`
-  ).run({ ...next, id });
-  if (input.photos) writePhotos(id, input.photos);
+  const updated = db.transaction(() => {
+    const info = db
+      .prepare(
+        `UPDATE photo_walls SET slug = @slug, title = @title, date = @date, place = @place,
+          note = @note, sort_order = @sortOrder, version = version + 1,
+          updated_at = datetime('now')
+         WHERE id = @id AND version = @expectedVersion`
+      )
+      .run({ ...next, id, expectedVersion: current.version });
+    if (info.changes === 0) return false;
+    if (input.photos) writePhotos(id, input.photos);
+    return true;
+  })();
+  if (!updated) return null;
   return getWallBySlug(next.slug);
 }
 
 export function deleteWall(id: number): boolean {
-  // photos 有 ON DELETE CASCADE，但显式删更保险（foreign_keys 已开）
   const db = getDb();
-  db.prepare('DELETE FROM photos WHERE wall_id = ?').run(id);
-  const info = db.prepare('DELETE FROM photo_walls WHERE id = ?').run(id);
-  return info.changes > 0;
+  return db.transaction(() => {
+    db.prepare('DELETE FROM photos WHERE wall_id = ?').run(id);
+    const info = db.prepare('DELETE FROM photo_walls WHERE id = ?').run(id);
+    return info.changes > 0;
+  })();
 }

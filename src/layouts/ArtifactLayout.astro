@@ -11,19 +11,23 @@
  * 所以这两页自己写 <html><head><body>（照 src/pages/studio.astro 的先例），
  * 只加载 artifact 自己的 CSS/JS；站内其它页面继续用 BaseLayout，互不影响。
  *
- * 【CSS/JS 为什么用 ?raw + is:inline】
- * · 前言区直接 import '.js' 会在**构建期**执行，那时没有 document；
- * · 普通 import CSS 会走 Vite 打包，可能被拆块/加 scope；
- * · ?raw 拿到原字符串，is:inline 原样吐进 <style>/<script>，一个字节都不改。
- * 脚本放在 <slot /> 之后，保证所有元素都已存在。
+ * 【CSS/JS 外链缓存优化】
+ * 通过内容 SHA-1 指纹引用 `/artifact/artifact.css?v=<hash>` 与 `/artifact/artifact.js?v=<hash>`：
+ * · 样式与脚本字节内容完全不经过 Vite 改写（一个字节都不改）；
+ * · `<script is:inline src=...>` 放在 `<slot />` 之后、无 async/defer，保证与原先内联脚本完全相同的同步执行顺序；
+ * · 浏览器跨页面跳转可直接命中长效缓存，避免每次打开页面重复下载 ~300 KB 的内联 CSS/JS。
  */
 
+import { createHash } from 'node:crypto';
 import css from '../artifact/artifact.css?raw';
 import js from '../artifact/artifact.js?raw';
 import homeSnap from '../artifact/home-snap.js?raw';
 import { faviconInfo, getSiteConfig } from '../server/site';
 import { cjkSpacing } from '../utils/typography';
 import { THEME_BOOT } from '../utils/theme';
+
+const cssHash = createHash('sha1').update(css).digest('hex').slice(0, 10);
+const jsHash = createHash('sha1').update(js).digest('hex').slice(0, 10);
 
 interface Props {
   title?: string;
@@ -80,15 +84,15 @@ const canonical = new URL(Astro.url.pathname, Astro.site);
     -->
     <script is:inline set:html={THEME_BOOT}></script>
 
-    <!-- artifact 的全部样式，原样内联 -->
-    <style is:inline set:html={css}></style>
+    <!-- artifact 的全部样式，带内容指纹外链缓存 -->
+    <link rel="stylesheet" href={`/artifact/artifact.css?v=${cssHash}`} />
   </head>
 
   <body class={bodyClass} data-page={page} data-scale="ultrawide">
     <slot />
 
-    <!-- artifact 的全部行为，原样内联；放在 slot 之后，元素都在 -->
-    <script is:inline set:html={js}></script>
+    <!-- artifact 的全部行为，放在 slot 之后同步执行，保证元素与全局变量均已就绪 -->
+    <script is:inline src={`/artifact/artifact.js?v=${jsHash}`}></script>
 
     <!-- 主页的滚动吸附（站点自己的行为，不写回 artifact 生成物） -->
     {page === 'home' && <script is:inline set:html={homeSnap}></script>}

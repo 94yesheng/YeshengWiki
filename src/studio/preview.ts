@@ -192,6 +192,7 @@ function buildFullArticlePreviewDoc(input: PreviewInput, theme: 'light' | 'dark'
     chars,
     minutes,
     tagText,
+    tags,
     railMode: input.railMode,
     railSpecs: input.railSpecs,
     railConfig: input.railConfig,
@@ -237,7 +238,7 @@ function buildFullArticlePreviewDoc(input: PreviewInput, theme: 'light' | 'dark'
   for (const [key, value] of Object.entries(slots)) {
     bodyInner = bodyInner.split(`@@${key}@@`).join(value);
   }
-  bodyInner = bodyInner.replace('@@PROSE@@', proseHtml);
+  bodyInner = bodyInner.split('@@PROSE@@').join(proseHtml);
 
   if (globalRail.threeBody?.eraBadge) {
     bodyInner = bodyInner.replace(

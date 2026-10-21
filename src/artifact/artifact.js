@@ -98,6 +98,10 @@
   var loaderActive = false;
 
   function runInfinityLoader(durationMs) {
+    if (window.__YeshengLoader && typeof window.__YeshengLoader.runInfinityLoader === "function") {
+      window.__YeshengLoader.runInfinityLoader({ durationMs: durationMs || 1050, replay: true });
+      return;
+    }
     if (!loaderEl) return;
     cancelAnimationFrame(loaderAnimId);
     loaderEl.dataset.loaded = 'false';
@@ -286,6 +290,10 @@
   var transAnimId = 0;
 
   function playThemeTransition(targetTheme, onPeakCoverage) {
+    if (window.__YeshengTheme && typeof window.__YeshengTheme.playThemeTransition === "function") {
+      window.__YeshengTheme.playThemeTransition(targetTheme, onPeakCoverage);
+      return;
+    }
     if (!transStage || !transCanvas) {
       if (typeof onPeakCoverage === 'function') onPeakCoverage();
       return;
@@ -2974,8 +2982,38 @@
      主渲染循环
      ---------------------------------------------------------------------- */
   var lastTs = performance.now();
+  var heroCanvasInView = true;
+  var articleCanvasInView = true;
+
+  if (typeof IntersectionObserver === 'function') {
+    var canvasObserver = new IntersectionObserver(
+      function (entries) {
+        for (var i = 0; i < entries.length; i++) {
+          var entry = entries[i];
+          if (entry.target === stageCanvas) heroCanvasInView = entry.isIntersecting;
+          else if (entry.target === articleCanvas) articleCanvasInView = entry.isIntersecting;
+        }
+      },
+      { threshold: 0.01 }
+    );
+    if (stageCanvas) canvasObserver.observe(stageCanvas);
+    if (articleCanvas) canvasObserver.observe(articleCanvas);
+  }
 
   function renderFrame(now) {
+    if (document.hidden) {
+      lastTs = now;
+      requestAnimationFrame(renderFrame);
+      return;
+    }
+    var activeHomeCanvas = state.view === 'home' && stageCanvas && stageCanvas.width >= 10 && heroCanvasInView;
+    var activeArticleCanvas = state.view === 'article' && articleCanvas && articleCanvas.width >= 10 && articleCanvasInView;
+    if (!activeHomeCanvas && !activeArticleCanvas) {
+      lastTs = now;
+      requestAnimationFrame(renderFrame);
+      return;
+    }
+
     var dt = Math.min(0.05, (now - lastTs) / 1000);
     lastTs = now;
     state.time += dt * state.speed;
@@ -3277,6 +3315,9 @@
      需求 8：主页「友链申请」流畅悬浮窗与提交逻辑
      ======================================================================== */
   function ensureFriendLinkApplyModal() {
+    if (window.__YeshengFriendLinks && typeof window.__YeshengFriendLinks.ensureFriendLinkApplyModal === "function") {
+      return window.__YeshengFriendLinks.ensureFriendLinkApplyModal();
+    }
     var existing = document.getElementById('link-apply-modal');
     if (existing) return existing;
 
@@ -3500,6 +3541,9 @@
   }
 
   function parseAudioTagBuffer(buf) {
+    if (window.__YeshengAudioMeta && typeof window.__YeshengAudioMeta.parseAudioTagBuffer === "function") {
+      return window.__YeshengAudioMeta.parseAudioTagBuffer(buf);
+    }
     var out = {};
     if (!buf || buf.length < 10) return out;
     // ID3v2

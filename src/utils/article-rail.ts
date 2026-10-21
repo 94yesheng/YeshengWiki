@@ -88,6 +88,7 @@ export interface RenderRailInput {
   chars: number;
   minutes: number;
   tagText: string;
+  tags?: string[];
   railMode?: string | null;
   railSpecs?: RailKvItem[] | null;
   railConfig?: Record<string, unknown> | null;
@@ -558,7 +559,26 @@ export function renderArticleRailSlots(input: RenderRailInput): {
       : relCfg.enabled !== false;
 
   const maxRelated = Math.max(1, Math.min(8, Number(relCfg.maxCount ?? 4)));
-  const related = (input.relatedPosts ?? []).filter((p) => p.slug !== input.slug).slice(0, maxRelated);
+  const currentTags = new Set(
+    (input.tags && input.tags.length
+      ? input.tags
+      : input.tagText && input.tagText !== '未分类'
+        ? input.tagText.split(' · ')
+        : []
+    )
+      .map((t) => t.trim())
+      .filter(Boolean)
+  );
+  const candidates = (input.relatedPosts ?? []).filter((p) => p.slug !== input.slug);
+  const related = (
+    currentTags.size > 0
+      ? [...candidates].sort((a, b) => {
+          const scoreA = (a.tags ?? []).reduce((n, t) => n + (currentTags.has(t) ? 1 : 0), 0);
+          const scoreB = (b.tags ?? []).reduce((n, t) => n + (currentTags.has(t) ? 1 : 0), 0);
+          return scoreB - scoreA;
+        })
+      : candidates
+  ).slice(0, maxRelated);
   const relatedKicker = relCfg.kicker || 'ARCHIVE // 同系列文章切换';
   const totalCount = input.totalPostsCount ?? (related.length + 1);
   const relatedBadge = relCfg.badge || `${totalCount} ENTRIES`;

@@ -143,6 +143,12 @@ const slots: Record<string, string> = {
     : `<p class="tl-empty-state" style="grid-column: 1 / -1">${esc(c('photos.empty'))}</p>`,
   FILMSTRIP: filmstrip,
   PHOTO_SCROLL_LABEL: `${esc(c('photos.scrollLabel'))} (${photos.length} 张)`,
+  PHOTOS_TOPBAR_TITLE: esc(c('photos.topbarTitle')),
+  PHOTOS_TOPBAR_NOTE: esc(c('photos.topbarNote')),
+  PHOTOS_SPEC_TITLE: esc(c('photos.specTitle')),
+  PHOTOS_FILMSTRIP_TITLE: esc(c('photos.filmstripTitle')),
+  PHOTOS_HIST_TITLE: esc(c('photos.histTitle')),
+  PHOTOS_GRID_HINT: esc(c('photos.gridHint')),
 };
 
 let html = photosTpl;

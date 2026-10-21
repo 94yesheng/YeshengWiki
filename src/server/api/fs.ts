@@ -3,7 +3,7 @@
  * 但底层改为 SQLite + uploads。
  *
  * 映射：
- *   src/content/posts/<slug>.md      → posts.raw_markdown
+ *   src/content/posts/<slug>.md      → posts (结构化列 + body_markdown)
  *   src/content/photos/<slug>.json   → photo_walls + photos
  *   src/content/links.json           → links
  *   src/site.data.json               → site_settings
@@ -15,7 +15,7 @@
  *   src/assets/audio/<slug>/<file>   → uploads/audio/<slug>/<file>   （按文章归档音频）
  */
 import { createHash } from 'node:crypto';
-import { readFile, readdir, unlink, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, readdir, stat, unlink, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import type { APIContext } from 'astro';
 import { getAuth, hasValidCsrf } from '../auth';
@@ -50,6 +50,8 @@ interface FsEntry {
   path: string;
   sha: string;
   type: 'file';
+  /** listDir 时附带文本内容，消除客户端 N+1 瀑布流请求 */
+  text?: string;
 }
 
 export async function handleFs(context: APIContext): Promise<Response> {
@@ -108,6 +110,7 @@ async function listDir(dir: string): Promise<Response> {
       path: `src/content/posts/${post.slug}.md`,
       sha: String(post.version),
       type: 'file',
+      text: buildPostMarkdown(post),
     }));
     return json({ entries });
   }
@@ -118,6 +121,7 @@ async function listDir(dir: string): Promise<Response> {
       path: `src/content/photos/${wall.slug}.json`,
       sha: String(wall.version),
       type: 'file',
+      text: JSON.stringify(wallToJson(wall), null, 2) + '\n',
     }));
     return json({ entries });
   }
@@ -130,6 +134,10 @@ async function listDir(dir: string): Promise<Response> {
   return fail('目录不存在', 404);
 }
 
+/**
+ * 列出上传目录中的资源：
+ * 使用文件 stat（size + mtimeMs）生成轻量指纹，绝不在列目录时把所有图片/无损音频读入内存算 SHA-1。
+ */
 async function listAssets(kind: 'posts' | 'photos' | 'audio', dir: string): Promise<Response> {
   const root = path.join(uploadRoot(), kind);
   const entries: FsEntry[] = [];
@@ -151,13 +159,19 @@ async function listAssets(kind: 'posts' | 'photos' | 'audio', dir: string): Prom
       }
       // 符号链接等非常规条目直接跳过
       if (!item.isFile()) continue;
-      const bytes = await readFile(path.join(root, rel));
-      entries.push({
-        name: rel,
-        path: `${dir}/${rel}`,
-        sha: createHash('sha1').update(bytes).digest('hex'),
-        type: 'file',
-      });
+      try {
+        const info = await stat(path.join(root, rel));
+        entries.push({
+          name: rel,
+          path: `${dir}/${rel}`,
+          sha: createHash('sha1')
+            .update(`${rel}:${info.size}:${Math.trunc(info.mtimeMs)}`)
+            .digest('hex'),
+          type: 'file',
+        });
+      } catch {
+        // 忽略并发删除的文件
+      }
     }
   };
 
@@ -304,6 +318,25 @@ interface AssetTarget {
 
 const UNSAFE_SEGMENT = /[\\:*?"<>|\0]/;
 
+const ALLOWED_EXT_MIME: Record<string, string> = {
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.png': 'image/png',
+  '.webp': 'image/webp',
+  '.gif': 'image/gif',
+  '.avif': 'image/avif',
+  '.svg': 'image/svg+xml',
+  '.ico': 'image/x-icon',
+  '.mp3': 'audio/mpeg',
+  '.wav': 'audio/wav',
+  '.ogg': 'audio/ogg',
+  '.m4a': 'audio/mp4',
+  '.flac': 'audio/flac',
+  '.aac': 'audio/aac',
+  '.opus': 'audio/opus',
+  '.webm': 'audio/webm',
+};
+
 /** 资源路径的单个分段：拒绝 . / .. / 隐藏文件 / 盘符与反斜杠 */
 function safeAssetSegment(segment: string): boolean {
   if (!segment || segment === '.' || segment === '..') return false;
@@ -312,34 +345,108 @@ function safeAssetSegment(segment: string): boolean {
   return segment === path.basename(segment);
 }
 
-function mimeForAsset(name: string): string {
+function mimeForAsset(name: string): string | null {
   const ext = path.extname(name).toLowerCase();
-  if (ext === '.png') return 'image/png';
-  if (ext === '.webp') return 'image/webp';
-  if (ext === '.gif') return 'image/gif';
-  if (ext === '.avif') return 'image/avif';
-  if (ext === '.svg') return 'image/svg+xml';
-  if (ext === '.ico') return 'image/x-icon';
-  if (ext === '.mp3') return 'audio/mpeg';
-  if (ext === '.wav') return 'audio/wav';
-  if (ext === '.ogg') return 'audio/ogg';
-  if (ext === '.m4a') return 'audio/mp4';
-  if (ext === '.flac') return 'audio/flac';
-  if (ext === '.aac') return 'audio/aac';
-  if (ext === '.opus') return 'audio/opus';
-  if (ext === '.webm') return 'audio/webm';
-  return 'image/jpeg';
+  return ALLOWED_EXT_MIME[ext] ?? null;
+}
+
+/**
+ * 零依赖解析图片二进制头部：获取真实 MIME 与像素宽高（JPEG / PNG / GIF / WebP / SVG）。
+ */
+function inspectImageBuffer(
+  buf: Buffer,
+  ext: string
+): { mime: string | null; width: number | null; height: number | null } {
+  if (buf.length >= 24 && buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4e && buf[3] === 0x47) {
+    return {
+      mime: 'image/png',
+      width: buf.readUInt32BE(16),
+      height: buf.readUInt32BE(20),
+    };
+  }
+  if (buf.length >= 10 && buf.subarray(0, 3).toString('ascii') === 'GIF') {
+    return {
+      mime: 'image/gif',
+      width: buf.readUInt16LE(6),
+      height: buf.readUInt16LE(8),
+    };
+  }
+  if (buf.length >= 4 && buf[0] === 0xff && buf[1] === 0xd8) {
+    let i = 2;
+    let width: number | null = null;
+    let height: number | null = null;
+    while (i + 9 < buf.length) {
+      if (buf[i] !== 0xff) {
+        i += 1;
+        continue;
+      }
+      const marker = buf[i + 1]!;
+      if (marker === 0xff) {
+        i += 1;
+        continue;
+      }
+      const size = buf.readUInt16BE(i + 2);
+      const isSof = marker >= 0xc0 && marker <= 0xcf && ![0xc4, 0xc8, 0xcc].includes(marker);
+      if (isSof) {
+        height = buf.readUInt16BE(i + 5);
+        width = buf.readUInt16BE(i + 7);
+        break;
+      }
+      i += 2 + (size > 0 ? size : 2);
+    }
+    return { mime: 'image/jpeg', width, height };
+  }
+  if (
+    buf.length >= 30 &&
+    buf.subarray(0, 4).toString('ascii') === 'RIFF' &&
+    buf.subarray(8, 12).toString('ascii') === 'WEBP'
+  ) {
+    const chunk = buf.subarray(12, 16).toString('ascii');
+    let width: number | null = null;
+    let height: number | null = null;
+    if (chunk === 'VP8 ' && buf.length >= 30) {
+      width = buf.readUInt16LE(26) & 0x3fff;
+      height = buf.readUInt16LE(28) & 0x3fff;
+    } else if (chunk === 'VP8L' && buf.length >= 25) {
+      const b0 = buf[21]!;
+      const b1 = buf[22]!;
+      const b2 = buf[23]!;
+      const b3 = buf[24]!;
+      width = 1 + (((b1 & 0x3f) << 8) | b0);
+      height = 1 + (((b3 & 0x0f) << 10) | (b2 << 2) | ((b1 & 0xc0) >> 6));
+    } else if (chunk === 'VP8X' && buf.length >= 30) {
+      width = 1 + buf.readUIntLE(24, 3);
+      height = 1 + buf.readUIntLE(27, 3);
+    }
+    return { mime: 'image/webp', width, height };
+  }
+  if (ext === '.svg') {
+    const text = buf.subarray(0, 4096).toString('utf8');
+    const vb = /viewBox=["']\s*[-0-9.]+\s+[-0-9.]+\s+([0-9.]+)\s+([0-9.]+)/i.exec(text);
+    const wMatch = /\bwidth=["']([0-9.]+)(?:px)?["']/i.exec(text);
+    const hMatch = /\bheight=["']([0-9.]+)(?:px)?["']/i.exec(text);
+    const width = wMatch ? Math.round(Number(wMatch[1])) : vb ? Math.round(Number(vb[1])) : null;
+    const height = hMatch ? Math.round(Number(hMatch[1])) : vb ? Math.round(Number(vb[2])) : null;
+    return { mime: 'image/svg+xml', width: width || null, height: height || null };
+  }
+  return { mime: null, width: null, height: null };
+}
+
+/**
+ * 校验 SVG 文本安全性：禁止内嵌 <script>、javascript: 伪协议与 on* 事件处理器，防止存储型 XSS。
+ */
+function isUnsafeSvg(buf: Buffer): boolean {
+  const text = buf.toString('utf8');
+  if (!/<svg[\s>]/i.test(text)) return true;
+  if (/<script[\s>]/i.test(text)) return true;
+  if (/<foreignObject[\s>]/i.test(text)) return true;
+  if (/javascript\s*:/i.test(text)) return true;
+  if (/\bon[a-z]+\s*=/i.test(text)) return true;
+  return false;
 }
 
 /**
  * 虚拟资源路径 → uploads 下的真实文件。
- *
- * 支持写法（老文章继续可用）：
- *   src/assets/posts/<file>              旧版扁平资源 → uploads/posts/<file>
- *   src/assets/posts/<slug>/<file>       文章归档资源 → uploads/posts/<slug>/<file>
- *   src/assets/photos/<file>             照片墙资源   → uploads/photos/<file>
- *   src/assets/audio/<file>              音频库资源   → uploads/audio/<file>
- *   src/assets/audio/<slug>/<file>       文章归档音频 → uploads/audio/<slug>/<file>
  */
 function assetTarget(filePath: string): AssetTarget | null {
   const m = /^src\/assets\/(posts|photos|audio|site)\/([^/]+)(?:\/([^/]+))?$/.exec(filePath);
@@ -369,10 +476,14 @@ async function getBinary(filePath: string): Promise<Response> {
   if (!target) return fail('文件不存在', 404);
   try {
     const bytes = await readFile(target.file);
+    const info = await stat(target.file);
+    const sha = createHash('sha1')
+      .update(`${target.dir ? `${target.dir}/` : ''}${target.name}:${info.size}:${Math.trunc(info.mtimeMs)}`)
+      .digest('hex');
     return new Response(bytes, {
       headers: {
-        'Content-Type': mimeForAsset(target.name),
-        'X-File-Sha': createHash('sha1').update(bytes).digest('hex'),
+        'Content-Type': mimeForAsset(target.name) ?? 'application/octet-stream',
+        'X-File-Sha': sha,
         'Cache-Control': 'no-store',
       },
     });
@@ -385,6 +496,12 @@ async function putBinary(filePath: string, base64: string, sha?: string): Promis
   const target = assetTarget(filePath);
   if (!target) return fail('非法资源路径', 400);
 
+  const ext = path.extname(target.name).toLowerCase();
+  const extMime = mimeForAsset(target.name);
+  if (!extMime) {
+    return fail(`不支持的文件格式：${ext || '未知后缀'}`, 400);
+  }
+
   let bytes: Buffer;
   try {
     bytes = Buffer.from(base64, 'base64');
@@ -393,14 +510,27 @@ async function putBinary(filePath: string, base64: string, sha?: string): Promis
   }
   if (!bytes.length) return fail('空文件', 400);
 
+  if (ext === '.svg' && isUnsafeSvg(bytes)) {
+    return fail('SVG 文件包含不安全的脚本或事件属性，已拒绝上传', 400);
+  }
+
+  const inspected = inspectImageBuffer(bytes, ext);
   const dir = path.dirname(target.file);
-  await import('node:fs/promises').then((fs) => fs.mkdir(dir, { recursive: true }));
+  await mkdir(dir, { recursive: true });
 
   if (sha) {
     try {
-      const old = await readFile(target.file);
-      if (createHash('sha1').update(old).digest('hex') !== sha) {
-        return fail('文件已在别处被修改，请刷新后重试', 409);
+      const oldStat = await stat(target.file);
+      const rel = target.dir ? `${target.dir}/${target.name}` : target.name;
+      const statSha = createHash('sha1')
+        .update(`${rel}:${oldStat.size}:${Math.trunc(oldStat.mtimeMs)}`)
+        .digest('hex');
+      if (statSha !== sha) {
+        const oldBytes = await readFile(target.file);
+        const contentSha = createHash('sha1').update(oldBytes).digest('hex');
+        if (contentSha !== sha) {
+          return fail('文件已在别处被修改，请刷新后重试', 409);
+        }
       }
     } catch {
       // 新文件，忽略 sha
@@ -408,16 +538,28 @@ async function putBinary(filePath: string, base64: string, sha?: string): Promis
   }
 
   await writeFile(target.file, bytes);
-  const digest = createHash('sha1').update(bytes).digest('hex');
+  const newStat = await stat(target.file);
+  const rel = target.dir ? `${target.dir}/${target.name}` : target.name;
+  const digest = createHash('sha1')
+    .update(`${rel}:${newStat.size}:${Math.trunc(newStat.mtimeMs)}`)
+    .digest('hex');
+
   const db = getDb();
   db.prepare(
-    `INSERT INTO media (filename, path, mime, size)
-     VALUES (@name, @p, @mime, @size)
-     ON CONFLICT(path) DO UPDATE SET filename = excluded.filename, mime = excluded.mime, size = excluded.size`
+    `INSERT INTO media (filename, path, width, height, mime, size)
+     VALUES (@name, @p, @width, @height, @mime, @size)
+     ON CONFLICT(path) DO UPDATE SET
+       filename = excluded.filename,
+       width = COALESCE(excluded.width, media.width),
+       height = COALESCE(excluded.height, media.height),
+       mime = excluded.mime,
+       size = excluded.size`
   ).run({
     name: target.name,
     p: target.publicPath,
-    mime: mimeForAsset(target.name),
+    width: inspected.width,
+    height: inspected.height,
+    mime: inspected.mime ?? extMime,
     size: bytes.length,
   });
   return json({ ok: true, sha: digest, path: target.publicPath });

@@ -2,6 +2,7 @@
  * 文章数据访问层。所有 SQL 只在这里出现，页面/API 只拿类型化对象。
  */
 import { getDb } from '../db';
+import { synthesizePostMarkdown } from '../post-markdown';
 
 export interface RailSpec {
   label: string;
@@ -32,6 +33,16 @@ export interface Post {
   version: number;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface PostMeta {
+  id: number;
+  slug: string;
+  title: string;
+  pubDate: string;
+  updatedDate: string | null;
+  draft: boolean;
+  version: number;
 }
 
 export interface PostInput {
@@ -131,14 +142,55 @@ function mapRow(row: PostRow): Post {
   };
 }
 
+/**
+ * 列表查询：只截取 raw_markdown 前 1600 字符用于 frontmatter 校验，
+ * 避免每次渲染列表都把整站文章的第二份完整正文读入 Node 内存。
+ */
+const LIST_COLUMNS = `
+  id, slug, title, description, lead, body_markdown,
+  substr(raw_markdown, 1, 1600) AS raw_markdown,
+  cover, cover_caption, entry_badge, featured, draft, pub_date, updated_date,
+  kinetic_caption, rail_mode, rail_specs_json, rail_topology_json,
+  tags_json, auto_updated, version, created_at, updated_at
+`;
+
 export function listPosts(options: { includeDrafts?: boolean; tag?: string } = {}): Post[] {
   const db = getDb();
   const sql = options.includeDrafts
-    ? 'SELECT * FROM posts ORDER BY pub_date DESC, id DESC'
-    : 'SELECT * FROM posts WHERE draft = 0 ORDER BY pub_date DESC, id DESC';
+    ? `SELECT ${LIST_COLUMNS} FROM posts ORDER BY pub_date DESC, id DESC`
+    : `SELECT ${LIST_COLUMNS} FROM posts WHERE draft = 0 ORDER BY pub_date DESC, id DESC`;
   let posts = (db.prepare(sql).all() as PostRow[]).map(mapRow);
   if (options.tag) posts = posts.filter((p) => p.tags.includes(options.tag!));
   return posts;
+}
+
+/**
+ * 极简元数据列表（不加载正文 body_markdown 与 raw_markdown）：
+ * 供 Sitemap、后台目录列表等仅需路由与版本号的场景使用。
+ */
+export function listPostMeta(options: { includeDrafts?: boolean } = {}): PostMeta[] {
+  const db = getDb();
+  const sql = options.includeDrafts
+    ? 'SELECT id, slug, title, pub_date, updated_date, draft, version FROM posts ORDER BY pub_date DESC, id DESC'
+    : 'SELECT id, slug, title, pub_date, updated_date, draft, version FROM posts WHERE draft = 0 ORDER BY pub_date DESC, id DESC';
+  const rows = db.prepare(sql).all() as Array<{
+    id: number;
+    slug: string;
+    title: string;
+    pub_date: string;
+    updated_date: string | null;
+    draft: number;
+    version: number;
+  }>;
+  return rows.map((r) => ({
+    id: r.id,
+    slug: r.slug,
+    title: r.title,
+    pubDate: r.pub_date,
+    updatedDate: r.updated_date,
+    draft: r.draft === 1,
+    version: r.version,
+  }));
 }
 
 export function getPostBySlug(slug: string, includeDrafts = false): Post | null {
@@ -167,6 +219,9 @@ export function countPosts(includeDrafts = false): number {
 
 export function createPost(input: PostInput): Post {
   const db = getDb();
+  const rawMarkdown = input.rawMarkdown?.trim()
+    ? input.rawMarkdown
+    : synthesizePostMarkdown(input);
   const info = db
     .prepare(
       `INSERT INTO posts (
@@ -185,7 +240,7 @@ export function createPost(input: PostInput): Post {
       description: input.description ?? null,
       lead: input.lead ?? null,
       bodyMarkdown: input.bodyMarkdown,
-      rawMarkdown: input.rawMarkdown ?? input.bodyMarkdown,
+      rawMarkdown,
       cover: input.cover ?? null,
       coverCaption: input.coverCaption ?? null,
       entryBadge: input.entryBadge ?? null,
@@ -219,7 +274,6 @@ export function updatePost(
     description: input.description === undefined ? current.description : input.description,
     lead: input.lead === undefined ? current.lead : input.lead,
     bodyMarkdown: input.bodyMarkdown ?? current.bodyMarkdown,
-    rawMarkdown: input.rawMarkdown ?? current.rawMarkdown,
     cover: input.cover === undefined ? current.cover : input.cover,
     coverCaption: input.coverCaption === undefined ? current.coverCaption : input.coverCaption,
     entryBadge: input.entryBadge === undefined ? current.entryBadge : input.entryBadge,
@@ -235,6 +289,9 @@ export function updatePost(
     tags: input.tags ?? current.tags,
     autoUpdated: input.autoUpdated === undefined ? current.autoUpdated : input.autoUpdated,
   };
+  next.rawMarkdown = input.rawMarkdown?.trim()
+    ? input.rawMarkdown
+    : synthesizePostMarkdown(next);
 
   getDb()
     .prepare(
@@ -255,7 +312,7 @@ export function updatePost(
       description: next.description ?? null,
       lead: next.lead ?? null,
       bodyMarkdown: next.bodyMarkdown,
-      rawMarkdown: next.rawMarkdown ?? next.bodyMarkdown,
+      rawMarkdown: next.rawMarkdown,
       cover: next.cover ?? null,
       coverCaption: next.coverCaption ?? null,
       entryBadge: next.entryBadge ?? null,

@@ -1,5 +1,5 @@
 import type { APIRoute } from 'astro';
-import { listPosts } from '../server/repositories/posts';
+import { listPostMeta } from '../server/repositories/posts';
 
 export const prerender = false;
 
@@ -15,7 +15,7 @@ interface Entry {
 
 export const GET: APIRoute = ({ site }) => {
   const base = (site ?? new URL('https://www.yesheng.wiki')).origin;
-  const posts = listPosts();
+  const posts = listPostMeta();
 
   const entries: Entry[] = [
     { loc: '/', changefreq: 'daily', priority: '1.0' },

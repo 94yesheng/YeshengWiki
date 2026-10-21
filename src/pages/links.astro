@@ -3,12 +3,12 @@ export const prerender = false;
 
 import BaseLayout from '../layouts/BaseLayout.astro';
 import LinkCard from '../components/LinkCard.astro';
-import { site as staticSite, type SiteConfig } from '../site.config';
 import { copy, getPageValues } from '../server/pages';
+import { getSiteConfig } from '../server/site';
 import { getSetting } from '../server/repositories/settings';
 import { listLinks } from '../server/repositories/links';
 
-const site = getSetting<SiteConfig>('site', staticSite);
+const site = getSiteConfig();
 const links = listLinks()
   .filter((item) => item.id !== 'example' && !item.url.includes('example.com'))
   .sort((a, b) => a.name.localeCompare(b.name, 'zh-Hans-CN'));
@@ -39,11 +39,8 @@ const dossierChips = (Array.isArray(dossier.chips) ? dossier.chips : [])
   .filter(Boolean);
 const hasDossier = Boolean(dossier.title?.trim() || dossier.bio?.trim());
 
-const copyDoneJson = JSON.stringify(c('links.copyDone')).replace(/</g, '\\u003c');
 const siteBase = site.url.replace(/\/+$/, '');
-const cardInfoJson = JSON.stringify(
-  `站名：${site.title} | 网址：${siteBase} | 简介：${site.tagline} | RSS：${siteBase}/rss.xml`
-).replace(/</g, '\\u003c');
+const cardInfoText = `站名：${site.title} | 网址：${siteBase} | 简介：${site.tagline} | RSS：${siteBase}/rss.xml`;
 ---
 
 <BaseLayout masthead={false} title={c('links.title')} description={c('links.description')}>
@@ -133,7 +130,13 @@ const cardInfoJson = JSON.stringify(
           </dl>
         </div>
         <div class="site-card-actions">
-          <button type="button" class="action-btn" id="copy-site-card-btn">{c('links.copyBtn')}</button>
+          <button
+            type="button"
+            class="action-btn"
+            id="copy-site-card-btn"
+            data-card-info={cardInfoText}
+            data-copy-done={c('links.copyDone')}
+          >{c('links.copyBtn')}</button>
           <button type="button" class="action-btn" data-open-link-apply>＋ 申请友链</button>
           <a class="action-btn action-btn--secondary" href="/rss.xml">{c('links.rssBtn')}</a>
         </div>
@@ -226,118 +229,10 @@ const cardInfoJson = JSON.stringify(
     </div>
   </div>
 
-  <script
-    is:inline
-    set:html={`(() => {
-  const copyBtn = document.getElementById('copy-site-card-btn');
-  copyBtn?.addEventListener('click', () => {
-    const info = ${cardInfoJson};
-    navigator.clipboard?.writeText(info).catch(() => {});
-    const orig = copyBtn.textContent;
-    copyBtn.textContent = ${copyDoneJson};
-    setTimeout(() => {
-      copyBtn.textContent = orig;
-    }, 2200);
-  });
-
-  const modal = document.getElementById('link-apply-modal');
-  const form = document.getElementById('link-apply-form');
-  const statusEl = document.getElementById('link-apply-status');
-  const submitBtn = document.getElementById('link-apply-submit-btn');
-
-  function setModalOpen(open) {
-    if (!modal) return;
-    if (open) {
-      modal.dataset.open = 'true';
-      modal.setAttribute('aria-hidden', 'false');
-      if (statusEl) {
-        statusEl.textContent = '';
-        statusEl.removeAttribute('data-type');
-      }
-      setTimeout(() => {
-        const first = form?.querySelector('input[name="owner"]');
-        if (first) first.focus();
-      }, 60);
-    } else {
-      delete modal.dataset.open;
-      modal.setAttribute('aria-hidden', 'true');
-    }
-  }
-
-  document.querySelectorAll('[data-open-link-apply]').forEach((btn) => {
-    btn.addEventListener('click', () => setModalOpen(true));
-  });
-
-  document.querySelectorAll('[data-close-link-apply]').forEach((btn) => {
-    btn.addEventListener('click', () => setModalOpen(false));
-  });
-
-  modal?.addEventListener('click', (e) => {
-    if (e.target === modal) setModalOpen(false);
-  });
-
-  window.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && modal?.dataset.open === 'true') {
-      setModalOpen(false);
-    }
-  });
-
-  form?.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    if (!form || !submitBtn) return;
-    const fd = new FormData(form);
-    const payload = {
-      owner: String(fd.get('owner') || '').trim(),
-      name: String(fd.get('name') || '').trim(),
-      url: String(fd.get('url') || '').trim(),
-      tag: String(fd.get('tag') || '').trim(),
-      description: String(fd.get('description') || '').trim(),
-    };
-    if (!payload.owner || !payload.name || !payload.url || !payload.description) {
-      if (statusEl) {
-        statusEl.dataset.type = 'error';
-        statusEl.textContent = '请完整填写站长称呼、站点标题、站点链接与自我介绍。';
-      }
-      return;
-    }
-    if (!/^https?:\\/\\//i.test(payload.url)) {
-      payload.url = 'https://' + payload.url;
-    }
-
-    submitBtn.disabled = true;
-    const origText = submitBtn.textContent;
-    submitBtn.textContent = '正在提交…';
-    if (statusEl) {
-      statusEl.dataset.type = 'info';
-      statusEl.textContent = '正在向站点后台发送申请…';
-    }
-
-    try {
-      const res = await fetch('/api/links/apply', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error || '提交失败');
-      if (statusEl) {
-        statusEl.dataset.type = 'ok';
-        statusEl.textContent = '✓ 友链申请已成功提交！站长审核通过后将展示在友链列表中。';
-      }
-      form.reset();
-      setTimeout(() => setModalOpen(false), 1200);
-    } catch (err) {
-      if (statusEl) {
-        statusEl.dataset.type = 'error';
-        statusEl.textContent = (err && err.message) || '提交友链申请失败，请稍后重试。';
-      }
-    } finally {
-      submitBtn.disabled = false;
-      submitBtn.textContent = origText;
-    }
-  });
-})();`}
-  ></script>
+  <script>
+    import { initFriendLinksPage } from '../utils/friend-links';
+    initFriendLinksPage();
+  </script>
 </BaseLayout>
 
 <style>

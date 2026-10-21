@@ -48,6 +48,7 @@ function stripExtension(name: string): string {
 export function parseAudioMetadataFromFilename(raw: string): AudioMetadata {
   const base = stripExtension(basename(raw))
     .replace(/_/g, ' ')
+    .replace(/^\d{10,14}[-_\s]*/, '')
     .replace(/^\s*\d{1,3}\s*[.\-、]\s*/, '')
     .replace(/\s+/g, ' ')
     .trim();
@@ -109,7 +110,16 @@ function decodeText(bytes: Uint8Array, start: number, end: number, encoding: num
     }
     if (encoding === 2) return norm(new TextDecoder('utf-16be').decode(chunk).replace(/\u0000/g, ''));
     if (encoding === 3) return norm(new TextDecoder('utf-8').decode(chunk).replace(/\u0000/g, ''));
-    return norm(new TextDecoder('latin1').decode(chunk).replace(/\u0000/g, ''));
+    // encoding === 0 (ISO-8859-1 / 历史中文 MP3 常见的 UTF-8 或 GB18030 标签)
+    try {
+      return norm(new TextDecoder('utf-8', { fatal: true }).decode(chunk).replace(/\u0000/g, ''));
+    } catch {
+      try {
+        return norm(new TextDecoder('gb18030').decode(chunk).replace(/\u0000/g, ''));
+      } catch {
+        return norm(new TextDecoder('latin1').decode(chunk).replace(/\u0000/g, ''));
+      }
+    }
   } catch {
     return '';
   }
@@ -133,7 +143,7 @@ function parseId3v2(bytes: Uint8Array): AudioMetadata {
   const field = (id: string): 'title' | 'artist' | 'album' | null =>
     id === 'TIT2' || id === 'TT2'
       ? 'title'
-      : id === 'TPE1' || id === 'TP1'
+      : id === 'TPE1' || id === 'TPE2' || id === 'TP1'
         ? 'artist'
         : id === 'TALB' || id === 'TAL1'
           ? 'album'
@@ -155,7 +165,7 @@ function parseId3v2(bytes: Uint8Array): AudioMetadata {
 
     const dataStart = offset + headerLength;
     const key = field(id);
-    if (key && size > 1 && dataStart + size <= bytes.length) {
+    if (key && size > 1 && dataStart + size <= bytes.length && !out[key]) {
       const value = decodeText(bytes, dataStart + 1, dataStart + size, bytes[dataStart]);
       if (value) out[key] = value;
     }
@@ -172,18 +182,8 @@ function parseId3v1(bytes: Uint8Array): AudioMetadata {
   const start = bytes.length - 128;
   if (readAscii(bytes, start, 3) !== 'TAG') return out;
 
-  const latin = (from: number, length: number): string => {
-    let text = '';
-    for (let i = 0; i < length; i += 1) {
-      const code = bytes[from + i];
-      if (!code) break;
-      text += String.fromCharCode(code);
-    }
-    return norm(text);
-  };
-
-  out.title = latin(start + 3, 30);
-  out.artist = latin(start + 33, 30);
+  out.title = decodeText(bytes, start + 3, start + 33, 0);
+  out.artist = decodeText(bytes, start + 33, start + 63, 0);
   return out;
 }
 
@@ -287,7 +287,7 @@ function sniff(bytes: Uint8Array, nameHint: string): AudioMetadata {
   const head = readAscii(bytes, 0, 4);
   const ext = (nameHint.match(/\.([a-z0-9]+)$/i)?.[1] ?? '').toLowerCase();
 
-  if (head === 'ID3') return parseId3v2(bytes);
+  if (head.startsWith('ID3')) return parseId3v2(bytes);
   if (head === 'fLaC' || ext === 'flac') return parseFlac(bytes);
   if (ext === 'm4a' || ext === 'mp4' || readAscii(bytes, 4, 4) === 'ftyp') return parseMp4(bytes);
 
@@ -299,6 +299,14 @@ function sniff(bytes: Uint8Array, nameHint: string): AudioMetadata {
 /* -------------------------------------------------------------------------- */
 /* 对外接口                                                                    */
 /* -------------------------------------------------------------------------- */
+
+export function parseAudioTagBuffer(
+  buffer: ArrayBuffer | Uint8Array,
+  nameHint = ''
+): AudioMetadata {
+  const bytes = buffer instanceof Uint8Array ? buffer : new Uint8Array(buffer);
+  return sniff(bytes, nameHint);
+}
 
 export async function extractAudioMetadataFromFile(file: File): Promise<AudioMetadata> {
   const guess = parseAudioMetadataFromFilename(file?.name ?? '');
@@ -324,7 +332,10 @@ export async function extractAudioMetadataFromUrl(
   const target = String(url ?? '').trim();
   if (!target || typeof fetch !== 'function') return guess;
   try {
-    const response = await fetch(target);
+    const response = await fetch(target, {
+      credentials: 'same-origin',
+      headers: { Range: 'bytes=0-65535' },
+    });
     if (!response.ok) return guess;
     const buffer = await response.arrayBuffer();
     const parsed = sniff(new Uint8Array(buffer), filename || target);
@@ -336,4 +347,13 @@ export async function extractAudioMetadataFromUrl(
   } catch {
     return guess;
   }
+}
+
+if (typeof window !== 'undefined') {
+  (window as unknown as Record<string, unknown>).__YeshengAudioMeta = {
+    parseAudioTagBuffer,
+    parseAudioMetadataFromFilename,
+    extractAudioMetadataFromFile,
+    extractAudioMetadataFromUrl,
+  };
 }

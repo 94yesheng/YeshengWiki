@@ -97,6 +97,19 @@ CREATE TABLE IF NOT EXISTS links (
   sort_order  INTEGER NOT NULL DEFAULT 0
 );
 
+CREATE TABLE IF NOT EXISTS link_applications (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  owner       TEXT NOT NULL,
+  name        TEXT NOT NULL,
+  url         TEXT NOT NULL,
+  description TEXT NOT NULL DEFAULT '',
+  avatar      TEXT,
+  tag         TEXT,
+  status      TEXT NOT NULL DEFAULT 'pending',
+  created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS link_applications_status_idx ON link_applications(status, id DESC);
+
 CREATE TABLE IF NOT EXISTS site_settings (
   key        TEXT PRIMARY KEY,
   value_json TEXT NOT NULL,

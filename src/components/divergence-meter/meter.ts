@@ -139,3 +139,9 @@ export function initDivergenceMeters(scope: ParentNode = document): void {
     io.observe(meter);
   }
 }
+
+if (typeof window !== "undefined") {
+  (window as unknown as Record<string, unknown>).__YeshengDivergenceMeter = {
+    initDivergenceMeters,
+  };
+}
