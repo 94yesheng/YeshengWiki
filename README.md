@@ -12,9 +12,11 @@
 > - **域名已切换**：`www.yesheng.wiki` 与 `yesheng.wiki` 都指向本机，HTTP 自动 301 到
 >   HTTPS（Let's Encrypt 证书，certbot 自动续期）。
 > - 生产库里目前是 **18 篇文章（5 公开 / 13 草稿）**、1 条友链、1 面照片墙（6 张照片）、
->   63 条媒体记录、7 个设置块。
+>   64 条媒体记录、7 个设置块。
 > - 2026-10-21 起以「星场后台 / 纸墨页脚方案三 / 无封面静态印章」这一版为正式版；
 >   内容与设置一律以服务器数据库为准，代码部署不会覆盖数据。
+> - 2026-10-21：旧 WordPress 链接（`?p=ID`、中文百分号 slug、`?page_id=ID`）改由应用层 301 到新地址；
+>   根目录误提交的 PNG 与 9 个不再引用的旧内容组件已清理。
 > - 设计与实现细节见 [docs/dynamic-refactor.md](docs/dynamic-refactor.md)。
 
 ---
@@ -103,6 +105,7 @@ D:\blog\
 │   │   ├── auth.ts         # scrypt、会话、CSRF、登录限流
 │   │   ├── bootstrap.ts    # 启动时建库/迁移/播种管理员
 │   │   ├── site.ts         # getSiteConfig() / applyArtifactSite()：站点设置 → 页面
+│   │   ├── legacy-redirects.ts/json # 旧 WordPress 链接 → 新地址 301（唯一映射表）
 │   │   ├── uploads.ts      # 本地 /uploads 兜底（生产由 Nginx 直发）
 │   │   ├── markdown.ts / post-markdown.ts
 │   │   ├── api/{router,fs,http}.ts
@@ -144,6 +147,7 @@ D:\blog\
 | `/sitemap.xml` `/sitemap-index.xml` | `src/pages/sitemap*.ts` | — | 动态生成，排除 `/studio*` |
 | `/uploads/*` | Nginx alias（本地走 middleware） | — | 上传目录（web root 之外） |
 | `/admin/*` | — | — | **已退役**：Nginx 301 → `/studio/`，文件也已删除 |
+| 旧 WordPress 链接 | `src/server/legacy-redirects.ts` | — | `?p=ID` / 中文百分号 slug / `?page_id=ID` → 301 到新地址（middleware 在路由前处理） |
 
 - 全站页面都是 **SSR**：请求时读 SQLite，保存后刷新即可见。
 - `/studio/`、`/studio-v2/` 都带 `noindex`，且被 sitemap 排除。
@@ -151,6 +155,8 @@ D:\blog\
   列表筛选、灯箱、滚动吸附仍由 `src/artifact/artifact.js` 负责。
 - 主页「程序」「友链」两屏同样改为服务端注入（`site_settings.programs`、`links`、
   `site_settings.authorDossier`），数据为空时显示空态；`artifact.js` 不再内置旧文章正文与旧照片数据。
+- 旧链接 301 在 `src/middleware.ts` 里、路由之前处理；映射表是 `src/server/legacy-redirects.json`，
+  只做精确匹配（`?p=ID` / 完整旧 slug / `?page_id=ID`），未知 ID 不跳转，保留原来的 404 / 首页行为。
 
 ---
 
@@ -288,6 +294,7 @@ Schema 唯一来源是 [db/schema.sql](db/schema.sql)（`src/server/schema.ts` �
 | 换浏览器标签小图标（favicon） | /studio/ → **设置** → 01 BRAND & SEO → 「站点图标」：从本地上传（SVG/PNG/ICO/WebP）或从媒体库选择，保存后刷新页面 |
 | 加友链 | `/studio/` 友链板块（生产已有 1 条：云鹿庐） |
 | 从 WordPress 导入旧数据 | `node scripts/import-wordpress.mjs --export .work/wp-export --db <库> --uploads <上传目录>`；先加 `--dry-run` 看清单。正文图片落到 `uploads/posts/<slug>/`，草稿 / 私密统一按 `draft` 入库 |
+| 加旧链接 301 | 改 `src/server/legacy-redirects.json`（唯一映射表，导入脚本也读它），部署后生效 |
 | 改站名 / 导航 / 自我介绍 | `/studio/` → 站点设置（写 `site_settings.site`）；关于「我」的档案卡在「设置 → 03」 |
 | 改子页文案（标题 / 导语 / 空态 / 统计） | `/studio/` → **页面** → 选对应子页（主页 / 文章 / 相册 / 项目 / 友链）；74 个字段，只有改过的字段会写库，默认值就是现状 |
 | 改纸墨配色 / 字号 | `src/styles/tokens.css`（注意楷体 ≥20px） |
@@ -308,22 +315,37 @@ Schema 唯一来源是 [db/schema.sql](db/schema.sql)（`src/server/schema.ts` �
 - 域名绑定与 HTTPS（Let's Encrypt + certbot 自动续期，2026-10-20）。
 - 后台演示模式移除；`/studio/` 只剩真实写库模式。
 - 2026-10-21：采用新一版视觉（星场登录页、页脚方案三、无封面静态印章、音频媒体库）。
+- 2026-10-21：旧链接 301（`?p=ID` / 中文百分号 slug / `?page_id=ID` / 旧 feed 与 sitemap），
+  实现在 middleware（应用层，部署即生效），映射表 `src/server/legacy-redirects.json`。
+- 2026-10-21：删除根目录误提交的 PNG `2`（当前树已移除，历史记录仍在 Git 里）；
+  清理 9 个不再引用的旧内容组件与 2 个配套 utils。
+- 2026-10-21：README / CLAUDE / AGENTS 与现状对齐（占位符路径、媒体数、设置块、链接映射）。
 
 **待办**
 
-1. **旧链接 301**：旧站是 `?p=ID` / 中文百分号 slug，新站是英文 slug，切换域名后旧链会 404；
-   需要保留收录时在 Nginx 层加映射。
-2. **`/programs/` 仍是空态**：等你在后台补内容。
-3. **统计 / 评论**：未做（现在有服务端，可另选方案）。
-4. **根目录误提交文件 `2`**：一个 31 KB 的 PNG，被误当源码提交进 Git，应删除。
-5. **旧内容组件**：`SectionEntry` / `SectionPosts` / `SectionPhotos` / `SectionHead` /
-   `PhotoWall` / `Timeline` / `TimelineWall` / `TimelinePost` / `TagChips` 已不再被引用，可清理。
-6. **`README/CLAUDE` 同步**：后续改动记得一起改。
+1. **`/programs/` 空态**：正常状态，不是 bug。内容由站长在 `/studio/` 的「项目」板块补；
+   空态标题 / 说明 / 按钮可在「页面 → 项目」里改。
+2. **统计 / 评论**：暂缓（2026-10-21 评估过三条路线，见下表），等有流量或互动需求再做。
+3. **`README/CLAUDE` 同步**：以后改架构 / 路由 / 部署，记得在同一提交里一起改。
+
+**统计与评论的备选方案（暂缓）**
+
+| 方案 | 统计 | 评论 | 取舍 |
+|---|---|---|---|
+| A · 全自建 | 新表 `page_views(path, day, count)`，middleware 只对 GET 的 HTML 计数（不存 IP） | 新表 `comments` + 公开提交 + `/studio/` 审核 | 数据全在自己的 SQLite；代码量最大，要处理垃圾评论、限流、通知 |
+| B · 混合 | 自建浏览量 | Giscus（GitHub Discussions） | 评论依赖 GitHub 账号；不用维护另一套后端 |
+| C · 第三方 | Umami / Plausible（自托管或云） | Waline / Twikoo（要独立服务） | 少写代码；多一个要守护或付费的服务，数据不在本站库里 |
+
+结论：现在优先 A（和「内容不进 Git、单文件 SQLite」一致）；选 B/C 时只加配置，不动数据层。
 
 **注意事项**
 
 - **只改 `src/` 与配置**；`dist/`、`dist-dynamic/`、`.astro/` 是生成物。
 - **内容不进 Git**：改数据走后台；备份靠每日自动备份（SQLite `.backup` + uploads tar + Nginx 配置）。
+- **旧链接映射放应用层**：部署脚本只推代码、不推 Nginx 配置，所以 301 写在 middleware；
+  要加映射只改 `src/server/legacy-redirects.json`，别再复制到 Nginx。
+- **文档不写真实基础设施**：服务器地址 / 目录用 `<SERVER_IP>`、`<APP_DIR>`、`<DATA_DIR>` 占位，
+  真实值只放在部署环境变量和服务器上的受保护文件里。
 - `.work/` 是本地验证脚手架与截图（`mock-github.mjs`、`page-shot.mjs`、`artifact-check.mjs`、
   `kai-audit.mjs`、`account-test.mjs`、`1panel-login-check.mjs` 等），不进仓库。
 - 构建后 HUD 页约 270–305 KB（图片已外置），Nginx 已开 gzip；可再上 brotli。

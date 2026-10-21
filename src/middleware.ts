@@ -3,6 +3,7 @@ import { bootstrap } from './server/bootstrap';
 import { handleApi } from './server/api/router';
 import { serveUpload } from './server/uploads';
 import { faviconInfo, getSiteConfig } from './server/site';
+import { legacyRedirectTarget } from './server/legacy-redirects';
 
 bootstrap();
 
@@ -11,6 +12,18 @@ export const onRequest = defineMiddleware(async (context, next) => {
   if (context.url.pathname === '/favicon.ico') {
     const fav = faviconInfo(getSiteConfig());
     if (fav.href !== '/favicon.svg') return context.redirect(fav.href, 302);
+  }
+
+  // 旧 WordPress 链接（?p=ID / 中文 percent-encoded slug / ?page_id=ID）→ 新站 301。
+  // 动手前先看 src/server/legacy-redirects.ts 的注释：只做精确匹配。
+  if (context.request.method === 'GET' || context.request.method === 'HEAD') {
+    const legacyTarget = legacyRedirectTarget(context.url);
+    if (legacyTarget) {
+      return new Response(null, {
+        status: 301,
+        headers: { Location: legacyTarget },
+      });
+    }
   }
 
   // /uploads/*：本地/staging 兜底；生产 Nginx 会直接服务

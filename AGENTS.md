@@ -4,7 +4,7 @@
 页面在请求时读库渲染；后台保存直接写库，**不需要构建或 commit**。内容数据不进 Git。
 
 - 生产：`<SERVER_IP>`，`blog.service`（127.0.0.1:4322）+ Nginx 反代；`www.yesheng.wiki` 已绑定并启用 HTTPS
-- 代码：`/srv/blog-app`；数据：`/srv/blog-data/{blog.db,uploads}`
+- 代码：`<APP_DIR>`；数据：`<DATA_DIR>/{blog.db,uploads}`（真实值只在环境变量与服务器受保护文件里）
 - 详见 [README.md](README.md)、[docs/dynamic-refactor.md](docs/dynamic-refactor.md)、
   [docs/cutover.md](docs/cutover.md)、[docs/1panel.md](docs/1panel.md)
 
@@ -43,6 +43,9 @@ powershell -File scripts\deploy-server.ps1                          # 部署生�
 - `src/artifact/*.html` 与 `artifact.js` 里有手工插入的 `@@占位符@@` 与服务端数据分支：
   **不要重跑 `npm run import:artifact`**，会覆盖。必须重跑时先备份，再重放 `.work/patch-*.mjs`。
 - 站点设置统一走 `src/server/site.ts`（`getSiteConfig()` / `applyArtifactSite()`），静态配置只做兜底。
+- 旧链接 301 的唯一映射表是 `src/server/legacy-redirects.json`（middleware 用它，`import-wordpress.mjs` 也读它）；
+  加旧链接只改这张表，**不要再复制一份到 Nginx**（部署脚本只推代码）。
+- `/programs/` 空态是正常状态（内容由站长在后台补，别自己造内容）；统计 / 评论暂缓，方案见 README 第 10 节。
 - 楷体 ≥20px（硬规则）；配色只改 `src/styles/tokens.css`。
 - 只改 `src/` 与配置；`dist*/`、`.astro/`、`.work/`、`data/` 都是生成物或本地数据，不进仓库。
 

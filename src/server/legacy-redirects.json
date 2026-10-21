@@ -1,0 +1,34 @@
+{
+  "//": "旧 WordPress 永久链接 → 新站路径。id 用于 /?p=<id> / /?page_id=<id>，legacySlugs 是导出数据里的旧 slug（百分号编码解码后的原文），用于 /<旧slug>/。改这里就同时改了 301 映射与 scripts/import-wordpress.mjs 的 slug 表。",
+  "posts": [
+    { "id": 38, "slug": "college-record", "legacySlugs": [] },
+    { "id": 40, "slug": "about-l", "legacySlugs": ["关于l"] },
+    { "id": 52, "slug": "drinking-culture", "legacySlugs": [] },
+    { "id": 57, "slug": "deepseek-wechat", "legacySlugs": ["关于将deepseek接入微信"] },
+    { "id": 184, "slug": "java-package-log", "legacySlugs": [] },
+    { "id": 186, "slug": "winter-note", "legacySlugs": [] },
+    { "id": 188, "slug": "random-thoughts", "legacySlugs": ["随想一则"] },
+    { "id": 196, "slug": "app-dev-log", "legacySlugs": [] },
+    { "id": 200, "slug": "year-2025", "legacySlugs": [] },
+    { "id": 203, "slug": "github-student-pack", "legacySlugs": [] },
+    { "id": 228, "slug": "blender", "legacySlugs": ["七天了解一件事-blender"] },
+    { "id": 258, "slug": "maptoposter", "legacySlugs": ["一键生成城市地图壁纸-maptoposter"] },
+    { "id": 297, "slug": "ji-bao", "legacySlugs": ["3月9日-忆鸡煲"] },
+    { "id": 309, "slug": "mc-server", "legacySlugs": ["如何快速零成本搭建一个mc小型服务器"] },
+    { "id": 343, "slug": "train-notes", "legacySlugs": [] },
+    { "id": 345, "slug": "deepseek-claude-code", "legacySlugs": [] },
+    { "id": 350, "slug": "weekly-260802", "legacySlugs": ["26-08-02"] },
+    { "id": 356, "slug": "weekly-260809", "legacySlugs": ["26-08-09"] },
+    { "id": 360, "slug": "weekly-260825", "legacySlugs": ["26-08-25"] }
+  ],
+  "pages": [
+    { "id": 167, "path": "/posts/", "legacySlugs": ["碎碎念"] },
+    { "id": 144, "path": "/links/", "legacySlugs": ["友链"] }
+  ],
+  "paths": {
+    "/feed/": "/rss.xml",
+    "/comments/feed/": "/rss.xml",
+    "/wp-sitemap.xml": "/sitemap-index.xml",
+    "/sitemap_index.xml": "/sitemap-index.xml"
+  }
+}

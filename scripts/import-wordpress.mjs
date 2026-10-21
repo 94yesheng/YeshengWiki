@@ -37,28 +37,15 @@ const media = readJson('media.json');
 const categories = readJson('categories.json');
 const tags = readJson('tags.json');
 
-/* WordPress 文章 id → 站内 slug（旧站 slug 是百分号编码的中文，不能直接用） */
-const SLUGS = {
-  309: 'mc-server',
-  297: 'ji-bao',
-  258: 'maptoposter',
-  228: 'blender',
-  57: 'deepseek-wechat',
-  360: 'weekly-260825',
-  356: 'weekly-260809',
-  350: 'weekly-260802',
-  345: 'deepseek-claude-code',
-  343: 'train-notes',
-  203: 'github-student-pack',
-  200: 'year-2025',
-  196: 'app-dev-log',
-  188: 'random-thoughts',
-  186: 'winter-note',
-  184: 'java-package-log',
-  40: 'about-l',
-  52: 'drinking-culture',
-  38: 'college-record',
-};
+/*
+ * WordPress 文章 id → 站内 slug（旧站 slug 是百分号编码的中文，不能直接用）。
+ * 唯一来源是 src/server/legacy-redirects.json —— 同一个文件也驱动旧链接的 301 映射，
+ * 改 slug 时只改那里，别在这里再抄一份。
+ */
+const legacyPosts = JSON.parse(
+  fs.readFileSync(path.join(ROOT, 'src', 'server', 'legacy-redirects.json'), 'utf8'),
+).posts;
+const SLUGS = Object.fromEntries(legacyPosts.map((p) => [p.id, p.slug]));
 
 /* 结构性的分类不当标签用 */
 const SKIP_CATEGORIES = new Set(['主页', '文章', 'index', 'article']);

@@ -126,3 +126,5 @@ nginx -t && systemctl reload nginx
 - [x] 退役 `vault` / GitHub Actions FTP 流水线（已删除 Sveltia/vault，CI 只做检查）
 - [x] SSH 仅密钥 + fail2ban
 - [x] README/CLAUDE 更新为动态架构（2026-10-19）
+- [x] 旧链接 301（`?p=ID` / 中文百分号 slug / `?page_id=ID`，应用层 middleware，2026-10-21）
+- [x] 删除根目录误提交的 PNG `2`、清理旧内容组件（2026-10-21）

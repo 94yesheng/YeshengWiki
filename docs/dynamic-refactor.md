@@ -43,6 +43,15 @@
 - 已验证：全部页面 200、生产后台登录、FS 写入/删除、公开页即时反映、图片 `/uploads` 200
 - 已完成：域名 A 记录已切到 `<SERVER_IP>`，certbot 已签 HTTPS（2026-10-20）
 
+### 2026-10-21 收尾
+
+- 旧 WordPress 链接 301：`src/server/legacy-redirects.json`（唯一映射表）+ `src/server/legacy-redirects.ts`，
+  在 middleware 里、路由前处理；覆盖 `?p=ID`、中文百分号 slug、`?page_id=ID`、旧 feed / sitemap。
+  放在应用层是因为部署脚本只推代码、不推 Nginx 配置，改一次映射普通部署就能生效。
+- 清理：根目录误提交的 PNG `2`、9 个不再引用的旧内容组件（`Section*` / `Timeline*` /
+  `PhotoWall` / `TagChips`）与 2 个只被它们引用的 utils。
+- `/programs/` 空态保留（内容由站长在后台补）；统计 / 评论暂缓，三条备选路线见 README 第 10 节。
+
 ## 1. 决策（默认按推荐方案）
 
 | 项 | 选择 |
@@ -95,7 +104,7 @@ Nginx (443, TLS)
 | `photo_walls` | 照片墙 |
 | `photos` | 单张照片 + EXIF/直方图 |
 | `links` | 友链 |
-| `site_settings` | `site` / `home` / `authorDossier` / `articleRail` / `programs` 的 JSON |
+| `site_settings` | `site` / `home` / `authorDossier` / `articleRail` / `programs` / `studio` / `pages` 的 JSON |
 | `media` | 上传文件元数据 |
 | `schema_migrations` | 迁移版本 |
 
@@ -106,7 +115,8 @@ Nginx (443, TLS)
 - `posts.version` 做乐观锁：保存时带上读取到的版本，服务端不匹配就 409。
 - `posts.draft=1` 不出现在公开列表/RSS/sitemap。
 - `photo_walls.date` 允许空串（未标注时间）。
-- `site_settings` 的 key 固定为五个；值就是原来 `site.data.json` 的对应块。
+- `site_settings` 的 key 固定为七个（`site` / `home` / `authorDossier` / `articleRail` /
+  `programs` / `studio` / `pages`）；值就是原来 `site.data.json` 的对应块。
 
 ## 4. API
 
