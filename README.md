@@ -298,9 +298,9 @@ Schema 唯一来源是 [db/schema.sql](db/schema.sql)（`src/server/schema.ts` �
 - 主页五屏（hero / 文章 / 照片 / 程序 / 友链）+ 滚动吸附（阈值 0.2 屏，300ms easeOutCubic，用户一动就让位，实现在 `src/artifact/home-snap.js`）。
 - 文章页：顶栏 + 双象限 hero + 三栏工作区 + 上下篇；正文由 `<Content />` 渲染，样式在 `src/styles/artifact-prose.css`。
 - 资源加载：HUD 的 CSS/JS 不再逐页内联，改为 `/artifact/artifact.css?v=<hash>` 与
-  `/artifact/artifact.js?v=<hash>`；带版本号时 middleware 下发一年 immutable 缓存，
-  `public/artifact/` 里是对应静态副本（生产 Nginx 直接命中）。`artifact-prose.css` 已与
-  `artifact.css` 去重，只保留文章页独有的排版规则。
+  `/artifact/artifact.js?v=<hash>`；本地 middleware 对带版本号请求下发一年 immutable 缓存，
+  `public/artifact/` 里是对应静态副本（生产 Nginx 直接命中，给 30 天缓存，换指纹即换 URL）。
+  `artifact-prose.css` 已与 `artifact.css` 去重，只保留文章页独有的排版规则。
 - 后端注入：`src/server/site.ts` 的 `getSiteConfig()` / `applyArtifactSite()` 在 SSR 时替换
   artifact 模板里的站名、作者、导航、页脚；静态配置只做兜底。
 - 当前正式视觉：主页英雄区用「相交双环 ∞」徽标；白天页脚固定为「方案三 · 纸墨律动」；
@@ -387,8 +387,8 @@ Schema 唯一来源是 [db/schema.sql](db/schema.sql)（`src/server/schema.ts` �
   真实值只放在部署环境变量和服务器上的受保护文件里。
 - `.work/` 是本地验证脚手架与截图（`mock-github.mjs`、`page-shot.mjs`、`artifact-check.mjs`、
   `kai-audit.mjs`、`account-test.mjs`、`1panel-login-check.mjs` 等），不进仓库。
-- 构建后 HUD 页的 CSS/JS 已外链到 `/artifact/`，HTML 不再内联 ~300 KB；带 `?v=` 指纹时
-  middleware 下发一年 immutable 缓存，Nginx 直接发 `public/artifact/` 静态副本。
+- 构建后 HUD 页的 CSS/JS 已外链到 `/artifact/`，HTML 不再内联 ~300 KB；本地 middleware 对
+  带 `?v=` 的请求发一年 immutable，生产 Nginx 对 `/artifact/` 发 30 天缓存（换指纹即换 URL）。
 - 改 `src/artifact/artifact.css` / `artifact.js` 后，要同步 `public/artifact/` 下的同名副本；
   `scripts/import-artifact.mjs` 会自动写，但重跑前先看 8.2 的警告。
 - `demo/` 是外部设计源（生成器输入），已被 `.gitignore` 排除；构建不依赖它。
