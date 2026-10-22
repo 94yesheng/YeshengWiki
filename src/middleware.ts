@@ -6,6 +6,7 @@ import { handleApi } from './server/api/router';
 import { serveUpload } from './server/uploads';
 import { faviconInfo, getSiteConfig } from './server/site';
 import { legacyRedirectTarget } from './server/legacy-redirects';
+import { recordVisit } from './server/repositories/analytics';
 
 bootstrap();
 
@@ -59,7 +60,19 @@ export const onRequest = defineMiddleware(async (context, next) => {
 
   // /api/* 由我们自己的 router 处理（静态构建时不会用到）
   const apiResponse = await handleApi(context);
-  const response = apiResponse ?? (await next());
+  if (apiResponse) {
+    apiResponse.headers.set('X-Content-Type-Options', 'nosniff');
+    apiResponse.headers.set('Referrer-Policy', 'strict-origin-when-cross-origin');
+    apiResponse.headers.set('Cache-Control', 'no-store');
+    return apiResponse;
+  }
+
+  // 记录公开页面访客信息（日期、IP、国家坐标、使用设备/系统/浏览器）
+  if (context.request.method === 'GET') {
+    recordVisit(context);
+  }
+
+  const response = await next();
 
   response.headers.set('X-Content-Type-Options', 'nosniff');
   response.headers.set('Referrer-Policy', 'strict-origin-when-cross-origin');

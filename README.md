@@ -17,6 +17,7 @@
 >   内容与设置一律以服务器数据库为准，代码部署不会覆盖数据。
 > - 2026-10-21：旧 WordPress 链接（`?p=ID`、中文百分号 slug、`?page_id=ID`）改由应用层 301 到新地址；
 >   根目录误提交的 PNG 与 9 个不再引用的旧内容组件已清理。
+> - 2026-10-22：内建访问统计（`visitor_logs`，Schema v3），后台导航「06 统计」。
 > - 设计与实现细节见 [docs/dynamic-refactor.md](docs/dynamic-refactor.md)。
 
 ---
@@ -108,6 +109,7 @@ D:\blog\
 │   │   ├── posts/               # 文章列表 + [...slug] 详情
 │   │   ├── photos.astro / links.astro / programs.astro
 │   │   ├── studio.astro / studio-v2.astro # 两个后台入口（noindex）
+│   │   ├── studio/stats.ts      # /studio/stats 统计页（登录保护，返回独立 HUD）
 │   │   └── rss.xml.js / sitemap.xml.ts / sitemap-index.xml.ts
 │   ├── server/
 │   │   ├── schema.ts            # 读 db/schema.sql
@@ -120,12 +122,12 @@ D:\blog\
 │   │   ├── uploads.ts           # 本地 /uploads 兜底（生产由 Nginx 直发）
 │   │   ├── markdown.ts / post-markdown.ts
 │   │   ├── api/{router,fs,http}.ts
-│   │   └── repositories/{posts,photos,links,media,settings}.ts
+│   │   └── repositories/{posts,photos,links,media,settings,analytics}.ts
 │   ├── layouts/                 # BaseLayout（纸墨壳）/ ArtifactLayout（HUD 独立壳）
 │   ├── components/              # HomeArtifact、SiteHeader/Footer、FloatingMenu、LinkCard + divergence-meter/
 │   ├── artifact/                # 生成器产出的 CSS/JS/模板 + home/ partial（已插服务端占位符）
 │   ├── styles/                  # tokens / base / fab / studio(-v2) / artifact-prose
-│   ├── studio/                  # 自建后台：app/state/content/editor/exif/… + views/ + v2/
+│   ├── studio/                  # 自建后台：app/state/content/editor/exif/… + views/ + v2/ + stats.html
 │   ├── utils/                   # date / audio-meta / cover-svg / article-rail / timeline / typography / theme / loader / friend-links
 │   ├── content/                 # 【迁移来源】旧 .md / .json，只给 migrate-to-db.mjs
 │   ├── assets/                  # 【迁移来源】旧文章图 / 照片原图，只给 migrate-to-db.mjs
@@ -159,6 +161,7 @@ D:\blog\
 | `/links/` | `src/pages/links.astro` | BaseLayout（纸墨） | `links` 表（1 条：云鹿庐） |
 | `/programs/` | `src/pages/programs.astro` | BaseLayout（纸墨） | `site_settings.programs`（无数据＝空态，不回落静态配置） |
 | `/studio/` | `src/pages/studio.astro` | 独立 HUD 应用 | `/api/fs` + `/api/auth` |
+| `/studio/stats` | `src/pages/studio/stats.ts` | 独立 HUD（统计 + 3D 地球） | `visitor_logs`（`/api/analytics`），需登录 |
 | `/studio-v2/` | `src/pages/studio-v2.astro` | 独立（实验） | 同上，桌面端实验版，`noindex` |
 | `/rss.xml` | `src/pages/rss.xml.js` | — | `posts`（不含草稿） |
 | `/sitemap.xml` `/sitemap-index.xml` | `src/pages/sitemap*.ts` | — | 动态生成，排除 `/studio*` |
@@ -168,6 +171,8 @@ D:\blog\
 | 旧 WordPress 链接 | `src/server/legacy-redirects.ts` | — | `?p=ID` / 中文百分号 slug / `?page_id=ID` → 301 到新地址（middleware 在路由前处理） |
 
 - 全站页面都是 **SSR**：请求时读 SQLite，保存后刷新即可见。
+- 公开 SSR 页面的 GET 请求会由 middleware 写入 `visitor_logs`（排除 `/studio`、`/api`、
+  `/uploads`、`/artifact`、静态资源与 RSS/sitemap）；同一 IP + 日期 + 设备合并为一条并累加 PV。
 - `/studio/`、`/studio-v2/` 都带 `noindex`，且被 sitemap 排除。
 - HUD 页面（`/`、`/posts/`、`/posts/<slug>/`、`/photos/`）由服务端注入数据并保留静态兜底，
   列表筛选、灯箱、滚动吸附仍由 `src/artifact/artifact.js` 负责。
@@ -192,6 +197,7 @@ Schema 唯一来源是 [db/schema.sql](db/schema.sql)（`src/server/schema.ts` �
 | `photos` | 单张照片 + EXIF / 直方图 |
 | `links` | 友链 |
 | `link_applications` | 友链互换申请（公开提交 → 后台审核 / 批准 / 删除） |
+| `visitor_logs` | 访客访问日志（日期 / IP / 国家 / 设备 / 路径 / PV；供 `/studio/stats` 聚合） |
 | `site_settings` | 七个设置块：`site` / `home` / `authorDossier` / `articleRail` / `programs` / `studio` / `pages`（子页文案） |
 | `media` | 上传文件元数据（图片 + 音频，供媒体库与文章选图/选曲） |
 | `schema_migrations` | 迁移版本 |
@@ -203,8 +209,8 @@ Schema 唯一来源是 [db/schema.sql](db/schema.sql)（`src/server/schema.ts` �
 - `posts.version` 做**乐观锁**：保存时带上读到的版本，服务端不匹配就 `409`。
 - `posts.draft = 1` 不出现在公开列表 / RSS / sitemap。
 - `photo_walls.date` 允许空串（未标注时间）。
-- Schema 版本由 `src/server/schema.ts` 的 `SCHEMA_VERSION` 控制（当前 `2`）；启动时自动套用
-  `db/schema.sql` 并补齐旧库缺列，`link_applications` 是 v2 新增表。
+- Schema 版本由 `src/server/schema.ts` 的 `SCHEMA_VERSION` 控制（当前 `3`）；启动时自动套用
+  `db/schema.sql` 并补齐旧库缺列，`link_applications` 是 v2 新增表，`visitor_logs` 是 v3 新增表。
 - `src/content/` 与 `src/assets/` 是**迁移来源**，运行时不再读取；改内容请走 `/studio/`。
 
 ---
@@ -221,6 +227,7 @@ Schema 唯一来源是 [db/schema.sql](db/schema.sql)（`src/server/schema.ts` �
 | 媒体库 | 「媒体库」按文章归档展示 `uploads/posts/<slug>/` 下的图片与音频（`GET /api/media`），可复制链接 / 试听 / 新窗口打开 / 删除；上传音频会自动读取标签填标题与作者 |
 | 友链申请 | 友链页公开提交到 `link_applications`（限流 + 蜜罐 + 50 条待审上限）；后台「友链」板块查看并批准 / 删除 |
 | 页面 | 「页面」板块集中调整 主页 / 文章 / 相册 / 项目 / 友链 的标题、导语、空态与统计文案，共 **74 个字段**（写 `site_settings.pages`，`GET|PUT /api/pages`），保存即时生效 |
+| 统计 | 后台导航「06 统计」在工作区直接打开统计 HUD：访客 UV/PV、日/周/月/年整合、IP/设备明细与 3D 粒子地球；支持模拟访客 / 重置样本 / 清空（均需 CSRF） |
 | 改账号/密码 | 「设置 → 05 账户与安全」，需当前密码 + CSRF；改完其它设备会话失效 |
 
 **保存模型**：只写你动过的字段；新建/删除先暂存，点顶栏「保存」才提交；确实改了才更新 `updatedDate`；
@@ -262,6 +269,11 @@ Schema 唯一来源是 [db/schema.sql](db/schema.sql)（`src/server/schema.ts` �
 | GET | `/api/links/applications` | 友链申请列表（需登录） |
 | POST | `/api/links/applications/[id]/approve` | 批准申请并写入 `links`（需登录） |
 | DELETE | `/api/links/applications/[id]` | 删除申请（需登录） |
+| GET | `/api/analytics` | 访客统计聚合（需登录；日/周/月/年、国家、设备、明细） |
+| GET | `/api/analytics/raw` | 全部访客记录（需登录，统计页本地聚合用） |
+| POST | `/api/analytics/simulate` | 模拟一位访客（需 CSRF） |
+| POST | `/api/analytics/seed` | 重置/追加样本数据（需 CSRF） |
+| DELETE | `/api/analytics/clear` | 清空全部访客记录（需 CSRF） |
 | GET/PUT | `/api/settings/[key]` | 站点设置分块读写（需登录） |
 | * | `/api/fs/*` | 后台虚拟文件接口（文章、照片墙、设置、上传都走它） |
 
@@ -324,6 +336,7 @@ Schema 唯一来源是 [db/schema.sql](db/schema.sql)（`src/server/schema.ts` �
 | 换浏览器标签小图标（favicon） | /studio/ → **设置** → 01 BRAND & SEO → 「站点图标」：从本地上传（SVG/PNG/ICO/WebP）或从媒体库选择，保存后刷新页面 |
 | 加友链 | `/studio/` 友链板块（生产已有 1 条：云鹿庐） |
 | 审核友链申请 | `/studio/` 友链板块查看待审列表，批准后写入 `links`，也可直接删除 |
+| 看访问统计 | 后台导航「06 统计」；可切日/周/月/年、点地球看国家、导出 CSV；直达 `/studio/stats` 也可 |
 | 从 WordPress 导入旧数据 | `node scripts/import-wordpress.mjs --export .work/wp-export --db <库> --uploads <上传目录>`；先加 `--dry-run` 看清单。正文图片落到 `uploads/posts/<slug>/`，草稿 / 私密统一按 `draft` 入库 |
 | 加旧链接 301 | 改 `src/server/legacy-redirects.json`（唯一映射表，导入脚本也读它），部署后生效 |
 | 改站名 / 导航 / 自我介绍 | `/studio/` → 站点设置（写 `site_settings.site`）；关于「我」的档案卡在「设置 → 03」 |
@@ -365,15 +378,20 @@ Schema 唯一来源是 [db/schema.sql](db/schema.sql)（`src/server/schema.ts` �
   文章改 slug 原子更新并迁移配图 / 音频与 `media` 记录、二进制直传 + 体积 / 魔数校验、
   SVG 实体编码与 SMIL 绕过防护、右栏 / 友链 / 程序链接协议白名单、会话与限流定时清理；
   部署脚本改为 `${APP_DIR}.staging` 构建成功后原子切换，消除部署期间的 404/502 窗口。
+- 2026-10-22：内建访客统计模块（后台导航「06 统计」，直达 `/studio/stats`）：`visitor_logs`（Schema v3）、
+  middleware 自动记录公开页访问、`/api/analytics` 聚合与原始日志、日/周/月/年整合、IP/设备明细、
+  3D 粒子地球、CSV 导出；支持模拟 / 重置样本 / 清空。已随 2026-10-22 部署上线。
 
 **待办**
 
 1. **`/programs/` 空态**：正常状态，不是 bug。内容由站长在 `/studio/` 的「项目」板块补；
    空态标题 / 说明 / 按钮可在「页面 → 项目」里改。
-2. **统计 / 评论**：暂缓（2026-10-21 评估过三条路线，见下表），等有流量或互动需求再做。
+2. **评论**：仍暂缓；访问统计已内建（`visitor_logs` + `/studio/stats`），评论可在下表 A/B/C 中选。
 3. **`README/CLAUDE` 同步**：以后改架构 / 路由 / 部署，记得在同一提交里一起改。
 
-**统计与评论的备选方案（暂缓）**
+**评论与统计方案的备选（评论暂缓）**
+
+> 下面的统计列只作路线对比；当前已实现轻量的 `visitor_logs` + `/studio/stats`（见上）。
 
 | 方案 | 统计 | 评论 | 取舍 |
 |---|---|---|---|
@@ -391,6 +409,8 @@ Schema 唯一来源是 [db/schema.sql](db/schema.sql)（`src/server/schema.ts` �
   要加映射只改 `src/server/legacy-redirects.json`，别再复制到 Nginx。
 - **文档不写真实基础设施**：服务器地址 / 目录用 `<SERVER_IP>`、`<APP_DIR>`、`<DATA_DIR>` 占位，
   真实值只放在部署环境变量和服务器上的受保护文件里。
+- **访客统计含 IP / UA**：`visitor_logs` 存在本地 SQLite、仅后台可见；若要公开部署，先确认
+  隐私说明与保留期，必要时改成只存哈希或匿名计数。
 - **部署脚本是原子切换**：先在 `${APP_DIR}.staging` 完整构建，成功后才替换 `dist-dynamic` 与
   `node_modules`；构建失败时线上保持旧版本，不需要手工回滚。
 - `.work/` 是本地验证脚手架与截图（`mock-github.mjs`、`page-shot.mjs`、`artifact-check.mjs`、

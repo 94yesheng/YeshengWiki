@@ -5,7 +5,7 @@ import type { Github } from './github';
 import type { EditorHandle } from './editor';
 import type { LinksFile, PostEntry, SiteFile, WallEntry } from './content';
 
-export type Collection = 'posts' | 'walls' | 'programs' | 'links' | 'media' | 'pages' | 'site';
+export type Collection = 'posts' | 'walls' | 'programs' | 'links' | 'media' | 'pages' | 'stats' | 'site';
 
 /**
  * 媒体库条目 —— 复制自 `src/server/repositories/media.ts` 的 MediaItem。

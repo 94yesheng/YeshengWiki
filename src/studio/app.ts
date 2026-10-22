@@ -96,11 +96,13 @@ async function loadAll(): Promise<void> {
       : state.collection === 'programs' ? 'console'
       : state.collection === 'media' ? null
       : state.collection === 'pages' ? (PAGE_GROUPS.some((group) => group.key === state.selected) ? state.selected : 'home')
+      : state.collection === 'stats' ? null
       : 'site';
     state.draft = {};
     state.dirty = false;
     setBusy(false);
     renderApp();
+    void refreshStatsNavCount();
   } catch (e) {
     setBusy(false);
     reportError(e);
@@ -252,13 +254,28 @@ const NAV: Array<{ key: Collection; label: string; count: () => number }> = [
   { key: 'links', label: '友链', count: () => state.links?.links.length ?? 0 },
   { key: 'media', label: '媒体库', count: () => state.media.length },
   { key: 'pages', label: '页面', count: () => 5 },
+  { key: 'stats', label: '统计', count: () => statsTodayUv },
   { key: 'site',  label: '设置', count: () => 2 },
 ];
+
+/** 统计导航角标：今日 UV（登录后异步拉一次，不阻塞工作台） */
+let statsTodayUv = 0;
+async function refreshStatsNavCount(): Promise<void> {
+  try {
+    const res = await fetch('/api/analytics?pageSize=10');
+    if (!res.ok) return;
+    const data = (await res.json()) as { summary?: { todayUv?: number } };
+    statsTodayUv = Number(data.summary?.todayUv) || 0;
+    renderNav();
+  } catch {
+    /* 统计接口失败不影响后台其他模块 */
+  }
+}
 
 function hasUnsavedWork(): boolean {
   if (state.collection === 'pages') return pagesDirty() || siteDraftDirty();
   if (!state.dirty) return false;
-  if (state.collection === 'media') return false;
+  if (state.collection === 'media' || state.collection === 'stats') return false;
   if (state.collection === 'posts' && state.draft.post) return postDraftEdited();
   if (state.collection === 'walls' && state.draft.wall) return wallDraftEdited();
   return true;
@@ -283,6 +300,7 @@ function selectCollection(c: Collection): void {
     : c === 'programs' ? 'console'
     : c === 'media'  ? null
     : c === 'pages'  ? 'home'
+    : c === 'stats'  ? null
     : 'site';
   state.draft = {};
   state.dirty = false;
@@ -423,7 +441,18 @@ function selectEntry(id: string): void {
    -------------------------------------------------------------------------- */
 function renderShell(): void {
   const main = $('#st-main');
-  if (!main || $('#st-app')) return;
+  if (!main) return;
+
+  // 统计模块：用独立统计 HUD 填满工作区（保留 Studio 顶栏/导航，隐藏三栏编辑骨架）
+  if (state.collection === 'stats') {
+    if (!$('#st-stats-frame')) {
+      main.innerHTML =
+        '<iframe class="st-stats-frame" id="st-stats-frame" src="/studio/stats?embed=1" title="统计"></iframe>';
+    }
+    return;
+  }
+
+  if ($('#st-app')) return;
   main.innerHTML = `
     <div class="st-app" id="st-app">
       <div class="st-col st-col--nav">
@@ -456,6 +485,11 @@ let fab: FabHandle | null = null;
 
 function renderApp(): void {
   renderShell();
+  if (state.collection === 'stats') {
+    renderBar();
+    renderNav();
+    return;
+  }
 
   const third = $('#st-preview');
   if (third) {
@@ -497,7 +531,7 @@ async function flushStaged(gh: Github, skip: string[]): Promise<void> {
 
 async function saveCurrent(): Promise<void> {
   if (!state.dirty) return;
-  if (state.collection === 'media') return;
+  if (state.collection === 'media' || state.collection === 'stats') return;
 
   if (!state.gh) {
     foldStagedPostDraft();

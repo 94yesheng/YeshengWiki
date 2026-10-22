@@ -47,6 +47,14 @@ import {
   replaceLinks,
 } from '../repositories/links';
 import { getSettings, SETTING_KEYS, setSetting, type SettingKey } from '../repositories/settings';
+import {
+  clearAnalyticsLogs,
+  getAnalyticsDashboard,
+  listVisitorLogs,
+  seedSampleAnalytics,
+  simulateSingleVisit,
+  type StatsGranularity,
+} from '../repositories/analytics';
 import { handleFs } from './fs';
 import { fail, json, readJson } from './http';
 import {
@@ -109,6 +117,60 @@ export async function handleApi(context: APIContext): Promise<Response | null> {
     if (parts[1] === 'me' && parts.length === 2 && method === 'GET') return me(context);
     if (parts[1] === 'account' && parts.length === 2 && (method === 'POST' || method === 'PUT')) {
       return changeAccount(context);
+    }
+  }
+
+  // /api/analytics：后台「统计」模块接口
+  if (parts[0] === 'analytics') {
+    const auth = getAuth(context);
+    if (!auth) return fail('未登录', 401);
+
+    if (parts.length === 1 && method === 'GET') {
+      const sp = context.url.searchParams;
+      const g = (sp.get('granularity') ?? 'day') as StatsGranularity;
+      const bucket = sp.get('bucket');
+      const country = sp.get('country');
+      const device = sp.get('device');
+      const q = sp.get('q');
+      const page = Number(sp.get('page') ?? '1');
+      const pageSize = Number(sp.get('pageSize') ?? '20');
+      return json(
+        getAnalyticsDashboard({
+          granularity: g,
+          bucket,
+          country,
+          device,
+          q,
+          page,
+          pageSize,
+        })
+      );
+    }
+
+    if (parts.length === 2 && parts[1] === 'raw' && method === 'GET') {
+      return json({ logs: listVisitorLogs(5000) });
+    }
+
+    if (parts.length === 2 && parts[1] === 'simulate' && method === 'POST') {
+      const denied = requireCsrf(context);
+      if (denied) return denied;
+      const body = await readJson<{ countryZh?: string }>(context.request);
+      const visit = simulateSingleVisit(body?.countryZh);
+      return json({ ok: true, visit });
+    }
+
+    if (parts.length === 2 && parts[1] === 'seed' && method === 'POST') {
+      const denied = requireCsrf(context);
+      if (denied) return denied;
+      const count = seedSampleAnalytics();
+      return json({ ok: true, inserted: count });
+    }
+
+    if (parts.length === 2 && parts[1] === 'clear' && method === 'DELETE') {
+      const denied = requireCsrf(context);
+      if (denied) return denied;
+      clearAnalyticsLogs();
+      return json({ ok: true });
     }
   }
 

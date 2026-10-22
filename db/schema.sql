@@ -126,3 +126,28 @@ CREATE TABLE IF NOT EXISTS media (
   size       INTEGER,
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
+
+-- 访客统计表（记录每日访客数量、IP 地址、国家与经纬度、使用设备/系统/浏览器，支持按日/周/月/年整合）
+CREATE TABLE IF NOT EXISTS visitor_logs (
+  id           INTEGER PRIMARY KEY AUTOINCREMENT,
+  visit_date   TEXT NOT NULL,
+  ip           TEXT NOT NULL,
+  country_code TEXT NOT NULL DEFAULT 'CN',
+  country_zh   TEXT NOT NULL DEFAULT '中国',
+  country_en   TEXT NOT NULL DEFAULT 'China',
+  region       TEXT NOT NULL DEFAULT '',
+  lat          REAL NOT NULL DEFAULT 35.0,
+  lon          REAL NOT NULL DEFAULT 104.0,
+  device_type  TEXT NOT NULL DEFAULT 'Desktop',
+  os           TEXT NOT NULL DEFAULT 'Windows',
+  browser      TEXT NOT NULL DEFAULT 'Chrome',
+  user_agent   TEXT NOT NULL DEFAULT '',
+  path         TEXT NOT NULL DEFAULT '/',
+  referrer     TEXT NOT NULL DEFAULT '',
+  pv_count     INTEGER NOT NULL DEFAULT 1,
+  first_seen   TEXT NOT NULL DEFAULT (datetime('now')),
+  last_seen    TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS visitor_logs_date_idx ON visitor_logs(visit_date DESC, last_seen DESC);
+CREATE INDEX IF NOT EXISTS visitor_logs_ip_date_idx ON visitor_logs(visit_date, ip);
+CREATE INDEX IF NOT EXISTS visitor_logs_country_idx ON visitor_logs(country_zh);

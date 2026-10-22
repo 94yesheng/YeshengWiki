@@ -147,6 +147,7 @@ function renderBar(): void {
       <span class="st-meta-badge">
         LOCAL${state.user ? ` · ${esc(state.user)}` : ''}
       </span>
+      <a class="st-btn" href="/studio/stats" title="访客统计与地球仪">统计</a>
       <button type="button" class="st-btn" id="st-theme-btn" title="切换白天 / 夜间模式">
         ${dark ? '昼' : '夜'}
       </button>

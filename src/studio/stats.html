@@ -1,0 +1,2716 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>统计</title>
+  <style>
+/* ==========================================================================
+   设计变量 —— 继承自夜笙的小世界 (tokens.css)
+   ========================================================================== */
+@font-face {
+  font-family: 'KaiDigits';
+  src: local('KaiTi'), local('楷体'), local('STKaiti'), local('Kaiti SC'), local('Noto Serif SC');
+  unicode-range: U+0000-002F, U+003A-10FFFF;
+}
+@font-face {
+  font-family: 'KaiDigits';
+  src: local('Microsoft YaHei'), local('Noto Sans SC'), local('PingFang SC'), local('Helvetica Neue'), local(Arial);
+  unicode-range: U+0030-0039;
+}
+@font-face {
+  font-family: 'SongDigits';
+  src: local('Songti SC'), local('SimSun'), local('宋体'), local('Noto Serif SC');
+  unicode-range: U+0000-002F, U+003A-10FFFF;
+}
+@font-face {
+  font-family: 'SongDigits';
+  src: local('Microsoft YaHei'), local('Noto Sans SC'), local('PingFang SC'), local('Helvetica Neue'), local(Arial);
+  unicode-range: U+0030-0039;
+}
+
+:root {
+  --paper: #faf9f5;
+  --canvas: #f0eee6;
+  --ink:   #141413;
+  --muted: #6b6862;
+  --faint: #b0aea5;
+  --rule:  #e8e6dc;
+  --accent: #d97757;       /* 主题色 rgb(217, 119, 87) */
+  --accent-light: #fccdbc; /* 稍浅的主题色（用于地球描边粒子与高亮） */
+  --pine:  #788c5d;
+  --code-bg: #f0eee6;
+  --code-block: #f4f2ea;
+
+  --kai:  'KaiDigits', KaiTi, 楷体, STKaiti, "Kaiti SC", "Noto Serif SC", serif;
+  --song: 'SongDigits', "Songti SC", SimSun, 宋体, "Noto Serif SC", serif;
+  --sans: "Noto Sans SC", "Microsoft YaHei", 微软雅黑, "PingFang SC", system-ui, sans-serif;
+  --mono: ui-monospace, "Cascadia Code", Consolas, "SFMono-Regular", monospace;
+
+  --nav-h: 3.4rem;
+  --ease: cubic-bezier(0.22, 0.61, 0.36, 1);
+  --dur-fast: 180ms;
+}
+
+:root[data-theme='dark'] {
+  --paper: #141413;
+  --canvas: #1a1917;
+  --ink:   #faf9f5;
+  --muted: #a5a29a;
+  --faint: #6e6961;
+  --rule:  #2e2c28;
+  --accent: #d97757;
+  --accent-light: #fccdbc;
+  --pine:  #93a878;
+  --code-bg: #232220;
+  --code-block: #1c1b1a;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+[hidden] { display: none !important; }
+
+body.st-body {
+  margin: 0;
+  height: 100vh;
+  display: grid;
+  grid-template-rows: var(--nav-h) minmax(0, 1fr);
+  background-color: var(--paper);
+  background-image:
+    linear-gradient(to right, color-mix(in srgb, var(--rule) 40%, transparent) 1px, transparent 1px),
+    linear-gradient(to bottom, color-mix(in srgb, var(--rule) 40%, transparent) 1px, transparent 1px);
+  background-size: 32px 32px;
+  color: var(--ink);
+  font-family: var(--sans);
+  font-size: 0.9375rem;
+  line-height: 1.55;
+  overflow: hidden;
+}
+
+/* ==========================================================================
+   顶部极简整合栏（无冗余侧边导航，功能全部收敛至按钮）
+   ========================================================================== */
+.st-topbar {
+  height: var(--nav-h);
+  padding: 0 1.25rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  background: color-mix(in srgb, var(--paper) 90%, var(--canvas));
+  backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--rule);
+  z-index: 30;
+}
+
+.st-topbar-left,
+.st-topbar-right {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.st-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  padding-right: 0.75rem;
+  border-right: 1px solid var(--rule);
+}
+
+.st-brand-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 8px var(--accent);
+}
+
+.st-brand-title {
+  margin: 0;
+  font-family: var(--kai);
+  font-size: 1.35rem; /* >= 20px 楷体护栏 */
+  font-weight: 400;
+  letter-spacing: 0.08em;
+  color: var(--ink);
+  line-height: 1;
+}
+
+.st-brand-sub {
+  font-family: var(--mono);
+  font-size: 0.68rem;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  padding: 0.12rem 0.42rem;
+  border: 1px solid var(--rule);
+  border-radius: 2px;
+  background: var(--paper);
+}
+
+/* 按钮通用体系 */
+.st-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.32rem;
+  padding: 0.34rem 0.72rem;
+  font-family: var(--sans);
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--ink);
+  background: var(--paper);
+  border: 1px solid var(--rule);
+  border-radius: 3px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all var(--dur-fast) ease;
+}
+.st-btn:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.st-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.st-btn[aria-pressed='true'],
+.st-btn.is-active {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 13%, var(--paper));
+  color: var(--accent);
+  font-weight: 600;
+}
+.st-btn--primary {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: #fff;
+}
+.st-btn--primary:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--accent) 85%, #000);
+  border-color: color-mix(in srgb, var(--accent) 85%, #000);
+  color: #fff;
+}
+.st-btn--danger {
+  color: var(--muted);
+}
+.st-btn--danger:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 10%, var(--paper));
+}
+
+.st-btn-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.16rem;
+  border: 1px solid var(--rule);
+  background: color-mix(in srgb, var(--canvas) 75%, var(--paper));
+  border-radius: 4px;
+}
+.st-btn-group .st-btn {
+  border: 0;
+  background: transparent;
+  padding: 0.24rem 0.62rem;
+  font-size: 0.78rem;
+  border-radius: 2px;
+}
+.st-btn-group .st-btn[aria-pressed='true'] {
+  background: var(--paper);
+  color: var(--accent);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06), inset 0 0 0 1px color-mix(in srgb, var(--accent) 45%, transparent);
+}
+
+/* ==========================================================================
+   核心左右分栏布局（左侧：数据与统计整合；右侧：地球模型）
+   ========================================================================== */
+.st-split-workspace {
+  height: 100%;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(430px, 46%) minmax(460px, 54%);
+  overflow: hidden;
+}
+
+/* 左侧面板：数据与统计整合 */
+.st-left-pane {
+  height: 100%;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 1rem 1.15rem 1.5rem;
+  border-right: 1px solid var(--rule);
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+  scrollbar-width: thin;
+}
+
+/* 指标卡片四宫格（点击直接切换日/周/月/年整合粒度） */
+.st-kpi-strip {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.55rem;
+  flex-shrink: 0;
+}
+
+.st-kpi-btn {
+  text-align: left;
+  padding: 0.65rem 0.75rem;
+  border: 1px solid var(--rule);
+  background: var(--paper);
+  border-radius: 3px;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 0.18rem;
+  transition: border-color var(--dur-fast) ease, background var(--dur-fast) ease;
+}
+.st-kpi-btn:hover {
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--rule));
+}
+.st-kpi-btn.is-active {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 8%, var(--paper));
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+.st-kpi-label {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-family: var(--mono);
+  font-size: 0.68rem;
+  color: var(--muted);
+}
+.st-kpi-label span:first-child {
+  font-family: var(--sans);
+  font-weight: 600;
+  font-size: 0.75rem;
+  color: var(--ink);
+}
+.st-kpi-btn.is-active .st-kpi-label span:first-child {
+  color: var(--accent);
+}
+.st-kpi-val {
+  font-family: var(--mono);
+  font-size: 1.38rem;
+  font-weight: 700;
+  color: var(--ink);
+  line-height: 1.15;
+  margin-top: 0.1rem;
+}
+.st-kpi-btn.is-active .st-kpi-val {
+  color: var(--accent);
+}
+.st-kpi-val small {
+  font-size: 0.72rem;
+  font-weight: 500;
+  color: var(--muted);
+  margin-left: 0.2rem;
+}
+.st-kpi-foot {
+  font-family: var(--mono);
+  font-size: 0.68rem;
+  color: var(--muted);
+  margin-top: 0.1rem;
+}
+
+/* 左侧通用数据卡片 */
+.st-card {
+  border: 1px solid var(--rule);
+  background: var(--paper);
+  border-radius: 3px;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.st-card--grow {
+  flex: 1;
+  min-height: 18rem;
+}
+
+.st-card-head {
+  padding: 0.6rem 0.85rem;
+  border-bottom: 1px solid var(--rule);
+  background: color-mix(in srgb, var(--paper) 92%, var(--canvas));
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.st-card-title {
+  display: flex;
+  align-items: baseline;
+  gap: 0.45rem;
+  font-family: var(--kai);
+  font-size: 1.25rem; /* 20px 楷体护栏 */
+  color: var(--ink);
+  line-height: 1.2;
+}
+
+.st-card-badge {
+  font-family: var(--mono);
+  font-size: 0.68rem;
+  color: var(--accent);
+  padding: 0.08rem 0.38rem;
+  border: 1px solid color-mix(in srgb, var(--accent) 40%, var(--rule));
+  background: color-mix(in srgb, var(--accent) 8%, var(--paper));
+  border-radius: 2px;
+}
+
+/* 过滤芯片条 */
+.st-filter-bar {
+  padding: 0.45rem 0.85rem;
+  border-bottom: 1px solid var(--rule);
+  background: color-mix(in srgb, var(--accent) 5%, var(--paper));
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+  font-size: 0.76rem;
+}
+.st-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.28rem;
+  padding: 0.1rem 0.48rem;
+  border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--rule));
+  background: var(--paper);
+  border-radius: 2px;
+  font-family: var(--sans);
+  font-size: 0.74rem;
+  color: var(--ink);
+}
+.st-chip button {
+  border: 0;
+  background: none;
+  color: var(--accent);
+  cursor: pointer;
+  padding: 0;
+  font-size: 0.85rem;
+  line-height: 1;
+}
+
+/* 搜索与设备筛选工具条 */
+.st-log-toolbar {
+  padding: 0.55rem 0.85rem;
+  border-bottom: 1px solid var(--rule);
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+.st-search-input {
+  flex: 1 1 11rem;
+  min-width: 0;
+  padding: 0.32rem 0.62rem;
+  font-family: var(--sans);
+  font-size: 0.8125rem;
+  color: var(--ink);
+  background: color-mix(in srgb, var(--paper) 95%, var(--canvas));
+  border: 1px solid var(--rule);
+  border-radius: 3px;
+  outline: none;
+}
+.st-search-input:focus {
+  border-color: var(--accent);
+}
+
+/* 紧凑数据表格 */
+.st-table-scroll {
+  width: 100%;
+  overflow-x: auto;
+  flex: 1;
+}
+.st-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.8125rem;
+}
+.st-table th,
+.st-table td {
+  padding: 0.48rem 0.7rem;
+  border-bottom: 1px solid var(--rule);
+  text-align: left;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+.st-table th {
+  font-family: var(--mono);
+  font-size: 0.68rem;
+  font-weight: 600;
+  color: var(--muted);
+  background: color-mix(in srgb, var(--paper) 92%, var(--canvas));
+  letter-spacing: 0.03em;
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+.st-table tbody tr {
+  transition: background var(--dur-fast) ease;
+}
+.st-table tbody tr:hover {
+  background: color-mix(in srgb, var(--accent) 6%, var(--paper));
+}
+.st-table tbody tr.is-active {
+  background: color-mix(in srgb, var(--accent) 13%, var(--paper));
+}
+.st-mono {
+  font-family: var(--mono);
+  font-size: 0.76rem;
+}
+.st-ip-badge {
+  font-family: var(--mono);
+  font-size: 0.75rem;
+  padding: 0.08rem 0.36rem;
+  background: var(--code-bg);
+  border: 1px solid var(--rule);
+  border-radius: 2px;
+  color: var(--ink);
+}
+.st-country-pill {
+  display: inline-block;
+  padding: 0.06rem 0.38rem;
+  font-size: 0.72rem;
+  border: 1px solid color-mix(in srgb, var(--accent) 40%, var(--rule));
+  color: var(--accent);
+  border-radius: 2px;
+  font-weight: 500;
+}
+.st-dev-tag {
+  display: inline-block;
+  font-family: var(--mono);
+  font-size: 0.66rem;
+  padding: 0.04rem 0.32rem;
+  border-radius: 2px;
+  border: 1px solid var(--rule);
+  color: var(--muted);
+}
+.st-dev-tag--desktop {
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--rule));
+  color: var(--accent);
+}
+.st-dev-tag--mobile {
+  border-color: color-mix(in srgb, var(--pine) 55%, var(--rule));
+  color: var(--pine);
+}
+
+/* 比例小横条（内嵌在汇总表单元格中） */
+.st-inline-bar {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+.st-inline-track {
+  width: 3.4rem;
+  height: 4px;
+  background: var(--rule);
+  border-radius: 2px;
+  overflow: hidden;
+}
+.st-inline-fill {
+  height: 100%;
+  background: var(--accent);
+}
+
+.st-card-foot {
+  padding: 0.45rem 0.85rem;
+  border-top: 1px solid var(--rule);
+  background: color-mix(in srgb, var(--paper) 94%, var(--canvas));
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  color: var(--muted);
+}
+
+/* ==========================================================================
+   右侧面板：3D 动态粒子旋转地球模型（保留 3d.html 模型 + 按钮化控制）
+   ========================================================================== */
+.st-right-pane {
+  position: relative;
+  height: 100%;
+  min-height: 0;
+  background: #080a10;
+  overflow: hidden;
+  user-select: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.st-globe-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+/* 地球模型四角悬浮控制按钮与状态（精简不挡视野） */
+.st-globe-overlay {
+  position: absolute;
+  z-index: 5;
+  pointer-events: none;
+}
+
+.st-globe-overlay--tl {
+  top: 0.9rem;
+  left: 0.9rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  max-width: 19rem;
+}
+
+.st-globe-overlay--tr {
+  top: 0.9rem;
+  right: 0.9rem;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.38rem;
+  pointer-events: auto;
+}
+
+.st-globe-overlay--bl {
+  bottom: 0.9rem;
+  left: 0.9rem;
+  pointer-events: none;
+}
+
+.st-globe-overlay--br {
+  bottom: 0.9rem;
+  right: 0.9rem;
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  pointer-events: auto;
+}
+
+.st-globe-pill {
+  padding: 0.42rem 0.68rem;
+  background: rgba(14, 17, 24, 0.82);
+  border: 1px solid rgba(217, 119, 87, 0.35);
+  backdrop-filter: blur(8px);
+  border-radius: 4px;
+  color: #f8fafc;
+  font-family: var(--mono);
+  font-size: 0.7rem;
+  line-height: 1.45;
+}
+
+.st-globe-ctrl-btn {
+  pointer-events: auto;
+  padding: 0.32rem 0.62rem;
+  background: rgba(14, 17, 24, 0.84);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  backdrop-filter: blur(8px);
+  border-radius: 4px;
+  color: #e2e8f0;
+  font-family: var(--sans);
+  font-size: 0.76rem;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  transition: all var(--dur-fast) ease;
+}
+.st-globe-ctrl-btn:hover {
+  border-color: var(--accent);
+  color: #ffffff;
+  background: rgba(217, 119, 87, 0.22);
+}
+.st-globe-ctrl-btn[aria-pressed='true'] {
+  border-color: var(--accent);
+  background: rgba(217, 119, 87, 0.28);
+  color: #ffffff;
+}
+
+.st-legend-inline {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  margin-top: 0.2rem;
+  font-family: var(--sans);
+  font-size: 0.68rem;
+  color: #cbd5e1;
+}
+.st-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.28rem;
+}
+.st-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+/* 确认弹窗与源码弹窗 */
+.st-dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  background: rgba(14, 14, 13, 0.6);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.25rem;
+}
+.st-dialog {
+  width: min(100%, 26rem);
+  background: var(--paper);
+  border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--rule));
+  border-radius: 4px;
+  box-shadow: 0 24px 56px -12px rgba(0, 0, 0, 0.45);
+  overflow: hidden;
+}
+.st-dialog-header {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  padding: 0.85rem 1.15rem;
+  border-bottom: 1px solid var(--rule);
+  background: color-mix(in srgb, var(--paper) 90%, var(--canvas));
+}
+.st-dialog-title {
+  font-family: var(--kai);
+  font-size: 1.25rem;
+  color: var(--ink);
+}
+.st-dialog-body {
+  padding: 1rem 1.15rem;
+  font-size: 0.88rem;
+  color: var(--muted);
+  line-height: 1.65;
+}
+.st-dialog-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  padding: 0.75rem 1.15rem;
+  border-top: 1px solid var(--rule);
+}
+
+.st-toast {
+  position: fixed;
+  left: 50%;
+  bottom: 1.4rem;
+  transform: translateX(-50%);
+  background: var(--ink);
+  color: var(--paper);
+  border: 1px solid var(--accent);
+  padding: 0.45rem 1rem;
+  border-radius: 3px;
+  font-size: 0.78rem;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 180ms ease;
+  z-index: 250;
+}
+.st-toast.st-show { opacity: 1; }
+.st-toast--err { background: var(--accent); color: #fff; }
+
+/* 响应式：窄屏自动上下分栏 */
+@media (max-width: 1024px) {
+  body.st-body {
+    height: auto;
+    min-height: 100vh;
+    overflow-y: auto;
+  }
+  .st-topbar {
+    height: auto;
+    padding: 0.6rem 0.9rem;
+    flex-wrap: wrap;
+  }
+  .st-split-workspace {
+    grid-template-columns: minmax(0, 1fr);
+    height: auto;
+  }
+  .st-left-pane {
+    border-right: 0;
+    border-bottom: 1px solid var(--rule);
+    overflow: visible;
+  }
+  .st-right-pane {
+    height: 520px;
+  }
+}
+
+@media (max-width: 600px) {
+  .st-kpi-strip {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+  
+html.st-embed a[href="/studio/"] { display: none !important; }
+</style>
+</head>
+<body class="st-body">
+  <!-- 顶部极简导航与功能按钮栏 -->
+  <header class="st-topbar" id="st-bar"></header>
+
+  <!-- 左右分栏主工作区：左侧数据与统计整合，右侧 3D 粒子地球模型 -->
+  <main class="st-split-workspace" id="st-main">
+    <!-- 左侧：访客数据、周/月/年统计整合、每日访客 IP 与设备明细 -->
+    <section class="st-left-pane" id="st-left-pane" aria-label="访客数据与统计整合"></section>
+
+    <!-- 右侧：3D 动态粒子旋转地球模型 -->
+    <section class="st-right-pane" id="st-globe-viewport" aria-label="3D 动态粒子地球模型">
+      <!-- 左上角：核心遥测与选中标注 -->
+      <div class="st-globe-overlay st-globe-overlay--tl">
+        <div class="st-globe-pill">
+          <div style="display:flex;align-items:center;gap:0.45rem;flex-wrap:wrap;">
+            <span class="st-dot" style="background:var(--accent);box-shadow:0 0 6px var(--accent);"></span>
+            <span>粒子: <strong id="st-hud-particles">22,000</strong></span>
+            <span style="opacity:0.35;">|</span>
+            <span id="st-hud-coords">105.0°E, 22.0°N</span>
+            <span style="opacity:0.35;">|</span>
+            <span><strong id="st-hud-fps">60</strong> FPS</span>
+          </div>
+          <div class="st-legend-inline">
+            <span class="st-legend-item">
+              <span class="st-dot" style="background:rgb(217,119,87);"></span>陆地主体
+            </span>
+            <span class="st-legend-item">
+              <span class="st-dot" id="st-legend-outline-dot" style="background:#ffffff;border:1px solid rgba(255,255,255,0.6);"></span><span id="st-legend-outline-text">独立纯白描边</span>
+            </span>
+            <span class="st-legend-item">
+              <span class="st-dot" style="background:#ffffff;border:2px solid rgb(217,119,87);"></span>访客信标
+            </span>
+          </div>
+        </div>
+      </div>
+
+      <!-- 右上角：地球模型控制按钮组 -->
+      <div class="st-globe-overlay st-globe-overlay--tr">
+        <button type="button" class="st-globe-ctrl-btn" id="st-globe-toggle-play" aria-pressed="true">
+          ⏸ 暂停自转
+        </button>
+        <button type="button" class="st-globe-ctrl-btn" id="st-globe-cycle-outline" title="独立切换海岸线与国家边界描边粒子颜色（纯白色 / 稍浅的主题色）">
+          描边：纯白色
+        </button>
+        <button type="button" class="st-globe-ctrl-btn" id="st-globe-cycle-ocean" title="切换海洋粒子颜色">
+          海洋：纯白微光
+        </button>
+        <button type="button" class="st-globe-ctrl-btn" id="st-globe-clear-sel" hidden>
+          ✕ 清除标注
+        </button>
+        <button type="button" class="st-globe-ctrl-btn" id="st-globe-reset" title="重置地球视角">
+          ↺ 重置
+        </button>
+      </div>
+
+      <!-- 3D 粒子地球主画布 -->
+      <canvas id="st-globe-canvas" class="st-globe-canvas"></canvas>
+
+      <!-- 左下角：鼠标指向坐标与国家即时反馈 -->
+      <div class="st-globe-overlay st-globe-overlay--bl">
+        <div class="st-globe-pill" id="st-globe-hover-readout">
+          拖拽旋转 · 滚轮缩放 · 点击球面国家或左侧访客记录动态显示国家标注
+        </div>
+      </div>
+
+      <!-- 右下角：缩放按钮 -->
+      <div class="st-globe-overlay st-globe-overlay--br">
+        <button type="button" class="st-globe-ctrl-btn" id="st-globe-zoom-out" title="缩小地球">−</button>
+        <span class="st-globe-pill" id="st-hud-zoom" style="padding:0.28rem 0.5rem;">1.02×</span>
+        <button type="button" class="st-globe-ctrl-btn" id="st-globe-zoom-in" title="放大地球">＋</button>
+      </div>
+    </section>
+  </main>
+
+  <div class="st-toast" id="st-toast" role="status" aria-live="polite"></div>
+
+  <script>
+    if (new URLSearchParams(location.search).get('embed') === '1') {
+      document.documentElement.classList.add('st-embed');
+    }
+    (function () {
+      // =========================================================================
+      // 1. 基础 DOM 工具与主题切换
+      // =========================================================================
+      const $ = (sel, root = document) => root.querySelector(sel);
+      const $$ = (sel, root = document) => Array.from(root.querySelectorAll(sel));
+      const esc = (s) =>
+        String(s ?? '')
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;')
+          .replace(/'/g, '&#39;');
+
+      let toastTimer;
+      function toast(msg, isError = false) {
+        const box = $('#st-toast');
+        if (!box) return;
+        box.textContent = msg;
+        box.classList.toggle('st-toast--err', isError);
+        box.classList.add('st-show');
+        clearTimeout(toastTimer);
+        toastTimer = setTimeout(() => box.classList.remove('st-show'), isError ? 4500 : 2800);
+      }
+
+      function copyText(text, successMsg) {
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(text).then(
+            () => toast(successMsg),
+            () => fallbackCopy(text, successMsg)
+          );
+        } else {
+          fallbackCopy(text, successMsg);
+        }
+      }
+
+      function fallbackCopy(text, successMsg) {
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        ta.style.position = 'fixed';
+        ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.select();
+        try {
+          document.execCommand('copy');
+          toast(successMsg);
+        } catch (e) {
+          toast(successMsg);
+        }
+        ta.remove();
+      }
+
+      function showConfirm(opts) {
+        return new Promise((resolve) => {
+          const backdrop = document.createElement('div');
+          backdrop.className = 'st-dialog-backdrop';
+          backdrop.innerHTML = `
+            <div class="st-dialog" role="alertdialog" aria-modal="true">
+              <div class="st-dialog-header">
+                <div class="st-dialog-title">${esc(opts.title || '确认操作')}</div>
+              </div>
+              <div class="st-dialog-body">${esc(opts.body || '')}</div>
+              <div class="st-dialog-footer">
+                <button type="button" class="st-btn" id="st-dlg-cancel">${esc(opts.cancel || '取消')}</button>
+                <button type="button" class="st-btn st-btn--primary" id="st-dlg-confirm">${esc(opts.confirm || '确认')}</button>
+              </div>
+            </div>`;
+          const close = (res) => {
+            backdrop.remove();
+            resolve(res);
+          };
+          backdrop.querySelector('#st-dlg-cancel').addEventListener('click', () => close(false));
+          backdrop.querySelector('#st-dlg-confirm').addEventListener('click', () => close(true));
+          backdrop.addEventListener('click', (e) => {
+            if (e.target === backdrop) close(false);
+          });
+          document.body.appendChild(backdrop);
+        });
+      }
+
+      function isDark() {
+        return document.documentElement.getAttribute('data-theme') === 'dark';
+      }
+
+      function toggleTheme() {
+        const nextDark = !isDark();
+        if (nextDark) {
+          document.documentElement.setAttribute('data-theme', 'dark');
+        } else {
+          document.documentElement.removeAttribute('data-theme');
+        }
+        try {
+          localStorage.setItem('theme', nextDark ? 'dark' : 'light');
+        } catch (e) {}
+      }
+
+      try {
+        if (localStorage.getItem('theme') === 'dark') {
+          document.documentElement.setAttribute('data-theme', 'dark');
+        }
+      } catch (e) {}
+
+      // =========================================================================
+      // 2. 720×360 全球 174 国栅格解码与 3D 球面粒子云生成（源自 3d.html）
+      // =========================================================================
+      const MAP_W = 720;
+      const MAP_H = 360;
+      const COUNTRY_RLE_B64 = "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AP8AyQsGCgcA/wD/AMgLBgD/AP8A/wD/AP8A/wD/AP8A/wD/AP8A/wD/AP8A/wD/AP8A/wD/AP8A/wD/AP8A/wD/AP8A/wD/AP8A/wD/AP8A/wD/AP8A/wD/AP8A/wD/AP8A/wD/AP8A/wD/AP8A/wAPnwQA/wD/AMqfAwABnwEA/wD/AMmfAwD/AP8Azp8DAP8A/wDNnwUA/wBLnwIAP58CAP8APZ8HAOWfCgBZnwcADZ8GACifAwD/ADufBgDmnw0APJ8CABifCwAInw4ACp8NAAGfDwD/ADmfBQDjnxQAMJ8BAAOfFgACny4AAZ80AP8AJp8EAN+fHgAFnwUAHp+DAP8AJZ8EANufMgAVn4kA/wAhnwcAxJ8DAA2fOAASn5IABZ8CAP8ADJ8EAAKfCwDAnwkABZ87ABGfnQD/AAmfBAACnwwAu58PAAGfPQAMn6gA/wADnwUAAZ8MAIufBgAFnwUAAZ8MAA+fTgALn68A/p8HAAGfDACFnwwAAp9zAAiftwDznwsAAp8MAGyfBAAGnwQAA5+HAAefwwCxnwEANZ8NAAOfCwBln54AB5/HAK6fCwAsnwMAAp8FAAWfDABin6MAAZ/KAKufAQAbnwEAKp8OAF+f/59xAKyfCwAJnwMABJ8JAAqfAQARnxYAWp//n3QAgZ8CAASfBwAgnyoAAZ8KAASfGwBZn/+fcwCRnwwAGJ9PAFyf/59uAG+fNwATn0oAXp//n20AaJ9TAAGfSABdn/+fbgBin58AXZ//n3IAZJ+YAFyf/594AGGfjgBgn/+fggBMnwMAAp8FAAaflgBan/+fhgBMn6gAUp//n4sATZ+hADifCQASn/+fkwA+nwcACJ+cADifDQAPn/+flwA9nwYAD5+UADefDgAPn/+fjABmn44AH58BABKfEAAcn/+ffgBpn44AHJ8EAAufEwAgn/+fewBon5kADJ8KAA2fCwAgn/+fgQBYnwoAAp+jAD6f/5+OAFmftwAanwcACJ//n5oAWp+5AA6f/5+yAFifvAAFn/+fvQBSn/+f/5+GAE2f/5//n4cAF58BAASfAgAEnwoAJZ//n/+fiAAEnwMAB58eACyf/5//n7AABp8KAA6f/5//n/+f/5//n/+f/5//n/+f/5//n/+f/5//n/+f/5//n/+f/5//n/+f/5//n/+f/5//n/+f9Q==";
+      const COUNTRIES_META = [{"id": 1, "zh": "斐济", "en": "Fiji", "cont": "大洋洲", "lon": 178.0, "lat": -17.9}, {"id": 2, "zh": "坦桑尼亚", "en": "Tanzania", "cont": "非洲", "lon": 34.1, "lat": -6.2}, {"id": 3, "zh": "西撒哈拉", "en": "W. Sahara", "cont": "非洲", "lon": -12.6, "lat": 24.2}, {"id": 4, "zh": "加拿大", "en": "Canada", "cont": "北美洲", "lon": -110.2, "lat": 56.7}, {"id": 5, "zh": "美国", "en": "United States", "cont": "北美洲", "lon": -98.0, "lat": 39.0}, {"id": 6, "zh": "哈萨克斯坦", "en": "Kazakhstan", "cont": "亚洲", "lon": 66.3, "lat": 48.1}, {"id": 7, "zh": "乌兹别克斯坦", "en": "Uzbekistan", "cont": "亚洲", "lon": 63.4, "lat": 41.4}, {"id": 8, "zh": "巴布亚新几内亚", "en": "Papua New Guinea", "cont": "大洋洲", "lon": 144.2, "lat": -6.7}, {"id": 9, "zh": "印度尼西亚", "en": "Indonesia", "cont": "亚洲", "lon": 113.3, "lat": -0.2}, {"id": 10, "zh": "阿根廷", "en": "Argentina", "cont": "南美洲", "lon": -64.1, "lat": -37.2}, {"id": 11, "zh": "智利", "en": "Chile", "cont": "南美洲", "lon": -71.5, "lat": -35.8}, {"id": 12, "zh": "刚果（金）", "en": "Dem. Rep. Congo", "cont": "非洲", "lon": 22.4, "lat": -4.1}, {"id": 13, "zh": "索马里", "en": "Somalia", "cont": "非洲", "lon": 46.8, "lat": 5.2}, {"id": 14, "zh": "肯尼亚", "en": "Kenya", "cont": "非洲", "lon": 37.5, "lat": 0.3}, {"id": 15, "zh": "苏丹", "en": "Sudan", "cont": "非洲", "lon": 29.6, "lat": 15.3}, {"id": 16, "zh": "乍得", "en": "Chad", "cont": "非洲", "lon": 18.3, "lat": 15.3}, {"id": 17, "zh": "海地", "en": "Haiti", "cont": "北美洲", "lon": -72.1, "lat": 18.9}, {"id": 18, "zh": "多米尼加", "en": "Dominican Rep.", "cont": "北美洲", "lon": -70.1, "lat": 18.7}, {"id": 19, "zh": "俄罗斯", "en": "Russia", "cont": "欧洲", "lon": 96.0, "lat": 62.0}, {"id": 20, "zh": "巴哈马", "en": "Bahamas", "cont": "北美洲", "lon": -77.9, "lat": 24.5}, {"id": 21, "zh": "马尔维纳斯群岛", "en": "Falkland Is.", "cont": "南美洲", "lon": -59.4, "lat": -51.7}, {"id": 22, "zh": "挪威", "en": "Norway", "cont": "欧洲", "lon": 12.2, "lat": 64.6}, {"id": 23, "zh": "格陵兰", "en": "Greenland", "cont": "北美洲", "lon": -39.3, "lat": 71.9}, {"id": 24, "zh": "法属南部领地", "en": "Fr. S. Antarctic Lands", "cont": "印度洋岛屿", "lon": 69.6, "lat": -49.2}, {"id": 25, "zh": "东帝汶", "en": "Timor-Leste", "cont": "亚洲", "lon": 125.9, "lat": -8.8}, {"id": 26, "zh": "南非", "en": "South Africa", "cont": "非洲", "lon": 26.1, "lat": -28.4}, {"id": 27, "zh": "莱索托", "en": "Lesotho", "cont": "非洲", "lon": 28.2, "lat": -29.5}, {"id": 28, "zh": "墨西哥", "en": "Mexico", "cont": "北美洲", "lon": -102.3, "lat": 23.6}, {"id": 29, "zh": "乌拉圭", "en": "Uruguay", "cont": "南美洲", "lon": -55.8, "lat": -32.4}, {"id": 30, "zh": "巴西", "en": "Brazil", "cont": "南美洲", "lon": -49.7, "lat": -14.1}, {"id": 31, "zh": "玻利维亚", "en": "Bolivia", "cont": "南美洲", "lon": -63.6, "lat": -16.4}, {"id": 32, "zh": "秘鲁", "en": "Peru", "cont": "南美洲", "lon": -75.9, "lat": -9.2}, {"id": 33, "zh": "哥伦比亚", "en": "Colombia", "cont": "南美洲", "lon": -72.5, "lat": 4.0}, {"id": 34, "zh": "巴拿马", "en": "Panama", "cont": "北美洲", "lon": -81.5, "lat": 8.4}, {"id": 35, "zh": "哥斯达黎加", "en": "Costa Rica", "cont": "北美洲", "lon": -83.7, "lat": 9.7}, {"id": 36, "zh": "尼加拉瓜", "en": "Nicaragua", "cont": "北美洲", "lon": -85.6, "lat": 12.9}, {"id": 37, "zh": "洪都拉斯", "en": "Honduras", "cont": "北美洲", "lon": -87.2, "lat": 14.5}, {"id": 38, "zh": "萨尔瓦多", "en": "El Salvador", "cont": "北美洲", "lon": -88.9, "lat": 13.8}, {"id": 39, "zh": "危地马拉", "en": "Guatemala", "cont": "北美洲", "lon": -90.3, "lat": 15.8}, {"id": 40, "zh": "伯利兹", "en": "Belize", "cont": "北美洲", "lon": -88.7, "lat": 17.3}, {"id": 41, "zh": "委内瑞拉", "en": "Venezuela", "cont": "南美洲", "lon": -65.4, "lat": 6.5}, {"id": 42, "zh": "圭亚那", "en": "Guyana", "cont": "南美洲", "lon": -58.8, "lat": 4.9}, {"id": 43, "zh": "苏里南", "en": "Suriname", "cont": "南美洲", "lon": -56.0, "lat": 3.8}, {"id": 44, "zh": "法国", "en": "France", "cont": "欧洲", "lon": 2.1, "lat": 46.9}, {"id": 45, "zh": "厄瓜多尔", "en": "Ecuador", "cont": "南美洲", "lon": -78.3, "lat": -1.8}, {"id": 46, "zh": "波多黎各", "en": "Puerto Rico", "cont": "北美洲", "lon": -66.4, "lat": 18.3}, {"id": 47, "zh": "牙买加", "en": "Jamaica", "cont": "北美洲", "lon": -77.2, "lat": 18.0}, {"id": 48, "zh": "古巴", "en": "Cuba", "cont": "北美洲", "lon": -77.7, "lat": 21.4}, {"id": 49, "zh": "津巴布韦", "en": "Zimbabwe", "cont": "非洲", "lon": 29.3, "lat": -19.0}, {"id": 50, "zh": "博茨瓦纳", "en": "Botswana", "cont": "非洲", "lon": 24.3, "lat": -22.5}, {"id": 51, "zh": "纳米比亚", "en": "Namibia", "cont": "非洲", "lon": 17.1, "lat": -23.3}, {"id": 52, "zh": "塞内加尔", "en": "Senegal", "cont": "非洲", "lon": -14.7, "lat": 14.5}, {"id": 53, "zh": "马里", "en": "Mali", "cont": "非洲", "lon": -0.7, "lat": 18.0}, {"id": 54, "zh": "毛里塔尼亚", "en": "Mauritania", "cont": "非洲", "lon": -11.5, "lat": 21.2}, {"id": 55, "zh": "贝宁", "en": "Benin", "cont": "非洲", "lon": 2.3, "lat": 9.2}, {"id": 56, "zh": "尼日尔", "en": "Niger", "cont": "非洲", "lon": 9.8, "lat": 17.4}, {"id": 57, "zh": "尼日利亚", "en": "Nigeria", "cont": "非洲", "lon": 7.8, "lat": 8.9}, {"id": 58, "zh": "喀麦隆", "en": "Cameroon", "cont": "非洲", "lon": 13.5, "lat": 7.2}, {"id": 59, "zh": "多哥", "en": "Togo", "cont": "非洲", "lon": 1.1, "lat": 8.5}, {"id": 60, "zh": "加纳", "en": "Ghana", "cont": "非洲", "lon": -1.1, "lat": 7.8}, {"id": 61, "zh": "科特迪瓦", "en": "Côte d'Ivoire", "cont": "非洲", "lon": -5.7, "lat": 7.5}, {"id": 62, "zh": "几内亚", "en": "Guinea", "cont": "非洲", "lon": -9.7, "lat": 10.0}, {"id": 63, "zh": "几内亚比绍", "en": "Guinea-Bissau", "cont": "非洲", "lon": -15.0, "lat": 11.9}, {"id": 64, "zh": "利比里亚", "en": "Liberia", "cont": "非洲", "lon": -9.7, "lat": 6.3}, {"id": 65, "zh": "塞拉利昂", "en": "Sierra Leone", "cont": "非洲", "lon": -11.8, "lat": 8.6}, {"id": 66, "zh": "布基纳法索", "en": "Burkina Faso", "cont": "非洲", "lon": -1.3, "lat": 12.2}, {"id": 67, "zh": "中非共和国", "en": "Central African Rep.", "cont": "非洲", "lon": 20.5, "lat": 6.8}, {"id": 68, "zh": "刚果（布）", "en": "Congo", "cont": "非洲", "lon": 15.9, "lat": -0.6}, {"id": 69, "zh": "加蓬", "en": "Gabon", "cont": "非洲", "lon": 11.6, "lat": -0.9}, {"id": 70, "zh": "赤道几内亚", "en": "Eq. Guinea", "cont": "非洲", "lon": 10.4, "lat": 1.7}, {"id": 71, "zh": "赞比亚", "en": "Zambia", "cont": "非洲", "lon": 25.4, "lat": -13.1}, {"id": 72, "zh": "马拉维", "en": "Malawi", "cont": "非洲", "lon": 33.7, "lat": -13.2}, {"id": 73, "zh": "莫桑比克", "en": "Mozambique", "cont": "非洲", "lon": 34.7, "lat": -18.3}, {"id": 74, "zh": "斯威士兰", "en": "eSwatini", "cont": "非洲", "lon": 31.4, "lat": -26.6}, {"id": 75, "zh": "安哥拉", "en": "Angola", "cont": "非洲", "lon": 18.8, "lat": -11.9}, {"id": 76, "zh": "布隆迪", "en": "Burundi", "cont": "非洲", "lon": 30.0, "lat": -3.5}, {"id": 77, "zh": "以色列", "en": "Israel", "cont": "亚洲", "lon": 34.7, "lat": 31.4}, {"id": 78, "zh": "黎巴嫩", "en": "Lebanon", "cont": "亚洲", "lon": 35.8, "lat": 33.9}, {"id": 79, "zh": "马达加斯加", "en": "Madagascar", "cont": "非洲", "lon": 46.7, "lat": -18.6}, {"id": 80, "zh": "巴勒斯坦", "en": "Palestine", "cont": "亚洲", "lon": 35.3, "lat": 32.1}, {"id": 81, "zh": "冈比亚", "en": "Gambia", "cont": "非洲", "lon": -16.0, "lat": 13.4}, {"id": 82, "zh": "突尼斯", "en": "Tunisia", "cont": "非洲", "lon": 8.9, "lat": 33.9}, {"id": 83, "zh": "阿尔及利亚", "en": "Algeria", "cont": "非洲", "lon": 0.5, "lat": 27.9}, {"id": 84, "zh": "约旦", "en": "Jordan", "cont": "亚洲", "lon": 36.3, "lat": 31.3}, {"id": 85, "zh": "阿联酋", "en": "United Arab Emirates", "cont": "亚洲", "lon": 55.0, "lat": 24.3}, {"id": 86, "zh": "卡塔尔", "en": "Qatar", "cont": "亚洲", "lon": 51.2, "lat": 25.3}, {"id": 87, "zh": "科威特", "en": "Kuwait", "cont": "亚洲", "lon": 47.4, "lat": 29.2}, {"id": 88, "zh": "伊拉克", "en": "Iraq", "cont": "亚洲", "lon": 42.4, "lat": 33.2}, {"id": 89, "zh": "阿曼", "en": "Oman", "cont": "亚洲", "lon": 57.0, "lat": 20.8}, {"id": 90, "zh": "瓦努阿图", "en": "Vanuatu", "cont": "大洋洲", "lon": 166.9, "lat": -15.2}, {"id": 91, "zh": "柬埔寨", "en": "Cambodia", "cont": "亚洲", "lon": 105.0, "lat": 12.9}, {"id": 92, "zh": "泰国", "en": "Thailand", "cont": "亚洲", "lon": 101.7, "lat": 13.0}, {"id": 93, "zh": "老挝", "en": "Laos", "cont": "亚洲", "lon": 102.1, "lat": 18.2}, {"id": 94, "zh": "缅甸", "en": "Myanmar", "cont": "亚洲", "lon": 95.9, "lat": 19.0}, {"id": 95, "zh": "越南", "en": "Vietnam", "cont": "亚洲", "lon": 107.8, "lat": 16.0}, {"id": 96, "zh": "朝鲜", "en": "North Korea", "cont": "亚洲", "lon": 126.8, "lat": 40.3}, {"id": 97, "zh": "韩国", "en": "South Korea", "cont": "亚洲", "lon": 127.9, "lat": 36.2}, {"id": 98, "zh": "蒙古", "en": "Mongolia", "cont": "亚洲", "lon": 105.3, "lat": 46.8}, {"id": 99, "zh": "印度", "en": "India", "cont": "亚洲", "lon": 79.2, "lat": 21.9}, {"id": 100, "zh": "孟加拉国", "en": "Bangladesh", "cont": "亚洲", "lon": 89.9, "lat": 23.6}, {"id": 101, "zh": "不丹", "en": "Bhutan", "cont": "亚洲", "lon": 90.5, "lat": 27.6}, {"id": 102, "zh": "尼泊尔", "en": "Nepal", "cont": "亚洲", "lon": 83.4, "lat": 28.3}, {"id": 103, "zh": "巴基斯坦", "en": "Pakistan", "cont": "亚洲", "lon": 70.1, "lat": 30.4}, {"id": 104, "zh": "阿富汗", "en": "Afghanistan", "cont": "亚洲", "lon": 65.3, "lat": 33.8}, {"id": 105, "zh": "塔吉克斯坦", "en": "Tajikistan", "cont": "亚洲", "lon": 71.0, "lat": 38.8}, {"id": 106, "zh": "吉尔吉斯斯坦", "en": "Kyrgyzstan", "cont": "亚洲", "lon": 75.2, "lat": 41.3}, {"id": 107, "zh": "土库曼斯坦", "en": "Turkmenistan", "cont": "亚洲", "lon": 58.7, "lat": 39.1}, {"id": 108, "zh": "伊朗", "en": "Iran", "cont": "亚洲", "lon": 54.1, "lat": 32.3}, {"id": 109, "zh": "叙利亚", "en": "Syria", "cont": "亚洲", "lon": 38.6, "lat": 35.0}, {"id": 110, "zh": "亚美尼亚", "en": "Armenia", "cont": "亚洲", "lon": 45.1, "lat": 40.0}, {"id": 111, "zh": "瑞典", "en": "Sweden", "cont": "欧洲", "lon": 14.8, "lat": 62.3}, {"id": 112, "zh": "白俄罗斯", "en": "Belarus", "cont": "欧洲", "lon": 27.8, "lat": 53.7}, {"id": 113, "zh": "乌克兰", "en": "Ukraine", "cont": "欧洲", "lon": 31.0, "lat": 48.8}, {"id": 114, "zh": "波兰", "en": "Poland", "cont": "欧洲", "lon": 19.1, "lat": 51.9}, {"id": 115, "zh": "奥地利", "en": "Austria", "cont": "欧洲", "lon": 15.0, "lat": 47.9}, {"id": 116, "zh": "匈牙利", "en": "Hungary", "cont": "欧洲", "lon": 19.1, "lat": 47.2}, {"id": 117, "zh": "摩尔多瓦", "en": "Moldova", "cont": "欧洲", "lon": 28.6, "lat": 47.1}, {"id": 118, "zh": "罗马尼亚", "en": "Romania", "cont": "欧洲", "lon": 24.2, "lat": 46.0}, {"id": 119, "zh": "立陶宛", "en": "Lithuania", "cont": "欧洲", "lon": 24.1, "lat": 55.1}, {"id": 120, "zh": "拉脱维亚", "en": "Latvia", "cont": "欧洲", "lon": 24.5, "lat": 56.9}, {"id": 121, "zh": "爱沙尼亚", "en": "Estonia", "cont": "欧洲", "lon": 25.6, "lat": 58.5}, {"id": 122, "zh": "德国", "en": "Germany", "cont": "欧洲", "lon": 10.4, "lat": 51.4}, {"id": 123, "zh": "保加利亚", "en": "Bulgaria", "cont": "欧洲", "lon": 25.1, "lat": 42.7}, {"id": 124, "zh": "希腊", "en": "Greece", "cont": "欧洲", "lon": 21.8, "lat": 39.1}, {"id": 125, "zh": "土耳其", "en": "Turkey", "cont": "亚洲", "lon": 35.5, "lat": 38.6}, {"id": 126, "zh": "阿尔巴尼亚", "en": "Albania", "cont": "欧洲", "lon": 20.0, "lat": 41.2}, {"id": 127, "zh": "克罗地亚", "en": "Croatia", "cont": "欧洲", "lon": 15.6, "lat": 44.5}, {"id": 128, "zh": "瑞士", "en": "Switzerland", "cont": "欧洲", "lon": 8.3, "lat": 46.8}, {"id": 129, "zh": "卢森堡", "en": "Luxembourg", "cont": "欧洲", "lon": 6.0, "lat": 49.7}, {"id": 130, "zh": "比利时", "en": "Belgium", "cont": "欧洲", "lon": 4.7, "lat": 50.6}, {"id": 131, "zh": "荷兰", "en": "Netherlands", "cont": "欧洲", "lon": 5.4, "lat": 52.0}, {"id": 132, "zh": "葡萄牙", "en": "Portugal", "cont": "欧洲", "lon": -8.4, "lat": 39.5}, {"id": 133, "zh": "西班牙", "en": "Spain", "cont": "欧洲", "lon": -3.5, "lat": 39.9}, {"id": 134, "zh": "爱尔兰", "en": "Ireland", "cont": "欧洲", "lon": -7.8, "lat": 53.5}, {"id": 135, "zh": "新喀里多尼亚", "en": "New Caledonia", "cont": "大洋洲", "lon": 165.7, "lat": -21.4}, {"id": 136, "zh": "所罗门群岛", "en": "Solomon Is.", "cont": "大洋洲", "lon": 159.1, "lat": -7.9}, {"id": 137, "zh": "新西兰", "en": "New Zealand", "cont": "大洋洲", "lon": 171.2, "lat": -43.7}, {"id": 138, "zh": "澳大利亚", "en": "Australia", "cont": "大洋洲", "lon": 133.1, "lat": -24.8}, {"id": 139, "zh": "斯里兰卡", "en": "Sri Lanka", "cont": "亚洲", "lon": 80.7, "lat": 7.9}, {"id": 140, "zh": "中国", "en": "China", "cont": "亚洲", "lon": 104.0, "lat": 35.0}, {"id": 141, "zh": "意大利", "en": "Italy", "cont": "欧洲", "lon": 12.6, "lat": 42.6}, {"id": 142, "zh": "丹麦", "en": "Denmark", "cont": "欧洲", "lon": 9.5, "lat": 56.3}, {"id": 143, "zh": "英国", "en": "United Kingdom", "cont": "欧洲", "lon": -1.8, "lat": 54.2}, {"id": 144, "zh": "冰岛", "en": "Iceland", "cont": "欧洲", "lon": -18.5, "lat": 65.0}, {"id": 145, "zh": "阿塞拜疆", "en": "Azerbaijan", "cont": "亚洲", "lon": 47.6, "lat": 40.0}, {"id": 146, "zh": "格鲁吉亚", "en": "Georgia", "cont": "亚洲", "lon": 43.6, "lat": 42.3}, {"id": 147, "zh": "菲律宾", "en": "Philippines", "cont": "亚洲", "lon": 120.8, "lat": 15.7}, {"id": 148, "zh": "马来西亚", "en": "Malaysia", "cont": "亚洲", "lon": 114.5, "lat": 3.5}, {"id": 149, "zh": "文莱", "en": "Brunei", "cont": "亚洲", "lon": 114.9, "lat": 4.7}, {"id": 150, "zh": "斯洛文尼亚", "en": "Slovenia", "cont": "欧洲", "lon": 14.7, "lat": 46.1}, {"id": 151, "zh": "芬兰", "en": "Finland", "cont": "欧洲", "lon": 27.4, "lat": 65.0}, {"id": 152, "zh": "斯洛伐克", "en": "Slovakia", "cont": "欧洲", "lon": 19.6, "lat": 48.7}, {"id": 153, "zh": "捷克", "en": "Czechia", "cont": "欧洲", "lon": 15.5, "lat": 49.8}, {"id": 154, "zh": "厄立特里亚", "en": "Eritrea", "cont": "非洲", "lon": 38.3, "lat": 15.2}, {"id": 155, "zh": "日本", "en": "Japan", "cont": "亚洲", "lon": 138.3, "lat": 36.1}, {"id": 156, "zh": "巴拉圭", "en": "Paraguay", "cont": "南美洲", "lon": -58.6, "lat": -23.1}, {"id": 157, "zh": "也门", "en": "Yemen", "cont": "亚洲", "lon": 47.5, "lat": 15.8}, {"id": 158, "zh": "沙特阿拉伯", "en": "Saudi Arabia", "cont": "亚洲", "lon": 44.6, "lat": 24.3}, {"id": 159, "zh": "南极洲", "en": "Antarctica", "cont": "南极洲", "lon": 67.4, "lat": -76.7}, {"id": 160, "zh": "塞浦路斯", "en": "Cyprus", "cont": "亚洲", "lon": 33.0, "lat": 34.8}, {"id": 161, "zh": "摩洛哥", "en": "Morocco", "cont": "非洲", "lon": -10.0, "lat": 28.5}, {"id": 162, "zh": "埃及", "en": "Egypt", "cont": "非洲", "lon": 29.4, "lat": 26.9}, {"id": 163, "zh": "利比亚", "en": "Libya", "cont": "非洲", "lon": 17.3, "lat": 26.3}, {"id": 164, "zh": "埃塞俄比亚", "en": "Ethiopia", "cont": "非洲", "lon": 38.7, "lat": 9.4}, {"id": 165, "zh": "吉布提", "en": "Djibouti", "cont": "非洲", "lon": 42.4, "lat": 11.9}, {"id": 166, "zh": "乌干达", "en": "Uganda", "cont": "非洲", "lon": 32.5, "lat": 1.4}, {"id": 167, "zh": "卢旺达", "en": "Rwanda", "cont": "非洲", "lon": 30.0, "lat": -2.0}, {"id": 168, "zh": "波黑", "en": "Bosnia and Herz.", "cont": "欧洲", "lon": 18.1, "lat": 43.9}, {"id": 169, "zh": "北马其顿", "en": "Macedonia", "cont": "欧洲", "lon": 21.7, "lat": 41.7}, {"id": 170, "zh": "塞尔维亚", "en": "Serbia", "cont": "欧洲", "lon": 21.0, "lat": 44.1}, {"id": 171, "zh": "黑山", "en": "Montenegro", "cont": "欧洲", "lon": 19.4, "lat": 42.8}, {"id": 172, "zh": "特立尼达和多巴哥", "en": "Trinidad and Tobago", "cont": "北美洲", "lon": -61.3, "lat": 10.6}, {"id": 173, "zh": "南苏丹", "en": "S. Sudan", "cont": "非洲", "lon": 29.0, "lat": 8.0}, {"id": 174, "zh": "新加坡", "en": "Singapore", "cont": "亚洲", "lon": 103.8, "lat": 1.35}];
+
+      const gridCountry = new Uint8Array(MAP_W * MAP_H);
+      const gridCoast = new Uint8Array(MAP_W * MAP_H);
+      const gridBorder = new Uint8Array(MAP_W * MAP_H);
+      const countryById = new Map();
+      const countryByZh = new Map();
+
+      function decodeCountryGrid() {
+        const toneBuckets = [0.84, 0.92, 1.00, 1.07, 0.88, 0.96, 1.04];
+        COUNTRIES_META.forEach((c) => {
+          c.tone = toneBuckets[(c.id * 11) % toneBuckets.length];
+          countryById.set(c.id, c);
+          countryByZh.set(c.zh, c);
+        });
+
+        const raw = atob(COUNTRY_RLE_B64);
+        let ptr = 0;
+        for (let i = 0; i < raw.length; i += 2) {
+          const val = raw.charCodeAt(i);
+          const len = raw.charCodeAt(i + 1);
+          for (let k = 0; k < len && ptr < MAP_W * MAP_H; k++) {
+            gridCountry[ptr++] = val;
+          }
+        }
+
+        // 识别海岸线像素 (gridCoast) 与国际国界线像素 (gridBorder)
+        for (let r = 1; r < MAP_H - 1; r++) {
+          const rowOff = r * MAP_W;
+          for (let c = 0; c < MAP_W; c++) {
+            const idx = rowOff + c;
+            const cid = gridCountry[idx];
+            if (cid === 0) continue;
+            const left = rowOff + ((c - 1 + MAP_W) % MAP_W);
+            const right = rowOff + ((c + 1) % MAP_W);
+            const up = (r - 1) * MAP_W + c;
+            const down = (r + 1) * MAP_W + c;
+            const n1 = gridCountry[left];
+            const n2 = gridCountry[right];
+            const n3 = gridCountry[up];
+            const n4 = gridCountry[down];
+            if (n1 === 0 || n2 === 0 || n3 === 0 || n4 === 0) {
+              gridCoast[idx] = 1;
+            } else if ((n1 > 0 && n1 !== cid) || (n2 > 0 && n2 !== cid) || (n3 > 0 && n3 !== cid) || (n4 > 0 && n4 !== cid)) {
+              gridBorder[idx] = 1;
+            }
+          }
+        }
+      }
+
+      function degToRad(d) { return (d * Math.PI) / 180.0; }
+      function radToDeg(r) { return (r * 180.0) / Math.PI; }
+
+      // 粒子结构: type: 0 = 海洋, 1 = 陆地内部, 2 = 海岸线描边, 3 = 国家边界描边
+      let particles = [];
+      function buildGlobeParticles(fibCount) {
+        particles = [];
+        const goldenAngle = Math.PI * (3.0 - Math.sqrt(5.0));
+
+        // (A) 斐波那契球面均匀晶格粒子
+        for (let i = 0; i < fibCount; i++) {
+          const wy = 1.0 - (2.0 * (i + 0.5)) / fibCount;
+          const radius = Math.sqrt(Math.max(0, 1.0 - wy * wy));
+          const theta = goldenAngle * i;
+          const wx = radius * Math.sin(theta);
+          const wz = radius * Math.cos(theta);
+          const lat = radToDeg(Math.asin(Math.max(-1, Math.min(1, wy))));
+          const lon = radToDeg(Math.atan2(wx, wz));
+          let c = Math.floor(((lon + 180.0) / 360.0) * MAP_W) % MAP_W;
+          if (c < 0) c += MAP_W;
+          let r = Math.floor(((90.0 - lat) / 180.0) * MAP_H);
+          r = Math.max(0, Math.min(MAP_H - 1, r));
+          const idx = r * MAP_W + c;
+          const cid = gridCountry[idx];
+          const isCoast = gridCoast[idx] === 1;
+          const isBorder = gridBorder[idx] === 1;
+          let type = 0;
+          let tone = 1.0;
+          if (cid > 0) {
+            type = isCoast ? 2 : isBorder ? 3 : 1;
+            const cMeta = countryById.get(cid);
+            if (cMeta) tone = cMeta.tone;
+          }
+          particles.push({
+            wx, wy, wz, lat, lon, cid, type, tone,
+            phase: (i * 0.6180339) % (Math.PI * 2)
+          });
+        }
+
+        // (B) 独立高精度海岸线与国界描边轮廓粒子（从 0.5° 栅格提取，使国家描边锐利独立）
+        for (let r = 2; r < MAP_H - 2; r += 1) {
+          const lat = 90.0 - (r + 0.5) * (180.0 / MAP_H);
+          const latR = degToRad(lat);
+          const wy = Math.sin(latR);
+          const rCos = Math.cos(latR);
+          const stepC = Math.max(1, Math.round(1.3 / Math.max(0.18, rCos)));
+          const rowOff = r * MAP_W;
+          for (let c = 0; c < MAP_W; c += stepC) {
+            const idx = rowOff + c;
+            const isCoast = gridCoast[idx] === 1;
+            const isBorder = gridBorder[idx] === 1;
+            if (!isCoast && !isBorder) continue;
+            if (isCoast && !isBorder && (r + c) % 2 !== 0) continue;
+            const cid = gridCountry[idx];
+            const lon = -180.0 + (c + 0.5) * (360.0 / MAP_W);
+            const lonR = degToRad(lon);
+            const wx = rCos * Math.sin(lonR);
+            const wz = rCos * Math.cos(lonR);
+            const cMeta = countryById.get(cid);
+            particles.push({
+              wx, wy, wz, lat, lon, cid,
+              type: isBorder ? 3 : 2,
+              tone: cMeta ? cMeta.tone : 1.0,
+              phase: ((r * 31 + c) % 100) * 0.0628
+            });
+          }
+        }
+
+        const hudP = $('#st-hud-particles');
+        if (hudP) hudP.textContent = particles.length.toLocaleString();
+      }
+
+      function viewToEarthLatLon(vx, vy, vz, centerLonDeg, centerLatDeg, tiltDeg) {
+        let x = vx, y = vy, z = vz;
+        if (tiltDeg !== 0) {
+          const tr = degToRad(tiltDeg);
+          const ct = Math.cos(tr), st = Math.sin(tr);
+          const nx = x * ct - y * st;
+          const ny = x * st + y * ct;
+          x = nx; y = ny;
+        }
+        const phi = degToRad(centerLatDeg);
+        const cp = Math.cos(phi), sp = Math.sin(phi);
+        const y1 = y * cp + z * sp;
+        const z1 = -y * sp + z * cp;
+        const x1 = x;
+        const lam = degToRad(centerLonDeg);
+        const cl = Math.cos(lam), sl = Math.sin(lam);
+        const wx = x1 * cl + z1 * sl;
+        const wz = -x1 * sl + z1 * cl;
+        const wy = y1;
+        const lat = radToDeg(Math.asin(Math.max(-1, Math.min(1, wy))));
+        const lon = radToDeg(Math.atan2(wx, wz));
+        return { lat, lon };
+      }
+
+      function lookupCountryAtLatLon(lat, lon) {
+        let c = Math.floor(((lon + 180.0) / 360.0) * MAP_W) % MAP_W;
+        if (c < 0) c += MAP_W;
+        let r = Math.floor(((90.0 - lat) / 180.0) * MAP_H);
+        r = Math.max(0, Math.min(MAP_H - 1, r));
+        const directCid = gridCountry[r * MAP_W + c];
+        if (directCid > 0) return directCid;
+        for (let dr = -2; dr <= 2; dr++) {
+          const nr = r + dr;
+          if (nr < 0 || nr >= MAP_H) continue;
+          for (let dc = -2; dc <= 2; dc++) {
+            const nc = (c + dc + MAP_W) % MAP_W;
+            const nCid = gridCountry[nr * MAP_W + nc];
+            if (nCid > 0) return nCid;
+          }
+        }
+        return 0;
+      }
+
+      // =========================================================================
+      // 3. 访客记录数据引擎（支持每日访客数、IP、设备及按日/周/月/年整合）
+      // =========================================================================
+      const GEO_PROFILES = [
+        { code: 'CN', zh: '中国', en: 'China', region: '上海 · 电信骨干', lat: 31.23, lon: 121.47 },
+        { code: 'CN', zh: '中国', en: 'China', region: '北京 · 联通节点', lat: 39.90, lon: 116.40 },
+        { code: 'CN', zh: '中国', en: 'China', region: '深圳 · 粤港澳节点', lat: 22.54, lon: 114.06 },
+        { code: 'CN', zh: '中国', en: 'China', region: '杭州 · 华东节点', lat: 30.27, lon: 120.15 },
+        { code: 'CN', zh: '中国', en: 'China', region: '成都 · 西南节点', lat: 30.57, lon: 104.06 },
+        { code: 'SG', zh: '新加坡', en: 'Singapore', region: 'Singapore', lat: 1.35, lon: 103.82 },
+        { code: 'JP', zh: '日本', en: 'Japan', region: 'Tokyo', lat: 35.68, lon: 139.76 },
+        { code: 'US', zh: '美国', en: 'United States', region: 'San Francisco', lat: 37.77, lon: -122.42 },
+        { code: 'US', zh: '美国', en: 'United States', region: 'New York', lat: 40.71, lon: -74.01 },
+        { code: 'DE', zh: '德国', en: 'Germany', region: 'Frankfurt', lat: 50.11, lon: 8.68 },
+        { code: 'GB', zh: '英国', en: 'United Kingdom', region: 'London', lat: 51.51, lon: -0.13 },
+        { code: 'FR', zh: '法国', en: 'France', region: 'Paris', lat: 48.86, lon: 2.35 },
+        { code: 'KR', zh: '韩国', en: 'South Korea', region: 'Seoul', lat: 37.57, lon: 126.98 },
+        { code: 'CA', zh: '加拿大', en: 'Canada', region: 'Toronto', lat: 43.65, lon: -79.38 },
+        { code: 'AU', zh: '澳大利亚', en: 'Australia', region: 'Sydney', lat: -33.87, lon: 151.21 },
+        { code: 'NL', zh: '荷兰', en: 'Netherlands', region: 'Amsterdam', lat: 52.37, lon: 4.90 },
+        { code: 'CH', zh: '瑞士', en: 'Switzerland', region: 'Zurich', lat: 47.37, lon: 8.54 },
+        { code: 'MY', zh: '马来西亚', en: 'Malaysia', region: 'Kuala Lumpur', lat: 3.14, lon: 101.69 }
+      ];
+
+      let visitorLogs = [];
+      let nextLogId = 1;
+
+      function formatYmd(d) {
+        const y = d.getFullYear();
+        const m = String(d.getMonth() + 1).padStart(2, '0');
+        const day = String(d.getDate()).padStart(2, '0');
+        return `${y}-${m}-${day}`;
+      }
+
+      function getMondayYmd(ymdStr) {
+        const parts = ymdStr.split('-').map(Number);
+        const d = new Date(parts[0], parts[1] - 1, parts[2]);
+        const day = d.getDay();
+        const diff = (day + 6) % 7;
+        d.setDate(d.getDate() - diff);
+        return formatYmd(d);
+      }
+
+      function getBucketKey(ymdStr, granularity) {
+        if (granularity === 'week') return getMondayYmd(ymdStr);
+        if (granularity === 'month') return ymdStr.slice(0, 7);
+        if (granularity === 'year') return ymdStr.slice(0, 4);
+        return ymdStr;
+      }
+
+      function formatBucketLabel(granularity, bucket) {
+        if (granularity === 'day') return bucket;
+        if (granularity === 'week') return `${bucket} 周`;
+        if (granularity === 'month') return `${bucket} 月`;
+        return `${bucket} 年`;
+      }
+
+      function seedInitialLogs() {
+        visitorLogs = [];
+        nextLogId = 1;
+        const baseNow = new Date(2026, 9, 22, 17, 30, 0);
+
+        const sampleConfigs = [
+          { ip: '116.228.89.142', geoIdx: 0, dev: 'Desktop', os: 'macOS', br: 'Chrome', path: '/' },
+          { ip: '223.72.64.18', geoIdx: 1, dev: 'Mobile', os: 'iOS', br: 'Safari', path: '/posts/three-body-notes/' },
+          { ip: '14.17.32.209', geoIdx: 2, dev: 'Desktop', os: 'Windows 11', br: 'Edge', path: '/photos/' },
+          { ip: '115.236.49.77', geoIdx: 3, dev: 'Mobile', os: 'HarmonyOS', br: 'WeChat', path: '/posts/' },
+          { ip: '182.148.56.91', geoIdx: 4, dev: 'Tablet', os: 'iPadOS', br: 'Safari', path: '/links/' },
+          { ip: '103.252.200.45', geoIdx: 5, dev: 'Desktop', os: 'macOS', br: 'Safari', path: '/' },
+          { ip: '133.242.18.90', geoIdx: 6, dev: 'Mobile', os: 'iOS', br: 'Safari', path: '/photos/' },
+          { ip: '104.28.192.66', geoIdx: 7, dev: 'Desktop', os: 'macOS', br: 'Chrome', path: '/posts/astro-ssr-sqlite/' },
+          { ip: '64.233.160.112', geoIdx: 8, dev: 'Desktop', os: 'Windows 11', br: 'Chrome', path: '/programs/' },
+          { ip: '138.201.88.19', geoIdx: 9, dev: 'Desktop', os: 'Linux', br: 'Firefox', path: '/' },
+          { ip: '81.2.69.142', geoIdx: 10, dev: 'Desktop', os: 'macOS', br: 'Chrome', path: '/posts/' },
+          { ip: '90.84.112.37', geoIdx: 11, dev: 'Mobile', os: 'Android', br: 'Chrome', path: '/photos/' },
+          { ip: '211.234.118.54', geoIdx: 12, dev: 'Mobile', os: 'Android', br: 'Chrome', path: '/' },
+          { ip: '142.112.44.80', geoIdx: 13, dev: 'Desktop', os: 'Windows 11', br: 'Edge', path: '/links/' },
+          { ip: '203.2.218.61', geoIdx: 14, dev: 'Tablet', os: 'iPadOS', br: 'Safari', path: '/photos/' },
+          { ip: '145.97.39.15', geoIdx: 15, dev: 'Desktop', os: 'Linux', br: 'Firefox', path: '/' },
+          { ip: '194.230.158.42', geoIdx: 16, dev: 'Desktop', os: 'macOS', br: 'Safari', path: '/posts/' },
+          { ip: '175.139.142.88', geoIdx: 17, dev: 'Mobile', os: 'Android', br: 'Chrome', path: '/posts/' }
+        ];
+
+        for (let dayOff = 44; dayOff >= 0; dayOff--) {
+          const d = new Date(baseNow);
+          d.setDate(baseNow.getDate() - dayOff);
+          const ymd = formatYmd(d);
+          const count = 5 + ((dayOff * 5 + 3) % 8);
+          for (let k = 0; k < count; k++) {
+            const cfg = sampleConfigs[(dayOff * 3 + k * 2) % sampleConfigs.length];
+            const geo = GEO_PROFILES[cfg.geoIdx];
+            const ipParts = cfg.ip.split('.');
+            const lastOctet = dayOff === 0 && k < 4 ? ipParts[3] : String(((Number(ipParts[3]) + dayOff + k * 9) % 235) + 12);
+            const ip = `${ipParts[0]}.${ipParts[1]}.${ipParts[2]}.${lastOctet}`;
+            const pv = 1 + ((dayOff + k * 3) % 6);
+            const hh = String((8 + k * 2) % 23).padStart(2, '0');
+            const mm = String((12 + dayOff + k * 7) % 58).padStart(2, '0');
+            visitorLogs.push({
+              id: nextLogId++,
+              visitDate: ymd,
+              ip,
+              countryCode: geo.code,
+              countryZh: geo.zh,
+              countryEn: geo.en,
+              region: geo.region,
+              lat: geo.lat,
+              lon: geo.lon,
+              deviceType: cfg.dev,
+              os: cfg.os,
+              browser: cfg.br,
+              path: cfg.path,
+              pvCount: pv,
+              firstSeen: `${ymd} ${hh}:${mm}:10`,
+              lastSeen: `${ymd} ${hh}:${String(Math.min(59, Number(mm) + pv)).padStart(2, '0')}:42`
+            });
+          }
+        }
+
+        for (let mOff = 2; mOff <= 22; mOff++) {
+          const d = new Date(baseNow.getFullYear(), baseNow.getMonth() - mOff, 14);
+          const ymd = formatYmd(d);
+          const mCount = 7 + (mOff % 6);
+          for (let j = 0; j < mCount; j++) {
+            const cfg = sampleConfigs[(mOff * 2 + j) % sampleConfigs.length];
+            const geo = GEO_PROFILES[cfg.geoIdx];
+            const ipParts = cfg.ip.split('.');
+            const ip = `${ipParts[0]}.${ipParts[1]}.${ipParts[2]}.${20 + ((mOff * 5 + j * 11) % 210)}`;
+            const pv = 2 + ((mOff + j) % 7);
+            const ts = `${ymd} 15:${String(10 + j * 3).padStart(2, '0')}:20`;
+            visitorLogs.push({
+              id: nextLogId++,
+              visitDate: ymd,
+              ip,
+              countryCode: geo.code,
+              countryZh: geo.zh,
+              countryEn: geo.en,
+              region: geo.region,
+              lat: geo.lat,
+              lon: geo.lon,
+              deviceType: cfg.dev,
+              os: cfg.os,
+              browser: cfg.br,
+              path: cfg.path,
+              pvCount: pv,
+              firstSeen: ts,
+              lastSeen: ts
+            });
+          }
+        }
+      }
+
+      function computeDashboard(opts) {
+        const granularity = opts.granularity || 'day';
+        const selBucket = opts.bucket || null;
+        const selCountry = opts.country || null;
+        const selDevice = opts.device || null;
+        const q = (opts.q || '').trim().toLowerCase();
+        const page = Math.max(1, opts.page || 1);
+        const pageSize = opts.pageSize || 10;
+
+        const today = formatYmd(new Date());
+        const weekStart = getMondayYmd(today);
+        const thisMonth = today.slice(0, 7);
+        const thisYear = today.slice(0, 4);
+
+        const calcUvPv = (pred) => {
+          const ips = new Set();
+          let pv = 0;
+          for (const r of visitorLogs) {
+            if (pred(r)) {
+              ips.add(r.ip);
+              pv += r.pvCount;
+            }
+          }
+          return { uv: ips.size, pv };
+        };
+
+        const todayStat = calcUvPv((r) => r.visitDate === today);
+        const weekStat = calcUvPv((r) => r.visitDate >= weekStart);
+        const monthStat = calcUvPv((r) => r.visitDate.startsWith(thisMonth));
+        const yearStat = calcUvPv((r) => r.visitDate.startsWith(thisYear));
+        const totalStat = calcUvPv(() => true);
+        const allCountriesSet = new Set(visitorLogs.map((r) => r.countryZh));
+
+        const bucketMap = new Map();
+        for (const r of visitorLogs) {
+          if (selCountry && r.countryZh !== selCountry) continue;
+          if (selDevice && r.deviceType !== selDevice) continue;
+          const bKey = getBucketKey(r.visitDate, granularity);
+          let b = bucketMap.get(bKey);
+          if (!b) {
+            b = {
+              bucket: bKey,
+              label: formatBucketLabel(granularity, bKey),
+              ips: new Set(),
+              pv: 0,
+              desktop: 0,
+              mobile: 0,
+              tablet: 0,
+              topCountry: r.countryZh
+            };
+            bucketMap.set(bKey, b);
+          }
+          b.ips.add(r.ip);
+          b.pv += r.pvCount;
+          if (r.deviceType === 'Desktop') b.desktop++;
+          else if (r.deviceType === 'Mobile') b.mobile++;
+          else b.tablet++;
+        }
+
+        const limitBuckets = granularity === 'day' ? 14 : granularity === 'week' ? 10 : granularity === 'month' ? 12 : 5;
+        const series = Array.from(bucketMap.values())
+          .sort((a, b) => b.bucket.localeCompare(a.bucket))
+          .slice(0, limitBuckets)
+          .map((b) => ({
+            bucket: b.bucket,
+            label: b.label,
+            uv: b.ips.size,
+            pv: b.pv,
+            desktop: b.desktop,
+            mobile: b.mobile,
+            tablet: b.tablet,
+            topCountry: b.topCountry
+          }));
+
+        const countryMap = new Map();
+        for (const r of visitorLogs) {
+          if (selBucket && getBucketKey(r.visitDate, granularity) !== selBucket) continue;
+          let c = countryMap.get(r.countryZh);
+          if (!c) {
+            const meta = countryByZh.get(r.countryZh);
+            c = {
+              countryZh: r.countryZh,
+              countryEn: r.countryEn,
+              countryCode: r.countryCode,
+              lat: meta ? meta.lat : r.lat,
+              lon: meta ? meta.lon : r.lon,
+              ips: new Set(),
+              pv: 0,
+              latestIp: r.ip,
+              latestDevice: `${r.deviceType} · ${r.os} / ${r.browser}`,
+              lastSeen: r.lastSeen
+            };
+            countryMap.set(r.countryZh, c);
+          }
+          c.ips.add(r.ip);
+          c.pv += r.pvCount;
+          if (r.lastSeen >= c.lastSeen) {
+            c.lastSeen = r.lastSeen;
+            c.latestIp = r.ip;
+            c.latestDevice = `${r.deviceType} · ${r.os} / ${r.browser}`;
+          }
+        }
+        const rawCountries = Array.from(countryMap.values()).sort((a, b) => b.ips.size - a.ips.size || b.pv - a.pv);
+        const sumCountryPv = Math.max(1, rawCountries.reduce((acc, c) => acc + c.pv, 0));
+        const countries = rawCountries.map((c) => ({
+          countryZh: c.countryZh,
+          countryEn: c.countryEn,
+          countryCode: c.countryCode,
+          lat: c.lat,
+          lon: c.lon,
+          uv: c.ips.size,
+          pv: c.pv,
+          share: Number(((c.pv / sumCountryPv) * 100).toFixed(1)),
+          latestIp: c.latestIp,
+          latestDevice: c.latestDevice,
+          lastSeen: c.lastSeen
+        }));
+
+        const filteredLogs = visitorLogs
+          .filter((r) => {
+            if (selBucket && getBucketKey(r.visitDate, granularity) !== selBucket) return false;
+            if (selCountry && r.countryZh !== selCountry) return false;
+            if (selDevice && r.deviceType !== selDevice) return false;
+            if (q) {
+              const hay = `${r.ip} ${r.countryZh} ${r.region} ${r.os} ${r.browser} ${r.path}`.toLowerCase();
+              if (!hay.includes(q)) return false;
+            }
+            return true;
+          })
+          .sort((a, b) => b.visitDate.localeCompare(a.visitDate) || b.lastSeen.localeCompare(a.lastSeen) || b.id - a.id);
+
+        const startIdx = (page - 1) * pageSize;
+        const pageItems = filteredLogs.slice(startIdx, startIdx + pageSize);
+
+        return {
+          granularity,
+          selectedBucket: selBucket,
+          selectedCountry: selCountry,
+          selectedDevice: selDevice,
+          summary: {
+            todayUv: todayStat.uv,
+            todayPv: todayStat.pv,
+            weekUv: weekStat.uv,
+            weekPv: weekStat.pv,
+            monthUv: monthStat.uv,
+            monthPv: monthStat.pv,
+            yearUv: yearStat.uv,
+            yearPv: yearStat.pv,
+            totalUv: totalStat.uv,
+            totalPv: totalStat.pv,
+            activeCountries: allCountriesSet.size
+          },
+          series,
+          countries,
+          logs: {
+            items: pageItems,
+            total: filteredLogs.length,
+            page,
+            pageSize
+          }
+        };
+      }
+
+      // =========================================================================
+      // 4. 状态管理（精简直观）
+      // =========================================================================
+      const state = {
+        granularity: 'day',
+        selectedBucket: null,
+        selectedCountryZh: null,
+        selectedDeviceType: null,
+        logSearchQuery: '',
+        page: 1,
+        pageSize: 10
+      };
+
+      const globeState = {
+        fibCount: 22000,
+        particleRadius: 1.35,
+        rotLon: 105.0,
+        rotLat: 22.0,
+        targetLon: null,
+        targetLat: null,
+        targetZoom: null,
+        zoom: 1.02,
+        autoRotate: true,
+        rotSpeed: 0.78,
+        // 独立描边粒子颜色模式：'white' (纯白色描边) | 'light' (稍浅一点的主题色描边)
+        outlineStyle: 'white',
+        // 海洋粒子模式：'white' (纯白微光) | 'pale' (淡主题色)
+        oceanStyle: 'white',
+        showBackHemisphere: true,
+        axialTilt: true,
+        limbShading: true,
+        breathingGlow: true,
+        pulseTarget: true,
+        showVisitorBeacons: true,
+        clickedCountry: null,
+        hoveredCountry: null,
+        isDragging: false,
+        pointerDownX: 0,
+        pointerDownY: 0,
+        dragMovedDist: 0,
+        dragStartLon: 0,
+        dragStartLat: 0,
+        mouseX: -1,
+        mouseY: -1,
+        time: 0,
+        lastFrameTime: performance.now(),
+        fps: 60,
+        rafId: 0
+      };
+
+      const BG_STARS = Array.from({ length: 110 }, (_, i) => ({
+        x: ((i * 73 + 19) % 100) / 100,
+        y: ((i * 41 + 37) % 100) / 100,
+        r: 0.55 + ((i * 17) % 10) * 0.1,
+        phase: (i * 0.85) % (Math.PI * 2)
+      }));
+
+      let dashboard = null;
+
+      function refreshDashboard() {
+        dashboard = computeDashboard({
+          granularity: state.granularity,
+          bucket: state.selectedBucket,
+          country: state.selectedCountryZh,
+          device: state.selectedDeviceType,
+          q: state.logSearchQuery,
+          page: state.page,
+          pageSize: state.pageSize
+        });
+        renderTopBar();
+        renderLeftPane();
+      }
+
+      // =========================================================================
+      // 5. 项目源码弹窗（供一键复制/下载 Astro + SQLite 统计模块文件）
+      // =========================================================================
+      const PROJECT_SOURCE_FILES_B64 = "W10=";
+      let PROJECT_SOURCE_FILES = null;
+      let activeSourceIdx = 0;
+
+      function getProjectSourceFiles() {
+        if (!PROJECT_SOURCE_FILES) {
+          const bin = atob(PROJECT_SOURCE_FILES_B64);
+          const bytes = new Uint8Array(bin.length);
+          for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+          PROJECT_SOURCE_FILES = JSON.parse(new TextDecoder().decode(bytes));
+        }
+        return PROJECT_SOURCE_FILES;
+      }
+
+      function openSourceModal() {
+        const files = getProjectSourceFiles();
+        const old = $('#st-source-backdrop');
+        if (old) old.remove();
+
+        const backdrop = document.createElement('div');
+        backdrop.id = 'st-source-backdrop';
+        backdrop.className = 'st-dialog-backdrop';
+
+        const renderModalContent = () => {
+          const cur = files[activeSourceIdx] || files[0];
+          backdrop.innerHTML = `
+            <div class="st-dialog" style="width:min(100%, 64rem);max-height:86vh;display:flex;flex-direction:column;">
+              <div class="st-dialog-header" style="justify-content:space-between;">
+                <div class="st-dialog-title">「统计」模块项目源码清单（共 ${files.length} 个文件）</div>
+                <div style="display:flex;gap:0.45rem;">
+                  <button type="button" class="st-btn" id="st-src-copy-cur">复制当前文件</button>
+                  <button type="button" class="st-btn" id="st-src-dl-cur">下载当前文件</button>
+                  <button type="button" class="st-btn" id="st-src-close">关闭 ✕</button>
+                </div>
+              </div>
+              <div style="display:grid;grid-template-columns:16rem minmax(0,1fr);flex:1;min-height:0;overflow:hidden;">
+                <div style="border-right:1px solid var(--rule);overflow-y:auto;background:var(--canvas);padding:0.4rem;">
+                  ${files.map((f, i) => `
+                    <button type="button" data-src-idx="${i}" class="st-btn" style="width:100%;justify-content:flex-start;text-align:left;margin-bottom:0.25rem;padding:0.45rem 0.6rem;${i === activeSourceIdx ? 'border-color:var(--accent);color:var(--accent);font-weight:600;' : ''}">
+                      <span style="overflow:hidden;text-overflow:ellipsis;">${String(i + 1).padStart(2, '0')}. ${esc(f.path)}</span>
+                    </button>
+                  `).join('')}
+                </div>
+                <div style="display:flex;flex-direction:column;min-height:0;overflow:hidden;background:var(--code-block);">
+                  <div style="padding:0.45rem 0.9rem;border-bottom:1px solid var(--rule);font-family:var(--mono);font-size:0.74rem;color:var(--muted);background:var(--paper);">
+                    <strong style="color:var(--accent);">${esc(cur.path)}</strong> —— ${esc(cur.desc)}
+                  </div>
+                  <pre style="margin:0;padding:0.9rem 1.1rem;overflow:auto;flex:1;font-family:var(--mono);font-size:0.78rem;line-height:1.55;color:var(--ink);"><code>${esc(cur.content)}</code></pre>
+                </div>
+              </div>
+            </div>
+          `;
+
+          $$('[data-src-idx]', backdrop).forEach((btn) => {
+            btn.addEventListener('click', () => {
+              activeSourceIdx = Number(btn.dataset.srcIdx);
+              renderModalContent();
+            });
+          });
+
+          $('#st-src-copy-cur', backdrop)?.addEventListener('click', () => {
+            copyText(cur.content, `已复制源码：${cur.path}`);
+          });
+
+          $('#st-src-dl-cur', backdrop)?.addEventListener('click', () => {
+            const blob = new Blob([cur.content], { type: 'text/plain;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = cur.path.split('/').pop();
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            URL.revokeObjectURL(url);
+            toast(`已下载文件：${cur.path}`);
+          });
+
+          $('#st-src-close', backdrop)?.addEventListener('click', () => backdrop.remove());
+        };
+
+        renderModalContent();
+        backdrop.addEventListener('click', (e) => {
+          if (e.target === backdrop) backdrop.remove();
+        });
+        document.body.appendChild(backdrop);
+      }
+
+      // =========================================================================
+      // 6. 顶栏与左侧「数据与统计整合」面板渲染
+      // =========================================================================
+      function renderTopBar() {
+        const bar = $('#st-bar');
+        if (!bar || !dashboard) return;
+        const d = dashboard;
+        const dark = isDark();
+
+        bar.innerHTML = `
+          <div class="st-topbar-left">
+            <div class="st-brand">
+              <span class="st-brand-dot"></span>
+              <h1 class="st-brand-title">统计</h1>
+              <span class="st-brand-sub">累计 ${d.summary.totalUv} UV / ${d.summary.totalPv} PV · ${d.summary.activeCountries} 国</span>
+            </div>
+
+            <div class="st-btn-group" role="tablist" aria-label="统计整合周期">
+              <button type="button" class="st-btn" data-top-gran="day" aria-pressed="${state.granularity === 'day'}">按日</button>
+              <button type="button" class="st-btn" data-top-gran="week" aria-pressed="${state.granularity === 'week'}">按周</button>
+              <button type="button" class="st-btn" data-top-gran="month" aria-pressed="${state.granularity === 'month'}">按月</button>
+              <button type="button" class="st-btn" data-top-gran="year" aria-pressed="${state.granularity === 'year'}">按年</button>
+            </div>
+          </div>
+
+          <div class="st-topbar-right">
+            <button type="button" class="st-btn st-btn--primary" id="st-btn-simulate">＋ 模拟新访客</button>
+            <button type="button" class="st-btn" id="st-btn-export">导出 CSV</button>
+            <button type="button" class="st-btn" id="st-btn-seed" title="恢复跨日/周/月/年初始样本数据">重置样本</button>
+            <button type="button" class="st-btn st-btn--danger" id="st-btn-clear" title="清空全部访客记录">清空</button>
+            <a class="st-btn" href="/studio/" title="返回后台工作台">← 返回后台</a>
+            <button type="button" class="st-btn" id="st-btn-theme">${dark ? '☀ 昼' : '☾ 夜'}</button>
+          </div>
+        `;
+
+        $$('[data-top-gran]', bar).forEach((btn) => {
+          btn.addEventListener('click', () => {
+            state.granularity = btn.dataset.topGran;
+            state.selectedBucket = null;
+            state.page = 1;
+            refreshDashboard();
+          });
+        });
+
+        $('#st-btn-simulate', bar)?.addEventListener('click', async () => {
+          const cc = globeState.clickedCountry;
+          try {
+            await apiWrite('/api/analytics/simulate', 'POST', { countryZh: cc ? cc.zh : undefined });
+            await loadServerLogs();
+            refreshDashboard();
+            toast('已模拟一位新访客');
+          } catch (err) {
+            toast('模拟失败：' + (err?.message || err), true);
+          }
+        });
+
+        $('#st-btn-export', bar)?.addEventListener('click', () => exportCsv());
+
+        $('#st-btn-seed', bar)?.addEventListener('click', async () => {
+          try {
+            await apiWrite('/api/analytics/seed', 'POST', {});
+            await loadServerLogs();
+            refreshDashboard();
+            toast('已重置样本数据');
+          } catch (err) {
+            toast('重置失败：' + (err?.message || err), true);
+          }
+        });
+
+        $('#st-btn-clear', bar)?.addEventListener('click', async () => {
+          const ok = await showConfirm({
+            title: '清空访客记录？',
+            body: '确定要清空当前全部访客统计数据吗？（可通过“重置样本”恢复演示数据）',
+            confirm: '确认清空',
+            cancel: '取消'
+          });
+          if (!ok) return;
+          try {
+            await apiWrite('/api/analytics/clear', 'DELETE', undefined);
+            await loadServerLogs();
+            selectCountryOnGlobe(null);
+            refreshDashboard();
+            toast('已清空全部访客记录');
+          } catch (err) {
+            toast('清空失败：' + (err?.message || err), true);
+          }
+        });
+
+        $('#st-btn-theme', bar)?.addEventListener('click', () => {
+          toggleTheme();
+          renderTopBar();
+        });
+      }
+
+      function renderLeftPane() {
+        const pane = $('#st-left-pane');
+        if (!pane || !dashboard) return;
+        const d = dashboard;
+
+        const granLabel =
+          state.granularity === 'day' ? '按日统计'
+          : state.granularity === 'week' ? '按周整合'
+          : state.granularity === 'month' ? '按月整合'
+          : '按年整合';
+
+        const maxSeriesPv = Math.max(1, ...d.series.map((s) => s.pv));
+        const totalPages = Math.max(1, Math.ceil(d.logs.total / d.logs.pageSize));
+        const hasFilters = Boolean(state.selectedBucket || state.selectedCountryZh || state.selectedDeviceType || state.logSearchQuery);
+
+        pane.innerHTML = `
+          <!-- 1. 四维指标切换按钮卡（日 / 周 / 月 / 年） -->
+          <div class="st-kpi-strip">
+            <button type="button" class="st-kpi-btn ${state.granularity === 'day' ? 'is-active' : ''}" data-kpi-gran="day">
+              <div class="st-kpi-label"><span>今日访客</span><span>DAY</span></div>
+              <div class="st-kpi-val">${d.summary.todayUv}<small>UV</small></div>
+              <div class="st-kpi-foot">浏览 ${d.summary.todayPv} PV</div>
+            </button>
+            <button type="button" class="st-kpi-btn ${state.granularity === 'week' ? 'is-active' : ''}" data-kpi-gran="week">
+              <div class="st-kpi-label"><span>本周整合</span><span>WEEK</span></div>
+              <div class="st-kpi-val">${d.summary.weekUv}<small>UV</small></div>
+              <div class="st-kpi-foot">浏览 ${d.summary.weekPv} PV</div>
+            </button>
+            <button type="button" class="st-kpi-btn ${state.granularity === 'month' ? 'is-active' : ''}" data-kpi-gran="month">
+              <div class="st-kpi-label"><span>本月整合</span><span>MON</span></div>
+              <div class="st-kpi-val">${d.summary.monthUv}<small>UV</small></div>
+              <div class="st-kpi-foot">浏览 ${d.summary.monthPv} PV</div>
+            </button>
+            <button type="button" class="st-kpi-btn ${state.granularity === 'year' ? 'is-active' : ''}" data-kpi-gran="year">
+              <div class="st-kpi-label"><span>本年整合</span><span>YEAR</span></div>
+              <div class="st-kpi-val">${d.summary.yearUv}<small>UV</small></div>
+              <div class="st-kpi-foot">浏览 ${d.summary.yearPv} PV</div>
+            </button>
+          </div>
+
+          <!-- 2. 按日 / 周 / 月 / 年 统计整合表 -->
+          <div class="st-card">
+            <div class="st-card-head">
+              <div class="st-card-title">
+                <span>数据统计整合</span>
+                <span class="st-card-badge">${esc(granLabel)}</span>
+              </div>
+              <div class="st-btn-group">
+                <button type="button" class="st-btn" data-card-gran="day" aria-pressed="${state.granularity === 'day'}">日</button>
+                <button type="button" class="st-btn" data-card-gran="week" aria-pressed="${state.granularity === 'week'}">周</button>
+                <button type="button" class="st-btn" data-card-gran="month" aria-pressed="${state.granularity === 'month'}">月</button>
+                <button type="button" class="st-btn" data-card-gran="year" aria-pressed="${state.granularity === 'year'}">年</button>
+              </div>
+            </div>
+            <div class="st-table-scroll" style="max-height:11.8rem;">
+              <table class="st-table">
+                <thead>
+                  <tr>
+                    <th>周期 (${esc(granLabel)})</th>
+                    <th>独立访客 UV</th>
+                    <th>访问量 PV</th>
+                    <th>使用设备 (桌 / 移 / 板)</th>
+                    <th>主要来源</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${d.series.length === 0 ? `
+                    <tr><td colspan="5" style="text-align:center;color:var(--muted);padding:1.2rem;">暂无汇总数据</td></tr>
+                  ` : d.series.slice(0, 8).map((r) => {
+                    const active = state.selectedBucket === r.bucket;
+                    const pct = Math.max(6, Math.round((r.pv / maxSeriesPv) * 100));
+                    return `
+                      <tr class="${active ? 'is-active' : ''}" data-bucket-row="${esc(r.bucket)}" style="cursor:pointer;" title="点击筛选该周期的访客记录">
+                        <td class="st-mono"><strong>${esc(r.label)}</strong></td>
+                        <td class="st-mono" style="color:var(--accent);font-weight:700;">${r.uv} UV</td>
+                        <td class="st-mono">
+                          <span class="st-inline-bar">
+                            <span>${r.pv}</span>
+                            <span class="st-inline-track"><span class="st-inline-fill" style="width:${pct}%;"></span></span>
+                          </span>
+                        </td>
+                        <td class="st-mono" style="color:var(--muted);">${r.desktop} / ${r.mobile} / ${r.tablet}</td>
+                        <td><span class="st-country-pill">${esc(r.topCountry)}</span></td>
+                      </tr>
+                    `;
+                  }).join('')}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- 3. 每日访客记录明细（IP 地址 + 使用设备 + 国家定位） -->
+          <div class="st-card st-card--grow">
+            <div class="st-card-head">
+              <div class="st-card-title">
+                <span>访客记录明细</span>
+                <span class="st-card-badge">${d.logs.total} 条记录</span>
+              </div>
+              <div class="st-btn-group" aria-label="按设备筛选">
+                <button type="button" class="st-btn" data-dev-btn="" aria-pressed="${!state.selectedDeviceType}">全部</button>
+                <button type="button" class="st-btn" data-dev-btn="Desktop" aria-pressed="${state.selectedDeviceType === 'Desktop'}">桌面</button>
+                <button type="button" class="st-btn" data-dev-btn="Mobile" aria-pressed="${state.selectedDeviceType === 'Mobile'}">移动</button>
+                <button type="button" class="st-btn" data-dev-btn="Tablet" aria-pressed="${state.selectedDeviceType === 'Tablet'}">平板</button>
+              </div>
+            </div>
+
+            ${hasFilters ? `
+              <div class="st-filter-bar">
+                <span style="color:var(--muted);font-family:var(--mono);font-size:0.7rem;">已筛选:</span>
+                ${state.selectedBucket ? `<span class="st-chip">周期: ${esc(state.selectedBucket)} <button type="button" data-clear-f="bucket" title="移除周期筛选">×</button></span>` : ''}
+                ${state.selectedCountryZh ? `<span class="st-chip">国家: ${esc(state.selectedCountryZh)} <button type="button" data-clear-f="country" title="移除国家筛选">×</button></span>` : ''}
+                ${state.selectedDeviceType ? `<span class="st-chip">设备: ${esc(state.selectedDeviceType)} <button type="button" data-clear-f="device" title="移除设备筛选">×</button></span>` : ''}
+                <button type="button" class="st-btn" id="st-clear-all-filters" style="margin-left:auto;padding:0.12rem 0.5rem;font-size:0.72rem;">清除全部</button>
+              </div>
+            ` : ''}
+
+            <div class="st-log-toolbar">
+              <input
+                type="search"
+                id="st-log-search"
+                class="st-search-input"
+                value="${esc(state.logSearchQuery)}"
+                placeholder="搜索访客 IP 地址、国家/城市、使用设备 (macOS / iOS / Windows / Chrome)…"
+              />
+            </div>
+
+            <div class="st-table-scroll">
+              <table class="st-table">
+                <thead>
+                  <tr>
+                    <th>日期 / 时间</th>
+                    <th>访客 IP 地址</th>
+                    <th>国家 / 地区</th>
+                    <th>使用设备 (终端 · 系统 · 浏览器)</th>
+                    <th>受访页 · PV</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${d.logs.items.length === 0 ? `
+                    <tr><td colspan="5" style="text-align:center;color:var(--muted);padding:2rem;">未找到匹配的访客记录</td></tr>
+                  ` : d.logs.items.map((item) => {
+                    const isCountrySelected = globeState.clickedCountry && globeState.clickedCountry.zh === item.countryZh;
+                    return `
+                      <tr class="${isCountrySelected ? 'is-active' : ''}" data-log-row="${item.id}" data-country="${esc(item.countryZh)}" data-lat="${item.lat}" data-lon="${item.lon}" style="cursor:pointer;" title="点击在右侧地球模型上定位该访客所在国家">
+                        <td class="st-mono">
+                          <div>${esc(item.visitDate)}</div>
+                          <div style="font-size:0.68rem;color:var(--muted);">${esc(item.lastSeen.slice(11, 19))}</div>
+                        </td>
+                        <td>
+                          <code class="st-ip-badge" data-copy-ip="${esc(item.ip)}" title="点击复制 IP 地址">${esc(item.ip)}</code>
+                        </td>
+                        <td>
+                          <span class="st-country-pill">${esc(item.countryZh)}</span>
+                          <div style="font-size:0.72rem;color:var(--muted);margin-top:2px;">${esc(item.region)}</div>
+                        </td>
+                        <td>
+                          <span class="st-dev-tag st-dev-tag--${esc(item.deviceType.toLowerCase())}">${esc(item.deviceType)}</span>
+                          <span style="margin-left:0.25rem;">${esc(item.os)} · ${esc(item.browser)}</span>
+                        </td>
+                        <td class="st-mono">
+                          <span style="color:var(--accent);">${esc(item.path)}</span>
+                          <span style="color:var(--muted);margin-left:0.25rem;">(${item.pvCount})</span>
+                        </td>
+                      </tr>
+                    `;
+                  }).join('')}
+                </tbody>
+              </table>
+            </div>
+
+            <div class="st-card-foot">
+              <span>第 ${d.logs.page} / ${totalPages} 页 · 点击任意访客行联动右侧地球定位</span>
+              <div style="display:flex;gap:0.35rem;">
+                <button type="button" class="st-btn" id="st-log-prev" style="padding:0.2rem 0.55rem;font-size:0.74rem;" ${d.logs.page <= 1 ? 'disabled' : ''}>← 上一页</button>
+                <button type="button" class="st-btn" id="st-log-next" style="padding:0.2rem 0.55rem;font-size:0.74rem;" ${d.logs.page >= totalPages ? 'disabled' : ''}>下一页 →</button>
+              </div>
+            </div>
+          </div>
+        `;
+
+        // 绑定左侧交互事件
+        $$('[data-kpi-gran], [data-card-gran]', pane).forEach((btn) => {
+          btn.addEventListener('click', () => {
+            const g = btn.dataset.kpiGran || btn.dataset.cardGran;
+            if (!g) return;
+            state.granularity = g;
+            state.selectedBucket = null;
+            state.page = 1;
+            refreshDashboard();
+          });
+        });
+
+        $$('[data-bucket-row]', pane).forEach((row) => {
+          row.addEventListener('click', () => {
+            const b = row.dataset.bucketRow;
+            state.selectedBucket = state.selectedBucket === b ? null : b;
+            state.page = 1;
+            refreshDashboard();
+          });
+        });
+
+        $$('[data-dev-btn]', pane).forEach((btn) => {
+          btn.addEventListener('click', () => {
+            state.selectedDeviceType = btn.dataset.devBtn || null;
+            state.page = 1;
+            refreshDashboard();
+          });
+        });
+
+        $$('[data-clear-f]', pane).forEach((btn) => {
+          btn.addEventListener('click', () => {
+            const f = btn.dataset.clearF;
+            if (f === 'bucket') state.selectedBucket = null;
+            if (f === 'country') {
+              state.selectedCountryZh = null;
+              selectCountryOnGlobe(null);
+            }
+            if (f === 'device') state.selectedDeviceType = null;
+            state.page = 1;
+            refreshDashboard();
+          });
+        });
+
+        $('#st-clear-all-filters', pane)?.addEventListener('click', () => {
+          state.selectedBucket = null;
+          state.selectedCountryZh = null;
+          state.selectedDeviceType = null;
+          state.logSearchQuery = '';
+          state.page = 1;
+          selectCountryOnGlobe(null);
+          refreshDashboard();
+        });
+
+        const searchInput = $('#st-log-search', pane);
+        searchInput?.addEventListener('input', () => {
+          state.logSearchQuery = searchInput.value;
+          state.page = 1;
+          refreshDashboard();
+          const nextEl = $('#st-log-search');
+          if (nextEl) {
+            nextEl.focus();
+            nextEl.setSelectionRange(state.logSearchQuery.length, state.logSearchQuery.length);
+          }
+        });
+
+        $$('[data-copy-ip]', pane).forEach((codeEl) => {
+          codeEl.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const ip = codeEl.dataset.copyIp;
+            copyText(ip, `已复制访客 IP：${ip}`);
+          });
+        });
+
+        $$('[data-log-row]', pane).forEach((row) => {
+          row.addEventListener('click', () => {
+            const zh = row.dataset.country;
+            const lat = Number(row.dataset.lat);
+            const lon = Number(row.dataset.lon);
+            const meta = countryByZh.get(zh);
+            if (meta) {
+              selectCountryOnGlobe(meta, Number.isFinite(lat) ? lat : meta.lat, Number.isFinite(lon) ? lon : meta.lon, true);
+            }
+          });
+        });
+
+        $('#st-log-prev', pane)?.addEventListener('click', () => {
+          if (state.page > 1) {
+            state.page--;
+            refreshDashboard();
+          }
+        });
+        $('#st-log-next', pane)?.addEventListener('click', () => {
+          state.page++;
+          refreshDashboard();
+        });
+      }
+
+      // =========================================================================
+      // 7. 右侧 3D 动态粒子旋转地球模型（保留 3d.html + 独立纯白/浅主题色描边粒子层）
+      // =========================================================================
+      function selectCountryOnGlobe(cMeta, clickLat, clickLon, rotateToCountry = false) {
+        const clearBtn = $('#st-globe-clear-sel');
+        if (!cMeta) {
+          globeState.clickedCountry = null;
+          if (clearBtn) clearBtn.hidden = true;
+          renderLeftPane();
+          return;
+        }
+        globeState.clickedCountry = {
+          ...cMeta,
+          clickLat: clickLat !== undefined ? clickLat : cMeta.lat,
+          clickLon: clickLon !== undefined ? clickLon : cMeta.lon,
+          clickedAt: globeState.time
+        };
+        if (clearBtn) clearBtn.hidden = false;
+        if (rotateToCountry) {
+          globeState.targetLon = cMeta.lon;
+          globeState.targetLat = cMeta.lat;
+        }
+        renderLeftPane();
+      }
+
+      function simulateVisitor(preferredCountryZh) {
+        const candidates = preferredCountryZh
+          ? GEO_PROFILES.filter((g) => g.zh === preferredCountryZh)
+          : GEO_PROFILES;
+        const geo = candidates.length > 0
+          ? candidates[Math.floor(Math.random() * candidates.length)]
+          : GEO_PROFILES[Math.floor(Math.random() * GEO_PROFILES.length)];
+
+        const meta = countryByZh.get(preferredCountryZh || geo.zh);
+        const targetZh = meta ? meta.zh : geo.zh;
+        const targetEn = meta ? meta.en : geo.en;
+        const targetLat = meta ? meta.lat : geo.lat;
+        const targetLon = meta ? meta.lon : geo.lon;
+
+        const envs = [
+          { dev: 'Desktop', os: 'macOS', br: 'Chrome' },
+          { dev: 'Mobile', os: 'iOS', br: 'Safari' },
+          { dev: 'Desktop', os: 'Windows 11', br: 'Edge' },
+          { dev: 'Mobile', os: 'HarmonyOS', br: 'WeChat' },
+          { dev: 'Tablet', os: 'iPadOS', br: 'Safari' }
+        ];
+        const env = envs[Math.floor(Math.random() * envs.length)];
+        const paths = ['/', '/posts/three-body-notes/', '/photos/', '/links/', '/programs/'];
+        const path = paths[Math.floor(Math.random() * paths.length)];
+        const rOct = () => Math.floor(20 + Math.random() * 210);
+        const ip = `${rOct()}.${rOct()}.${rOct()}.${rOct()}`;
+        const now = new Date();
+        const hh = String(now.getHours()).padStart(2, '0');
+        const mm = String(now.getMinutes()).padStart(2, '0');
+        const ss = String(now.getSeconds()).padStart(2, '0');
+        const ts = `2026-10-22 ${hh}:${mm}:${ss}`;
+
+        visitorLogs.unshift({
+          id: nextLogId++,
+          visitDate: '2026-10-22',
+          ip,
+          countryCode: geo.code,
+          countryZh: targetZh,
+          countryEn: targetEn,
+          region: preferredCountryZh && preferredCountryZh !== geo.zh ? `${targetEn} · Gateway` : geo.region,
+          lat: targetLat,
+          lon: targetLon,
+          deviceType: env.dev,
+          os: env.os,
+          browser: env.br,
+          path,
+          pvCount: 1,
+          firstSeen: ts,
+          lastSeen: ts
+        });
+
+        refreshDashboard();
+        if (meta) {
+          selectCountryOnGlobe(meta, targetLat, targetLon, true);
+        }
+        toast(`新访客已记录：${targetZh} (${ip}) · ${env.dev} / ${env.os}`);
+      }
+
+      function exportCsv() {
+        if (!dashboard || dashboard.logs.items.length === 0) {
+          toast('当前没有可导出的访客记录', true);
+          return;
+        }
+        const headers = ['日期', 'IP地址', '国家', '地区', '设备类型', '操作系统', '浏览器', '受访路径', 'PV', '最后活跃时间'];
+        const rows = dashboard.logs.items.map((r) => [
+          r.visitDate, r.ip, r.countryZh, r.region, r.deviceType, r.os, r.browser, r.path, String(r.pvCount), r.lastSeen
+        ]);
+        const csvContent = '\uFEFF' + [headers, ...rows].map((row) => row.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n');
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `visitor-stats-${state.granularity}.csv`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+        toast('已导出访客统计 CSV 文件');
+      }
+
+      function wireGlobeControls() {
+        const canvas = $('#st-globe-canvas');
+        const viewport = $('#st-globe-viewport');
+        if (!canvas || !viewport) return;
+
+        // 1. 暂停 / 继续自转
+        $('#st-globe-toggle-play')?.addEventListener('click', () => {
+          globeState.autoRotate = !globeState.autoRotate;
+          globeState.targetLon = null;
+          globeState.targetLat = null;
+          const btn = $('#st-globe-toggle-play');
+          if (btn) {
+            btn.setAttribute('aria-pressed', String(globeState.autoRotate));
+            btn.textContent = globeState.autoRotate ? '⏸ 暂停自转' : '▶ 继续自转';
+          }
+        });
+
+        // 2. 独立切换描边粒子颜色（纯白色 vs 稍浅一点的主题色）
+        $('#st-globe-cycle-outline')?.addEventListener('click', () => {
+          globeState.outlineStyle = globeState.outlineStyle === 'white' ? 'light' : 'white';
+          const btn = $('#st-globe-cycle-outline');
+          const dot = $('#st-legend-outline-dot');
+          const txt = $('#st-legend-outline-text');
+          if (globeState.outlineStyle === 'white') {
+            if (btn) btn.textContent = '描边：纯白色';
+            if (dot) {
+              dot.style.background = '#ffffff';
+              dot.style.borderColor = 'rgba(255,255,255,0.6)';
+            }
+            if (txt) txt.textContent = '独立纯白描边';
+            toast('地球描边粒子已切换为：独立纯白色 (#ffffff)');
+          } else {
+            if (btn) btn.textContent = '描边：浅主题色';
+            if (dot) {
+              dot.style.background = 'rgb(252, 205, 188)';
+              dot.style.borderColor = 'rgb(217, 119, 87)';
+            }
+            if (txt) txt.textContent = '独立浅主题色描边';
+            toast('地球描边粒子已切换为：独立浅主题色 rgb(252, 205, 188)');
+          }
+        });
+
+        // 3. 切换海洋粒子颜色
+        $('#st-globe-cycle-ocean')?.addEventListener('click', () => {
+          globeState.oceanStyle = globeState.oceanStyle === 'white' ? 'pale' : 'white';
+          const btn = $('#st-globe-cycle-ocean');
+          if (btn) {
+            btn.textContent = globeState.oceanStyle === 'white' ? '海洋：纯白微光' : '海洋：淡主题色';
+          }
+        });
+
+        // 4. 清除标注与重置视角
+        $('#st-globe-clear-sel')?.addEventListener('click', () => {
+          state.selectedCountryZh = null;
+          selectCountryOnGlobe(null);
+          refreshDashboard();
+        });
+
+        $('#st-globe-reset')?.addEventListener('click', () => {
+          globeState.autoRotate = true;
+          globeState.targetLon = 105.0;
+          globeState.targetLat = 22.0;
+          globeState.targetZoom = 1.02;
+          state.selectedCountryZh = null;
+          selectCountryOnGlobe(null);
+          const playBtn = $('#st-globe-toggle-play');
+          if (playBtn) {
+            playBtn.setAttribute('aria-pressed', 'true');
+            playBtn.textContent = '⏸ 暂停自转';
+          }
+          refreshDashboard();
+        });
+
+        // 5. 缩放按钮
+        $('#st-globe-zoom-in')?.addEventListener('click', () => {
+          globeState.targetZoom = null;
+          globeState.zoom = Math.min(2.35, globeState.zoom + 0.18);
+        });
+        $('#st-globe-zoom-out')?.addEventListener('click', () => {
+          globeState.targetZoom = null;
+          globeState.zoom = Math.max(0.68, globeState.zoom - 0.18);
+        });
+
+        // 6. 画布拖拽旋转与点击国家识别（点击即过滤/标注该国访客）
+        canvas.addEventListener('pointerdown', (e) => {
+          globeState.isDragging = true;
+          globeState.targetLon = null;
+          globeState.targetLat = null;
+          globeState.pointerDownX = e.clientX;
+          globeState.pointerDownY = e.clientY;
+          globeState.dragMovedDist = 0;
+          globeState.dragStartLon = globeState.rotLon;
+          globeState.dragStartLat = globeState.rotLat;
+          canvas.setPointerCapture(e.pointerId);
+        });
+
+        canvas.addEventListener('pointermove', (e) => {
+          const rect = canvas.getBoundingClientRect();
+          globeState.mouseX = e.clientX - rect.left;
+          globeState.mouseY = e.clientY - rect.top;
+          if (!globeState.isDragging) return;
+          const dx = e.clientX - globeState.pointerDownX;
+          const dy = e.clientY - globeState.pointerDownY;
+          globeState.dragMovedDist = Math.hypot(dx, dy);
+          if (globeState.dragMovedDist > 3) {
+            const sensitivity = 0.32 / globeState.zoom;
+            globeState.rotLon = globeState.dragStartLon - dx * sensitivity;
+            while (globeState.rotLon <= -180) globeState.rotLon += 360;
+            while (globeState.rotLon > 180) globeState.rotLon -= 360;
+            globeState.rotLat = Math.max(-82, Math.min(82, globeState.dragStartLat + dy * sensitivity));
+          }
+        });
+
+        canvas.addEventListener('pointerup', (e) => {
+          const wasClick = globeState.dragMovedDist < 6;
+          globeState.isDragging = false;
+          if (wasClick) {
+            const rect = canvas.getBoundingClientRect();
+            const mx = e.clientX - rect.left;
+            const my = e.clientY - rect.top;
+            const cw = rect.width;
+            const ch = rect.height;
+            const cx = cw * 0.5;
+            const cy = ch * 0.5;
+            const baseRadius = Math.min(cw, ch) * 0.41 * globeState.zoom;
+            const vx = (mx - cx) / baseRadius;
+            const vy = (cy - my) / baseRadius;
+            const r2 = vx * vx + vy * vy;
+            if (r2 <= 1.0) {
+              const vz = Math.sqrt(1.0 - r2);
+              const tiltDeg = globeState.axialTilt ? 14.0 : 0.0;
+              const geo = viewToEarthLatLon(vx, vy, vz, globeState.rotLon, globeState.rotLat, tiltDeg);
+              const cid = lookupCountryAtLatLon(geo.lat, geo.lon);
+              if (cid > 0) {
+                const cMeta = countryById.get(cid);
+                if (cMeta) {
+                  // 点击球面国家：动态显示国名标注，并联动左侧筛选该国访客记录
+                  const hasVisitor = dashboard && dashboard.countries.some((c) => c.countryZh === cMeta.zh);
+                  state.selectedCountryZh = hasVisitor ? cMeta.zh : null;
+                  state.page = 1;
+                  selectCountryOnGlobe(cMeta, geo.lat, geo.lon, false);
+                  refreshDashboard();
+                }
+              } else {
+                state.selectedCountryZh = null;
+                selectCountryOnGlobe(null);
+                refreshDashboard();
+              }
+            }
+          }
+        });
+
+        canvas.addEventListener('pointercancel', () => { globeState.isDragging = false; });
+        canvas.addEventListener('pointerleave', () => {
+          globeState.mouseX = -1;
+          globeState.mouseY = -1;
+        });
+
+        viewport.addEventListener('wheel', (e) => {
+          e.preventDefault();
+          globeState.targetZoom = null;
+          const delta = e.deltaY < 0 ? 0.12 : -0.12;
+          globeState.zoom = Math.max(0.68, Math.min(2.35, globeState.zoom + delta));
+        }, { passive: false });
+      }
+
+      function renderGlobeFrame(now) {
+        const dt = Math.min(0.1, (now - globeState.lastFrameTime) / 1000.0);
+        globeState.lastFrameTime = now;
+        globeState.time += dt;
+        globeState.fps = Math.round(globeState.fps * 0.9 + (1.0 / Math.max(0.001, dt)) * 0.1);
+
+        const canvas = $('#st-globe-canvas');
+        const viewport = $('#st-globe-viewport');
+        if (!canvas || !viewport) {
+          globeState.rafId = requestAnimationFrame(renderGlobeFrame);
+          return;
+        }
+
+        // 平滑相机旋转插值
+        if (globeState.targetLon !== null && globeState.targetLat !== null) {
+          let dLon = globeState.targetLon - globeState.rotLon;
+          while (dLon > 180) dLon -= 360;
+          while (dLon < -180) dLon += 360;
+          const dLat = globeState.targetLat - globeState.rotLat;
+          globeState.rotLon += dLon * Math.min(1, dt * 6.0);
+          globeState.rotLat += dLat * Math.min(1, dt * 6.0);
+          if (globeState.targetZoom !== null) {
+            globeState.zoom += (globeState.targetZoom - globeState.zoom) * Math.min(1, dt * 5.5);
+          }
+          if (Math.abs(dLon) < 0.2 && Math.abs(dLat) < 0.2) {
+            globeState.rotLon = globeState.targetLon;
+            globeState.rotLat = globeState.targetLat;
+            globeState.targetLon = null;
+            globeState.targetLat = null;
+            globeState.targetZoom = null;
+          }
+        } else if (globeState.autoRotate && !globeState.isDragging) {
+          globeState.rotLon -= globeState.rotSpeed * dt * 14.0;
+          if (globeState.rotLon <= -180) globeState.rotLon += 360;
+          if (globeState.rotLon > 180) globeState.rotLon -= 360;
+        }
+
+        const coordsEl = $('#st-hud-coords');
+        const zoomEl = $('#st-hud-zoom');
+        const fpsEl = $('#st-hud-fps');
+        if (coordsEl) {
+          const lonStr = `${Math.abs(globeState.rotLon).toFixed(1)}${globeState.rotLon >= 0 ? '°E' : '°W'}`;
+          const latStr = `${Math.abs(globeState.rotLat).toFixed(1)}${globeState.rotLat >= 0 ? '°N' : '°S'}`;
+          coordsEl.textContent = `${lonStr}, ${latStr}`;
+        }
+        if (zoomEl) zoomEl.textContent = `${globeState.zoom.toFixed(2)}×`;
+        if (fpsEl) fpsEl.textContent = String(globeState.fps);
+
+        const vpRect = viewport.getBoundingClientRect();
+        const cw = Math.max(320, Math.floor(vpRect.width));
+        const ch = Math.max(320, Math.floor(vpRect.height));
+        const dpr = Math.min(2, window.devicePixelRatio || 1);
+        if (canvas.width !== Math.round(cw * dpr) || canvas.height !== Math.round(ch * dpr)) {
+          canvas.width = Math.round(cw * dpr);
+          canvas.height = Math.round(ch * dpr);
+          canvas.style.width = `${cw}px`;
+          canvas.style.height = `${ch}px`;
+        }
+
+        const ctx = canvas.getContext('2d');
+        ctx.save();
+        ctx.scale(dpr, dpr);
+
+        // 保持 3d.html 的纯净深空底色，使纯白/浅主题色描边粒子与 rgb(217,119,87) 陆地粒子形成极高对比度
+        ctx.fillStyle = '#07090e';
+        ctx.fillRect(0, 0, cw, ch);
+
+        const cx = cw * 0.5;
+        const cy = ch * 0.5;
+        const baseRadius = Math.min(cw, ch) * 0.41 * globeState.zoom;
+        const tiltDeg = globeState.axialTilt ? 14.0 : 0.0;
+
+        const lam = degToRad(globeState.rotLon);
+        const cl = Math.cos(lam), sl = Math.sin(lam);
+        const phi = degToRad(globeState.rotLat);
+        const cp = Math.cos(phi), sp = Math.sin(phi);
+        const tr = degToRad(-tiltDeg);
+        const ct = Math.cos(tr), st = Math.sin(tr);
+
+        // 1. 球外星尘微粒
+        for (let i = 0; i < BG_STARS.length; i++) {
+          const s = BG_STARS[i];
+          const sx = s.x * cw;
+          const sy = s.y * ch;
+          const distSq = (sx - cx) * (sx - cx) + (sy - cy) * (sy - cy);
+          if (distSq > baseRadius * 1.05 * (baseRadius * 1.05)) {
+            const alpha = 0.15 + 0.25 * Math.sin(globeState.time * 1.6 + s.phase);
+            ctx.fillStyle = `rgba(241, 245, 249, ${alpha.toFixed(2)})`;
+            ctx.beginPath();
+            ctx.arc(sx, sy, s.r, 0, Math.PI * 2);
+            ctx.fill();
+          }
+        }
+
+        // 2. 大气呼吸外环与球体暗核
+        if (globeState.breathingGlow) {
+          const haloGrad = ctx.createRadialGradient(cx, cy, baseRadius * 0.82, cx, cy, baseRadius * 1.14);
+          haloGrad.addColorStop(0, 'rgba(217, 119, 87, 0.03)');
+          haloGrad.addColorStop(0.72, 'rgba(217, 119, 87, 0.12)');
+          haloGrad.addColorStop(0.88, 'rgba(255, 245, 240, 0.06)');
+          haloGrad.addColorStop(1, 'rgba(7, 9, 14, 0)');
+          ctx.fillStyle = haloGrad;
+          ctx.beginPath();
+          ctx.arc(cx, cy, baseRadius * 1.14, 0, Math.PI * 2);
+          ctx.fill();
+        }
+
+        const coreGrad = ctx.createRadialGradient(cx - baseRadius * 0.2, cy - baseRadius * 0.2, baseRadius * 0.1, cx, cy, baseRadius);
+        coreGrad.addColorStop(0, 'rgba(15, 20, 30, 0.74)');
+        coreGrad.addColorStop(1, 'rgba(9, 12, 20, 0.90)');
+        ctx.fillStyle = coreGrad;
+        ctx.beginPath();
+        ctx.arc(cx, cy, baseRadius, 0, Math.PI * 2);
+        ctx.fill();
+
+        // 3. 鼠标悬停国家检测
+        globeState.hoveredCountry = null;
+        let cursorGeo = null;
+        if (globeState.mouseX >= 0 && globeState.mouseY >= 0) {
+          const vx = (globeState.mouseX - cx) / baseRadius;
+          const vy = (cy - globeState.mouseY) / baseRadius;
+          const r2 = vx * vx + vy * vy;
+          if (r2 <= 1.0) {
+            const vz = Math.sqrt(1.0 - r2);
+            cursorGeo = viewToEarthLatLon(vx, vy, vz, globeState.rotLon, globeState.rotLat, tiltDeg);
+            const hCid = lookupCountryAtLatLon(cursorGeo.lat, cursorGeo.lon);
+            if (hCid > 0) globeState.hoveredCountry = countryById.get(hCid) || null;
+          }
+        }
+
+        const hoverEl = $('#st-globe-hover-readout');
+        if (hoverEl) {
+          if (cursorGeo) {
+            const latStr = `${Math.abs(cursorGeo.lat).toFixed(1)}${cursorGeo.lat >= 0 ? '°N' : '°S'}`;
+            const lonStr = `${Math.abs(cursorGeo.lon).toFixed(1)}${cursorGeo.lon >= 0 ? '°E' : '°W'}`;
+            if (globeState.hoveredCountry) {
+              const hStat = dashboard ? dashboard.countries.find((c) => c.countryZh === globeState.hoveredCountry.zh) : null;
+              viewport.style.cursor = globeState.isDragging ? 'grabbing' : 'pointer';
+              hoverEl.innerHTML = `<strong style="color:#fff;">[${esc(globeState.hoveredCountry.zh)} ${esc(globeState.hoveredCountry.en)}]</strong> ${latStr}, ${lonStr} ${hStat ? `· <span style="color:#fccdbc;font-weight:700;">${hStat.uv} UV / ${hStat.pv} PV</span>` : ''} · <span style="color:rgb(217,119,87);">● 点击显示标注</span>`;
+            } else {
+              viewport.style.cursor = globeState.isDragging ? 'grabbing' : 'grab';
+              hoverEl.textContent = `[海洋区域] ${latStr}, ${lonStr}`;
+            }
+          } else {
+            viewport.style.cursor = globeState.isDragging ? 'grabbing' : 'grab';
+          }
+        }
+
+        // 4. 双层独立分桶渲染：
+        //    - baseBuckets: 海洋粒子 (type=0) + 陆地内部主题色粒子 (type=1)
+        //    - strokeBuckets: 独立出来的描边粒子层（海岸线 type=2 + 国家边界 type=3），恢复为白色或浅主题色，并在最后一层独立绘制！
+        const baseBuckets = new Map();
+        const strokeBuckets = new Map();
+
+        const addPt = (targetMap, colorKey, radiusKey, px, py, r) => {
+          const key = `${colorKey}|${radiusKey}`;
+          let b = targetMap.get(key);
+          if (!b) {
+            b = { color: colorKey, r, pts: [] };
+            targetMap.set(key, b);
+          }
+          b.pts.push(px, py);
+        };
+
+        const activeCid = globeState.clickedCountry ? globeState.clickedCountry.id : -1;
+        const hoverCid = globeState.hoveredCountry ? globeState.hoveredCountry.id : -1;
+        const pulseWave = 0.5 + 0.5 * Math.sin(globeState.time * 6.0);
+        const basePR = globeState.particleRadius * Math.pow(globeState.zoom, 0.35);
+        const useWhiteOutline = globeState.outlineStyle === 'white';
+
+        for (let i = 0; i < particles.length; i++) {
+          const p = particles[i];
+          const x1 = p.wx * cl - p.wz * sl;
+          const z1 = p.wx * sl + p.wz * cl;
+          const y1 = p.wy;
+          let vx = x1;
+          let vy = y1 * cp - z1 * sp;
+          const vz = y1 * sp + z1 * cp;
+
+          if (vz < 0) {
+            if (!globeState.showBackHemisphere) continue;
+            if (p.cid === 0 || i % 3 !== 0) continue;
+            if (tiltDeg !== 0) {
+              const nx = vx * ct - vy * st;
+              const ny = vx * st + vy * ct;
+              vx = nx; vy = ny;
+            }
+            const backColor = (p.type === 2 || p.type === 3)
+              ? (useWhiteOutline ? 'rgba(255, 255, 255, 0.14)' : 'rgba(252, 205, 188, 0.15)')
+              : 'rgba(217, 119, 87, 0.11)';
+            addPt(baseBuckets, backColor, 'back', cx + vx * baseRadius, cy - vy * baseRadius, basePR * 0.72);
+            continue;
+          }
+
+          if (tiltDeg !== 0) {
+            const nx = vx * ct - vy * st;
+            const ny = vx * st + vy * ct;
+            vx = nx; vy = ny;
+          }
+
+          const px = cx + vx * baseRadius;
+          const py = cy - vy * baseRadius;
+          const depthBucket = vz > 0.7 ? 2 : vz > 0.35 ? 1 : 0;
+
+          if (p.cid === 0) {
+            // 海洋粒子
+            const oceanColor = globeState.oceanStyle === 'pale'
+              ? `rgba(217, 119, 87, ${(0.15 + depthBucket * 0.10).toFixed(2)})`
+              : `rgba(255, 255, 255, ${(0.18 + depthBucket * 0.11).toFixed(2)})`;
+            addPt(baseBuckets, oceanColor, `oc${depthBucket}`, px, py, basePR * 0.74);
+            continue;
+          }
+
+          const isClicked = p.cid === activeCid;
+          const isHovered = p.cid === hoverCid;
+
+          // 选中或悬停国家的粒子高亮
+          if (isClicked && globeState.pulseTarget) {
+            if (p.type === 2 || p.type === 3) {
+              addPt(strokeBuckets, '#ffffff', 'sel_stroke', px, py, basePR * 1.38);
+            } else {
+              const rVal = Math.round(242 + pulseWave * 13);
+              const gVal = Math.round(162 + pulseWave * 35);
+              const bVal = Math.round(132 + pulseWave * 35);
+              addPt(baseBuckets, `rgb(${rVal}, ${gVal}, ${bVal})`, 'sel_land', px, py, basePR * 1.22);
+            }
+            continue;
+          }
+
+          if (isHovered) {
+            if (p.type === 2 || p.type === 3) {
+              addPt(strokeBuckets, '#ffffff', 'hov_stroke', px, py, basePR * 1.22);
+            } else {
+              addPt(baseBuckets, 'rgb(238, 148, 118)', 'hov_land', px, py, basePR * 1.08);
+            }
+            continue;
+          }
+
+          // ============ 独立描边粒子层（海岸线 p.type === 2 与 国家边界 p.type === 3） ============
+          if (p.type === 2 || p.type === 3) {
+            const isCoast = p.type === 2;
+            const alpha = (isCoast ? (0.58 + depthBucket * 0.18) : (0.50 + depthBucket * 0.18)).toFixed(2);
+            // 纯白色描边 vs 稍浅一点的主题色描边 rgb(252, 205, 188)
+            const strokeColor = useWhiteOutline
+              ? `rgba(255, 255, 255, ${alpha})`
+              : `rgba(252, 205, 188, ${alpha})`;
+            const strokeRadius = isCoast ? basePR * 1.06 : basePR * 0.94;
+            addPt(strokeBuckets, strokeColor, `stk_${p.type}_${depthBucket}`, px, py, strokeRadius);
+            continue;
+          }
+
+          // ============ 陆地内部填充粒子（p.type === 1）：保持主题色 rgb(217, 119, 87) ============
+          const shade = p.tone * (0.66 + depthBucket * 0.15);
+          const rL = Math.min(255, Math.round(217 * shade));
+          const gL = Math.min(255, Math.round(119 * shade));
+          const bL = Math.min(255, Math.round(87 * shade));
+          addPt(baseBuckets, `rgb(${rL}, ${gL}, ${bL})`, `lnd${depthBucket}`, px, py, basePR);
+        }
+
+        // 先绘制海洋与陆地内部粒子
+        const flushBuckets = (map) => {
+          map.forEach((b) => {
+            ctx.fillStyle = b.color;
+            ctx.beginPath();
+            const pts = b.pts;
+            const r = b.r;
+            for (let j = 0; j < pts.length; j += 2) {
+              const x = pts[j], y = pts[j + 1];
+              ctx.moveTo(x + r, y);
+              ctx.arc(x, y, r, 0, Math.PI * 2);
+            }
+            ctx.fill();
+          });
+        };
+
+        flushBuckets(baseBuckets);
+        // 再独立叠加绘制描边粒子层（白色或浅主题色），保证大陆与国家边界清晰锐利
+        flushBuckets(strokeBuckets);
+
+        // 5. 绘制活跃访客国家脉冲信标
+        if (globeState.showVisitorBeacons && dashboard && dashboard.countries.length > 0) {
+          const maxCountryUv = Math.max(1, ...dashboard.countries.map((c) => c.uv));
+          dashboard.countries.forEach((cStat, idx) => {
+            const latR = degToRad(cStat.lat);
+            const lonR = degToRad(cStat.lon);
+            const wy = Math.sin(latR);
+            const rCos = Math.cos(latR);
+            const wx = rCos * Math.sin(lonR);
+            const wz = rCos * Math.cos(lonR);
+            const x1 = wx * cl - wz * sl;
+            const z1 = wx * sl + wz * cl;
+            const y1 = wy;
+            let vx = x1;
+            let vy = y1 * cp - z1 * sp;
+            const vz = y1 * sp + z1 * cp;
+            if (vz <= 0.08) return;
+            if (tiltDeg !== 0) {
+              const nx = vx * ct - vy * st;
+              const ny = vx * st + vy * ct;
+              vx = nx; vy = ny;
+            }
+            const sx = cx + vx * baseRadius;
+            const sy = cy - vy * baseRadius;
+            const weight = Math.min(1, cStat.uv / maxCountryUv);
+            const wave = (globeState.time * 0.9 + idx * 0.27) % 1.0;
+            const ringR = 4 + wave * (11 + weight * 11);
+
+            ctx.save();
+            ctx.strokeStyle = `rgba(217, 119, 87, ${((1 - wave) * 0.85).toFixed(2)})`;
+            ctx.lineWidth = 1.4;
+            ctx.beginPath();
+            ctx.arc(sx, sy, ringR, 0, Math.PI * 2);
+            ctx.stroke();
+
+            ctx.fillStyle = '#ffffff';
+            ctx.beginPath();
+            ctx.arc(sx, sy, 2.3 + weight * 1.3, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.strokeStyle = '#d97757';
+            ctx.lineWidth = 1.5;
+            ctx.stroke();
+            ctx.restore();
+          });
+        }
+
+        // 6. 点击国家时的动态 3D 牵引线与悬浮标注框（源自 3d.html）
+        if (globeState.clickedCountry) {
+          const cc = globeState.clickedCountry;
+          const latR = degToRad(cc.clickLat);
+          const lonR = degToRad(cc.clickLon);
+          const wy = Math.sin(latR);
+          const rCos = Math.cos(latR);
+          const wx = rCos * Math.sin(lonR);
+          const wz = rCos * Math.cos(lonR);
+          const x1 = wx * cl - wz * sl;
+          const z1 = wx * sl + wz * cl;
+          const y1 = wy;
+          let vx = x1;
+          let vy = y1 * cp - z1 * sp;
+          const vz = y1 * sp + z1 * cp;
+
+          if (vz > 0.05) {
+            if (tiltDeg !== 0) {
+              const nx = vx * ct - vy * st;
+              const ny = vx * st + vy * ct;
+              vx = nx; vy = ny;
+            }
+            const sx = cx + vx * baseRadius;
+            const sy = cy - vy * baseRadius;
+            const age = Math.max(0, globeState.time - (cc.clickedAt || 0));
+            const popProgress = Math.min(1.0, age / 0.32);
+            const easeOut = 1.0 - Math.pow(1.0 - popProgress, 3);
+            const visAlpha = Math.min(1.0, vz / 0.25) * easeOut;
+            const cStat = dashboard ? dashboard.countries.find((item) => item.countryZh === cc.zh) : null;
+
+            ctx.save();
+            ctx.globalAlpha = visAlpha;
+
+            const ripplePhase = (age * 1.4) % 1.0;
+            const rippleRadius = 6 + ripplePhase * 28;
+            ctx.strokeStyle = `rgba(217, 119, 87, ${(1.0 - ripplePhase) * 0.9})`;
+            ctx.lineWidth = 1.8;
+            ctx.beginPath();
+            ctx.arc(sx, sy, rippleRadius, 0, Math.PI * 2);
+            ctx.stroke();
+
+            ctx.fillStyle = '#ffffff';
+            ctx.beginPath();
+            ctx.arc(sx, sy, 4.0, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.strokeStyle = 'rgb(217, 119, 87)';
+            ctx.lineWidth = 2.0;
+            ctx.stroke();
+
+            const offsetDirX = vx >= 0 ? 1 : -1;
+            const offsetDirY = vy >= 0 ? -1 : 1;
+            const elbowX = sx + offsetDirX * 26 * easeOut;
+            const elbowY = sy + offsetDirY * 24 * easeOut;
+            const endX = elbowX + offsetDirX * 18 * easeOut;
+            const endY = elbowY;
+
+            ctx.strokeStyle = 'rgba(255, 235, 225, 0.92)';
+            ctx.lineWidth = 1.5;
+            ctx.beginPath();
+            ctx.moveTo(sx, sy);
+            ctx.lineTo(elbowX, elbowY);
+            ctx.lineTo(endX, endY);
+            ctx.stroke();
+
+            const titleText = `${cc.zh} · ${cc.en}`;
+            const subText = cStat
+              ? `访客 ${cStat.uv} UV · ${cStat.pv} PV (${cStat.share}%)`
+              : `${cc.cont} | ${Math.abs(cc.lat).toFixed(1)}°${cc.lat >= 0 ? 'N' : 'S'}, ${Math.abs(cc.lon).toFixed(1)}°${cc.lon >= 0 ? 'E' : 'W'}`;
+            const ipText = cStat ? `最新 IP: ${cStat.latestIp}` : '当前周期暂无访客记录';
+
+            ctx.font = '700 13px "Noto Sans SC", "Microsoft YaHei", sans-serif';
+            const w1 = ctx.measureText(titleText).width;
+            ctx.font = '500 11px ui-monospace, Consolas, monospace';
+            const w2 = ctx.measureText(subText).width;
+            const w3 = ctx.measureText(ipText).width;
+
+            const boxW = Math.max(w1, w2, w3) + 24;
+            const boxH = 56;
+            let boxX = offsetDirX > 0 ? endX + 4 : endX - boxW - 4;
+            let boxY = endY - boxH * 0.5;
+            boxX = Math.max(12, Math.min(cw - boxW - 12, boxX));
+            boxY = Math.max(12, Math.min(ch - boxH - 12, boxY));
+
+            ctx.fillStyle = 'rgba(10, 13, 20, 0.92)';
+            ctx.strokeStyle = 'rgb(217, 119, 87)';
+            ctx.lineWidth = 1.5;
+            ctx.beginPath();
+            ctx.roundRect(boxX, boxY, boxW, boxH, 6);
+            ctx.fill();
+            ctx.stroke();
+
+            ctx.fillStyle = 'rgb(217, 119, 87)';
+            ctx.beginPath();
+            ctx.roundRect(boxX + 4, boxY + 6, 3.5, boxH - 12, 2);
+            ctx.fill();
+
+            ctx.fillStyle = '#ffffff';
+            ctx.font = '700 13px "Noto Sans SC", "Microsoft YaHei", sans-serif';
+            ctx.textBaseline = 'top';
+            ctx.fillText(titleText, boxX + 13, boxY + 6);
+
+            ctx.fillStyle = '#fccdbc';
+            ctx.font = '600 11px ui-monospace, Consolas, monospace';
+            ctx.fillText(subText, boxX + 13, boxY + 23);
+
+            ctx.fillStyle = '#94a3b8';
+            ctx.font = '400 10.5px ui-monospace, Consolas, monospace';
+            ctx.fillText(ipText, boxX + 13, boxY + 39);
+
+            ctx.restore();
+          }
+        }
+
+        ctx.restore();
+        globeState.rafId = requestAnimationFrame(renderGlobeFrame);
+      }
+
+      let authCsrf = '';
+
+      async function loadServerLogs() {
+        const res = await fetch('/api/analytics/raw', { credentials: 'same-origin' });
+        if (res.status === 401) { window.location.replace('/studio/'); return false; }
+        if (!res.ok) throw new Error('analytics api ' + res.status);
+        const data = await res.json();
+        visitorLogs = Array.isArray(data.logs) ? data.logs : [];
+        nextLogId = visitorLogs.reduce((max, row) => Math.max(max, Number(row.id) || 0), 0) + 1;
+        return true;
+      }
+
+      async function initAuth() {
+        const res = await fetch('/api/auth/me', { credentials: 'same-origin' });
+        if (!res.ok) { window.location.replace('/studio/'); return false; }
+        const data = await res.json().catch(() => ({}));
+        authCsrf = data.csrf || '';
+        return true;
+      }
+
+      async function apiWrite(url, method, payload) {
+        const res = await fetch(url, {
+          method,
+          credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': authCsrf },
+          body: payload === undefined ? undefined : JSON.stringify(payload),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
+        return data;
+      }
+
+      window.addEventListener('load', async () => {
+        decodeCountryGrid();
+        buildGlobeParticles(globeState.fibCount);
+        wireGlobeControls();
+        try {
+          if (!(await initAuth())) return;
+          if (!(await loadServerLogs())) return;
+        } catch (err) {
+          toast('读取统计失败：' + (err?.message || err), true);
+          return;
+        }
+        refreshDashboard();
+        globeState.lastFrameTime = performance.now();
+        globeState.rafId = requestAnimationFrame(renderGlobeFrame);
+      });
+    })();
+  </script>
+</body>
+</html>
