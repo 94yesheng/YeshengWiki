@@ -63,9 +63,18 @@ function migrate(db: Db): void {
       db.exec(SCHEMA_SQL);
       ensureColumn(db, 'posts', 'raw_markdown', "raw_markdown TEXT NOT NULL DEFAULT ''");
       ensureColumn(db, 'photo_walls', 'version', 'version INTEGER NOT NULL DEFAULT 1');
-      // v4 升级：彻底清空旧版自动播种的演示样本数据与随机哈希污染记录，保证统计库仅存真实访客
       if (current < 4) {
         db.exec('DELETE FROM visitor_logs;');
+      } else if (current < 5) {
+        // v5 升级：自动清理因反代未透传产生的 127.0.0.1 / 内网本地 IP 记录
+        db.exec(`
+          DELETE FROM visitor_logs
+           WHERE ip = '127.0.0.1'
+              OR ip = '::1'
+              OR ip LIKE '192.168.%'
+              OR ip LIKE '10.%'
+              OR region LIKE '%本地%';
+        `);
       }
       db.prepare('INSERT OR IGNORE INTO schema_migrations (version) VALUES (?)').run(SCHEMA_VERSION);
     })();

@@ -1,7 +1,7 @@
 /**
  * 访客统计数据层（`visitor_logs` 表）：
- *   1. 零阻塞记录真实访客 IP、地理位置（与 3D 粒子地球仪国家元数据对齐）、使用设备（Desktop/Mobile/Tablet）、操作系统、浏览器与受访路径；
- *   2. 采用「内存写缓冲合并 + 预编译事务落盘 + LRU 归属地缓存 + 后台异步省市级精准补全」，对前台页面加载速度零阻塞（0ms TTFB 开销）；
+ *   1. 支持「服务端请求头链 + 浏览器端真实公网 IP 遥测信标（WebRTC STUN / 国内 BGP 节点 / JSONP）」双通道真实 IP 采集，彻底解决反代/内网穿透下只识别到 127.0.0.1 本地 IP 的问题；
+ *   2. 采用「内存写缓冲合并 + 预编译事务落盘 + LRU 归属地缓存 + 省市级精准坐标匹配」，对前台页面加载速度零阻塞（0ms TTFB 开销）；
  *   3. 支持按日（day）、按周（week）、按月（month）、按年（year）四个时间维度整合统计，不含任何伪造/模拟样本数据。
  */
 import type { APIContext } from 'astro';
@@ -111,6 +111,22 @@ export interface GeoProfile {
   enriched?: boolean;
 }
 
+export interface ClientBeaconPayload {
+  ip?: string;
+  path?: string;
+  referrer?: string;
+  pro?: string;
+  city?: string;
+  addr?: string;
+  countryCode?: string;
+  countryZh?: string;
+  countryEn?: string;
+  region?: string;
+  isp?: string;
+  lat?: number;
+  lon?: number;
+}
+
 /* --------------------------------------------------------------------------
    全球国家元数据字典（与 stats.html 3D 粒子地球仪 174 国名称严格对齐）
    -------------------------------------------------------------------------- */
@@ -186,18 +202,49 @@ const COUNTRY_BY_CODE: Record<string, Omit<GeoProfile, 'region' | 'enriched'>> =
   KE: { code: 'KE', zh: '肯尼亚', en: 'Kenya', lat: 0.3, lon: 37.5 },
 };
 
-/** 中国各省/直辖市/自治区及主要城市经纬度坐标表（用于离线或省市文本匹配定位） */
+/** 中国各省/直辖市/自治区及主要城市经纬度坐标表（城市优先匹配，省会兜底） */
 const CN_PROVINCE_COORDS: Array<{ match: string; lat: number; lon: number }> = [
   { match: '深圳', lat: 22.54, lon: 114.06 },
   { match: '广州', lat: 23.13, lon: 113.26 },
+  { match: '东莞', lat: 23.02, lon: 113.75 },
+  { match: '佛山', lat: 23.02, lon: 113.12 },
+  { match: '珠海', lat: 22.27, lon: 113.58 },
   { match: '杭州', lat: 30.27, lon: 120.15 },
+  { match: '宁波', lat: 29.87, lon: 121.55 },
+  { match: '温州', lat: 28.0, lon: 120.7 },
   { match: '南京', lat: 32.06, lon: 118.8 },
   { match: '苏州', lat: 31.3, lon: 120.58 },
+  { match: '无锡', lat: 31.49, lon: 120.31 },
+  { match: '常州', lat: 31.81, lon: 119.97 },
   { match: '成都', lat: 30.57, lon: 104.06 },
   { match: '武汉', lat: 30.59, lon: 114.31 },
   { match: '西安', lat: 34.26, lon: 108.94 },
   { match: '青岛', lat: 36.07, lon: 120.38 },
+  { match: '济南', lat: 36.65, lon: 117.12 },
   { match: '厦门', lat: 24.48, lon: 118.09 },
+  { match: '福州', lat: 26.08, lon: 119.3 },
+  { match: '泉州', lat: 24.87, lon: 118.68 },
+  { match: '长沙', lat: 28.23, lon: 112.94 },
+  { match: '郑州', lat: 34.75, lon: 113.62 },
+  { match: '合肥', lat: 31.82, lon: 117.23 },
+  { match: '南昌', lat: 28.68, lon: 115.86 },
+  { match: '沈阳', lat: 41.8, lon: 123.43 },
+  { match: '大连', lat: 38.91, lon: 121.61 },
+  { match: '长春', lat: 43.82, lon: 125.32 },
+  { match: '哈尔滨', lat: 45.8, lon: 126.53 },
+  { match: '石家庄', lat: 38.04, lon: 114.51 },
+  { match: '太原', lat: 37.87, lon: 112.55 },
+  { match: '南宁', lat: 22.82, lon: 108.37 },
+  { match: '昆明', lat: 25.04, lon: 102.71 },
+  { match: '贵阳', lat: 26.65, lon: 106.63 },
+  { match: '兰州', lat: 36.06, lon: 103.83 },
+  { match: '乌鲁木齐', lat: 43.83, lon: 87.62 },
+  { match: '呼和浩特', lat: 40.84, lon: 111.75 },
+  { match: '银川', lat: 38.49, lon: 106.23 },
+  { match: '西宁', lat: 36.62, lon: 101.78 },
+  { match: '拉萨', lat: 29.65, lon: 91.11 },
+  { match: '海口', lat: 20.04, lon: 110.2 },
+  { match: '三亚', lat: 18.25, lon: 109.51 },
   { match: '北京', lat: 39.9, lon: 116.4 },
   { match: '上海', lat: 31.23, lon: 121.47 },
   { match: '天津', lat: 39.08, lon: 117.2 },
@@ -234,7 +281,6 @@ const CN_PROVINCE_COORDS: Array<{ match: string; lat: number; lon: number }> = [
   { match: '台湾', lat: 25.03, lon: 121.56 },
 ];
 
-/** 中国常见公网 IPv4 首段集合（APNIC 分配给中国大陆骨干网的主要 A 类段） */
 const CN_IPV4_FIRST_OCTETS = new Set([
   1, 14, 27, 36, 39, 42, 43, 49, 58, 59, 60, 61, 101, 106, 110, 111, 112, 113, 114, 115, 116, 117,
   118, 119, 120, 121, 122, 123, 124, 125, 139, 140, 144, 150, 153, 163, 171, 175, 180, 182, 183,
@@ -257,7 +303,7 @@ function setGeoCache(ip: string, profile: GeoProfile): void {
   ipGeoCache.set(ip, profile);
 }
 
-/** 解析 User-Agent，提取设备类型、操作系统、浏览器，并过滤常见爬虫与健康检查探针 */
+/** 解析 User-Agent，提取设备类型、操作系统、浏览器，并过滤爬虫与监控探针 */
 export function parseUserAgent(uaRaw: string): {
   deviceType: 'Desktop' | 'Mobile' | 'Tablet' | 'Bot';
   os: string;
@@ -306,18 +352,28 @@ export function parseUserAgent(uaRaw: string): {
   return { deviceType, os, browser };
 }
 
+export function inferCoordsFromText(
+  text: string,
+  fallbackLat = 35.0,
+  fallbackLon = 104.0
+): { lat: number; lon: number } {
+  for (const item of CN_PROVINCE_COORDS) {
+    if (text.includes(item.match)) {
+      return { lat: item.lat, lon: item.lon };
+    }
+  }
+  return { lat: fallbackLat, lon: fallbackLon };
+}
+
 /**
- * 第一层：纯内存 0ms 确定性归属地初判（严禁使用随机哈希映射，确保即使离线也准确可靠）。
- * 对公网 IP 会在写入后触发第二层后台异步精准省市/运营商补全。
+ * 第一层：纯内存 0ms 确定性归属地初判（严禁随机哈希映射）。
  */
 export function resolveIpGeo(ipRaw: string, headers?: Headers): GeoProfile {
   const cleanIp = normalizeIp(ipRaw);
 
-  // 1. 优先命中内存 LRU 缓存
   const cached = cleanIp ? ipGeoCache.get(cleanIp) : undefined;
   if (cached) return cached;
 
-  // 2. 本机环回与局域网私网地址
   if (!cleanIp || isPrivateOrLoopbackIp(cleanIp)) {
     const localProfile: GeoProfile = {
       code: 'CN',
@@ -332,7 +388,6 @@ export function resolveIpGeo(ipRaw: string, headers?: Headers): GeoProfile {
     return localProfile;
   }
 
-  // 3. 查询数据库中是否已有该 IP 的已补全历史归属地
   try {
     const prev = getStmts().findIpGeo.get(cleanIp) as
       | {
@@ -344,7 +399,7 @@ export function resolveIpGeo(ipRaw: string, headers?: Headers): GeoProfile {
           lon: number;
         }
       | undefined;
-    if (prev && prev.region && !prev.region.endsWith('公网节点')) {
+    if (prev && prev.region && !prev.region.endsWith('公网节点') && !prev.region.includes('本地')) {
       const dbProfile: GeoProfile = {
         code: prev.country_code,
         zh: prev.country_zh,
@@ -361,7 +416,6 @@ export function resolveIpGeo(ipRaw: string, headers?: Headers): GeoProfile {
     /* ignore DB lookup error during early init */
   }
 
-  // 4. 读取 CDN 边缘节点注入的国家代码头（若有）
   const countryHeader = (
     headers?.get('cf-ipcountry') ||
     headers?.get('ali-cdn-real-ip-country') ||
@@ -395,7 +449,6 @@ export function resolveIpGeo(ipRaw: string, headers?: Headers): GeoProfile {
     return headerProfile;
   }
 
-  // 5. 确定性 IPv6 运营商/大区前缀识别
   if (cleanIp.includes(':')) {
     const lower = cleanIp.toLowerCase();
     let profile: GeoProfile;
@@ -416,7 +469,6 @@ export function resolveIpGeo(ipRaw: string, headers?: Headers): GeoProfile {
     return profile;
   }
 
-  // 6. 确定性 IPv4 首段识别（不再做随机哈希映射）
   const firstOctet = Number(cleanIp.split('.')[0]);
   const fallbackProfile: GeoProfile = CN_IPV4_FIRST_OCTETS.has(firstOctet)
     ? {
@@ -442,30 +494,117 @@ export function resolveIpGeo(ipRaw: string, headers?: Headers): GeoProfile {
   return fallbackProfile;
 }
 
+/**
+ * 将客户端遥测信标附带的归属地信息（如太平洋 IP 库 JSONP 或 ipwho.is）转换为标准 GeoProfile
+ */
+function buildGeoFromBeaconPayload(ip: string, payload?: ClientBeaconPayload): GeoProfile | null {
+  if (!payload) return null;
+  const pro = (payload.pro || '').trim();
+  const city = (payload.city || '').trim();
+  const addr = (payload.addr || '').trim();
+  if (pro || city) {
+    const loc = pro && city && pro !== city ? `${pro}${city}` : pro || city;
+    const ispRaw = addr.replace(pro, '').replace(city, '').trim();
+    const region = [loc, ispRaw].filter(Boolean).join(' · ').slice(0, 64) || '中国';
+    const coords = inferCoordsFromText(`${pro}${city}${addr}`, 35.0, 104.0);
+    const profile: GeoProfile = {
+      code: 'CN',
+      zh: '中国',
+      en: 'China',
+      region,
+      lat: coords.lat,
+      lon: coords.lon,
+      enriched: true,
+    };
+    setGeoCache(ip, profile);
+    return profile;
+  }
+
+  const cc = (payload.countryCode || '').trim().toUpperCase();
+  if (cc) {
+    const known = COUNTRY_BY_CODE[cc];
+    const code = known ? known.code : cc;
+    const zh = known ? known.zh : (payload.countryZh || payload.countryEn || cc).trim();
+    const en = known ? known.en : (payload.countryEn || zh).trim();
+    const reg = (payload.region || '').trim();
+    const isp = (payload.isp || '').trim();
+    const region = [reg || zh, isp].filter(Boolean).join(' · ').slice(0, 64) || zh;
+    const baseCoords = inferCoordsFromText(region, known?.lat ?? 35.0, known?.lon ?? 104.0);
+    const lat =
+      typeof payload.lat === 'number' && Number.isFinite(payload.lat)
+        ? Number(payload.lat.toFixed(2))
+        : baseCoords.lat;
+    const lon =
+      typeof payload.lon === 'number' && Number.isFinite(payload.lon)
+        ? Number(payload.lon.toFixed(2))
+        : baseCoords.lon;
+    const profile: GeoProfile = {
+      code,
+      zh,
+      en,
+      region,
+      lat,
+      lon,
+      enriched: true,
+    };
+    setGeoCache(ip, profile);
+    return profile;
+  }
+
+  return null;
+}
+
 /* --------------------------------------------------------------------------
-   第二层：后台异步非阻塞精准 IP 归属地补全（省市 + 运营商 + 经纬度）
-   - 仅在新公网 IP 落库后于后台空闲时触发一次，完全不阻塞任何前台请求
-   - 结果缓存在内存与 SQLite 中，同一 IP 终身只查一次
+   第二层：服务端异步非阻塞精准 IP 归属地查询（国内优先太平洋 IP 库，海外回退 ip-api）
    -------------------------------------------------------------------------- */
 const pendingGeoIps = new Set<string>();
 const failedGeoIps = new Map<string, number>();
 let geoWorkerRunning = false;
 
-function inferCoordsFromText(text: string, fallbackLat: number, fallbackLon: number): { lat: number; lon: number } {
-  for (const item of CN_PROVINCE_COORDS) {
-    if (text.includes(item.match)) {
-      return { lat: item.lat, lon: item.lon };
+export async function fetchAccurateIpGeo(ip: string): Promise<GeoProfile | null> {
+  // 方案 A：优先调用国内极速太平洋 IP 库（国内服务器响应约 20~40ms，精准到省、市、三大运营商）
+  try {
+    const res = await fetch(
+      `https://whois.pconline.com.cn/ipJson.jsp?ip=${encodeURIComponent(ip)}&json=true`,
+      { signal: AbortSignal.timeout(1800) }
+    );
+    if (res.ok) {
+      const buf = await res.arrayBuffer();
+      const text = new TextDecoder('gbk').decode(buf);
+      const data = JSON.parse(text) as {
+        pro?: string;
+        city?: string;
+        addr?: string;
+      };
+      const pro = (data.pro || '').trim();
+      const city = (data.city || '').trim();
+      const addr = (data.addr || '').trim();
+      // 若 pro 非空，说明明确属于中国省/直辖市/特区
+      if (pro) {
+        const loc = pro && city && pro !== city ? `${pro}${city}` : pro || city;
+        const ispPart = addr.replace(pro, '').replace(city, '').trim();
+        const region = [loc, ispPart].filter(Boolean).join(' · ').slice(0, 64) || '中国';
+        const coords = inferCoordsFromText(`${pro}${city}${addr}`, 35.0, 104.0);
+        return {
+          code: 'CN',
+          zh: '中国',
+          en: 'China',
+          region,
+          lat: coords.lat,
+          lon: coords.lon,
+          enriched: true,
+        };
+      }
     }
+  } catch {
+    /* fallback to global provider */
   }
-  return { lat: fallbackLat, lon: fallbackLon };
-}
 
-async function fetchAccurateIpGeo(ip: string): Promise<GeoProfile | null> {
-  // 方案 A：优先对于国内/全球 IP 调用 ip-api.com (UTF-8 JSON，自带精准经纬度、省市与运营商)
+  // 方案 B：海外或 IPv6 节点调用 ip-api.com (UTF-8 JSON，自带全球国家代码、城市、ISP 与经纬度)
   try {
     const res = await fetch(
       `http://ip-api.com/json/${encodeURIComponent(ip)}?fields=status,country,countryCode,regionName,city,isp,org,lat,lon&lang=zh-CN`,
-      { signal: AbortSignal.timeout(2500) }
+      { signal: AbortSignal.timeout(2200) }
     );
     if (res.ok) {
       const data = (await res.json()) as {
@@ -506,51 +645,20 @@ async function fetchAccurateIpGeo(ip: string): Promise<GeoProfile | null> {
         else if (rawIsp && rawIsp.length <= 24) ispShort = rawIsp;
 
         const region = [locPart, ispShort].filter(Boolean).join(' · ').slice(0, 64) || zh;
-        const lat = typeof data.lat === 'number' && Number.isFinite(data.lat) ? Number(data.lat.toFixed(2)) : (known?.lat ?? 35.0);
-        const lon = typeof data.lon === 'number' && Number.isFinite(data.lon) ? Number(data.lon.toFixed(2)) : (known?.lon ?? 104.0);
+        const lat =
+          typeof data.lat === 'number' && Number.isFinite(data.lat)
+            ? Number(data.lat.toFixed(2))
+            : (known?.lat ?? 35.0);
+        const lon =
+          typeof data.lon === 'number' && Number.isFinite(data.lon)
+            ? Number(data.lon.toFixed(2))
+            : (known?.lon ?? 104.0);
 
         return { code, zh, en, region, lat, lon, enriched: true };
       }
     }
   } catch {
-    /* fallback to next provider */
-  }
-
-  // 方案 B：国内太平洋 IP 库兜底（对国内省市与三大运营商识别极快）
-  try {
-    const res = await fetch(
-      `https://whois.pconline.com.cn/ipJson.jsp?ip=${encodeURIComponent(ip)}&json=true`,
-      { signal: AbortSignal.timeout(2500) }
-    );
-    if (res.ok) {
-      const buf = await res.arrayBuffer();
-      const text = new TextDecoder('gbk').decode(buf);
-      const data = JSON.parse(text) as {
-        pro?: string;
-        city?: string;
-        addr?: string;
-      };
-      const pro = (data.pro || '').trim();
-      const city = (data.city || '').trim();
-      const addr = (data.addr || '').trim();
-      if (pro || city || addr) {
-        const loc = pro && city && pro !== city ? `${pro}${city}` : pro || city;
-        const ispPart = addr.replace(pro, '').replace(city, '').trim();
-        const region = [loc, ispPart].filter(Boolean).join(' · ').slice(0, 64) || '中国';
-        const coords = inferCoordsFromText(`${pro}${city}${addr}`, 35.0, 104.0);
-        return {
-          code: 'CN',
-          zh: '中国',
-          en: 'China',
-          region,
-          lat: coords.lat,
-          lon: coords.lon,
-          enriched: true,
-        };
-      }
-    }
-  } catch {
-    /* ignore network offline or timeout */
+    /* ignore timeout */
   }
 
   return null;
@@ -624,7 +732,7 @@ function getStmts(): PreparedStatements {
   cachedStmts = {
     db,
     findVisit: db.prepare(
-      `SELECT id, pv_count FROM visitor_logs
+      `SELECT id, pv_count, last_seen, path FROM visitor_logs
         WHERE visit_date = ? AND ip = ? AND device_type = ? AND os = ? AND browser = ?
         LIMIT 1`
     ),
@@ -710,7 +818,7 @@ export function flushPendingVisits(): void {
           item.deviceType,
           item.os,
           item.browser
-        ) as { id: number; pv_count: number } | undefined;
+        ) as { id: number; pv_count: number; last_seen: string; path: string } | undefined;
 
         if (existing) {
           stmts.updateVisit.run(item.pvCount, item.path, item.lastSeen, existing.id);
@@ -762,7 +870,6 @@ function scheduleVisitFlush(): void {
   flushTimer.unref?.();
 }
 
-// 进程退出前确保缓冲队列落盘
 const globalForHooks = globalThis as unknown as { __analyticsExitHooked?: boolean };
 if (!globalForHooks.__analyticsExitHooked) {
   globalForHooks.__analyticsExitHooked = true;
@@ -789,8 +896,9 @@ const STATIC_EXT_RE =
   /\.(?:xml|js|mjs|css|png|jpe?g|webp|avif|gif|svg|ico|woff2?|ttf|otf|eot|mp3|wav|ogg|m4a|flac|aac|opus|webm|json|txt|map|webmanifest)$/i;
 
 /**
- * 在 middleware 响应生成后调用：将真实公开 HTML 页面访问异步推入内存写缓冲队列。
- * 0ms 磁盘 I/O，完全不阻塞页面响应速度。
+ * 在 middleware 响应生成后调用：
+ * 若服务端连接层仅拿到 127.0.0.1 / 内网 IP（如反代未透传或走本地隧道），则跳过本地 IP 写入，
+ * 交由浏览器端加载完成后的 `/api/analytics/collect` 真实公网 IP 信标写入，杜绝 `127.0.0.1` 污染。
  */
 export function recordVisit(context: APIContext): void {
   try {
@@ -810,7 +918,6 @@ export function recordVisit(context: APIContext): void {
     }
 
     const headers = context.request.headers;
-    // 排除浏览器后台预取（prefetch / preload / prerender）避免虚增 PV 和额外写盘
     const purpose = (
       headers.get('sec-purpose') ||
       headers.get('purpose') ||
@@ -826,6 +933,12 @@ export function recordVisit(context: APIContext): void {
     if (parsedUa.deviceType === 'Bot') return;
 
     const ip = getClientIp(context);
+    // 关键防护：如果服务端连接只能看到 127.0.0.1 或局域网私网 IP，绝不把本地 IP 写入统计表，
+    // 由前端页面内嵌的真实公网 IP 遥测信标（/api/analytics/collect）上报真实公网 IP。
+    if (isPrivateOrLoopbackIp(ip)) {
+      return;
+    }
+
     const today = formatDateYmd();
     const nowSql = formatDateTimeSql();
     const cleanPath = (pathname || '/').slice(0, 160);
@@ -867,12 +980,124 @@ export function recordVisit(context: APIContext): void {
   }
 }
 
+/**
+ * 接收前端浏览器上报的真实公网 IP 与归属地信标（`POST /api/analytics/collect`）：
+ * 当服务器 Nginx / 隧道未透传客户端 IP 导致服务端只看到 127.0.0.1 时，
+ * 浏览器端直接通过国内 BGP / WebRTC STUN / JSONP 测得访客电脑或手机流量的真实公网 IP 并上报此处落库。
+ */
+export async function recordVisitBeacon(
+  context: APIContext,
+  payload: ClientBeaconPayload | null
+): Promise<{ ok: boolean; ip: string }> {
+  try {
+    const headers = context.request.headers;
+    const ua = headers.get('user-agent') ?? '';
+    const parsedUa = parseUserAgent(ua);
+    if (parsedUa.deviceType === 'Bot') {
+      return { ok: true, ip: '' };
+    }
+
+    const browserIp = normalizeIp(payload?.ip);
+    const serverIp = getClientIp(context);
+
+    // 优先采用客户端浏览器实测到的真实公网 IP；若无则采用服务端识别的公网 IP
+    const effectiveIp =
+      browserIp && !isPrivateOrLoopbackIp(browserIp)
+        ? browserIp
+        : serverIp && !isPrivateOrLoopbackIp(serverIp)
+          ? serverIp
+          : '';
+
+    if (!effectiveIp) {
+      return { ok: false, ip: '' };
+    }
+
+    const rawPath = String(payload?.path || '/').trim();
+    const cleanPath = (rawPath.startsWith('/') ? rawPath : `/${rawPath}`).slice(0, 160);
+    if (cleanPath.startsWith('/studio') || cleanPath.startsWith('/api/')) {
+      return { ok: true, ip: effectiveIp };
+    }
+
+    const today = formatDateYmd();
+    const nowSql = formatDateTimeSql();
+    const referrer = String(payload?.referrer || headers.get('referer') || '').slice(0, 240);
+
+    // 若前端已附带太平洋 IP 库或 ipwho.is 的省市/运营商数据，直接构建并缓存；否则在后台异步/即时查询
+    let geo = buildGeoFromBeaconPayload(effectiveIp, payload ?? undefined);
+    if (!geo) {
+      const cached = ipGeoCache.get(effectiveIp);
+      if (cached?.enriched) {
+        geo = cached;
+      } else {
+        geo = (await fetchAccurateIpGeo(effectiveIp)) ?? resolveIpGeo(effectiveIp, headers);
+        if (geo.enriched) setGeoCache(effectiveIp, geo);
+      }
+    }
+
+    // 检查是否刚刚被 middleware 的 pendingVisits 队列记录过同一次加载（避免同一次打开页面重复 +1）
+    const pendingKey = `${today}|${effectiveIp}|${parsedUa.deviceType}|${parsedUa.os}|${parsedUa.browser}`;
+    if (pendingVisits.has(pendingKey)) {
+      pendingVisits.delete(pendingKey);
+    }
+
+    const stmts = getStmts();
+    const existing = stmts.findVisit.get(
+      today,
+      effectiveIp,
+      parsedUa.deviceType,
+      parsedUa.os,
+      parsedUa.browser
+    ) as { id: number; pv_count: number; last_seen: string; path: string } | undefined;
+
+    if (existing) {
+      // 如果同一秒内 middleware 已经写过完全相同的路径，只补全归属地不重复累加 PV
+      const isDuplicateWithin2Sec =
+        existing.path === cleanPath &&
+        Math.abs(new Date(nowSql).getTime() - new Date(existing.last_seen).getTime()) <= 2000;
+      if (!isDuplicateWithin2Sec) {
+        stmts.updateVisit.run(1, cleanPath, nowSql, existing.id);
+      }
+      if (geo.enriched) {
+        stmts.updateIpGeo.run(geo.code, geo.zh, geo.en, geo.region, geo.lat, geo.lon, effectiveIp);
+      }
+    } else {
+      stmts.insertVisit.run(
+        today,
+        effectiveIp,
+        geo.code,
+        geo.zh,
+        geo.en,
+        geo.region,
+        geo.lat,
+        geo.lon,
+        parsedUa.deviceType,
+        parsedUa.os,
+        parsedUa.browser,
+        ua.slice(0, 300),
+        cleanPath,
+        referrer,
+        1,
+        nowSql,
+        nowSql
+      );
+      if (!geo.enriched) {
+        enqueueGeoEnrichment(effectiveIp);
+      }
+    }
+
+    return { ok: true, ip: effectiveIp };
+  } catch (err) {
+    console.error('[analytics] recordVisitBeacon failed:', err);
+    return { ok: false, ip: '' };
+  }
+}
+
 export function clearAnalyticsLogs(): void {
   pendingVisits.clear();
   getDb().prepare('DELETE FROM visitor_logs').run();
 }
 
-/** 极速获取今日 UV 与 PV（供后台顶栏导航角标使用，避免全表 11 次聚合查询） */
+/** 极速获取今日 UV 与 PV（供后台顶栏导航角标使用） */
 export function getTodayUvSummary(): { todayUv: number; todayPv: number } {
   flushPendingVisits();
   const today = formatDateYmd();
@@ -1100,7 +1325,7 @@ export function getAnalyticsDashboard(opts: AnalyticsQueryOptions = {}): Analyti
   const desktopItem = deviceTypes.find((d) => d.name === 'Desktop');
   const mobileItem = deviceTypes.find((d) => d.name === 'Mobile' || d.name === 'Tablet');
 
-  // 5. 访客 IP 与设备日志明细（支持按桶/国家/设备/关键词过滤与分页）
+  // 5. 访客 IP 与设备日志明细
   const whereClauses: string[] = ['1=1'];
   const params: Array<string | number> = [];
 
@@ -1220,7 +1445,6 @@ export function getAnalyticsDashboard(opts: AnalyticsQueryOptions = {}): Analyti
 
 /**
  * 返回全部真实访客记录（供统计页聚合引擎与 CSV 导出使用）。
- * 查询前先刷入内存写缓冲队列，保证后台打开即见最新实时访客。
  */
 export function listVisitorLogs(limit = 5000): VisitorLogItem[] {
   flushPendingVisits();
@@ -1255,7 +1479,6 @@ export function listVisitorLogs(limit = 5000): VisitorLogItem[] {
     last_seen: string;
   }>;
 
-  // 若发现尚处于初始占位态的公网 IP，后台顺带触发异步归属地补全
   for (const r of rows) {
     if (r.region.endsWith('公网节点') && !isPrivateOrLoopbackIp(r.ip)) {
       enqueueGeoEnrichment(r.ip);

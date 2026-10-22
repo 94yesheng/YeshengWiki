@@ -209,8 +209,9 @@ Schema 唯一来源是 [db/schema.sql](db/schema.sql)（`src/server/schema.ts` �
 - `posts.version` 做**乐观锁**：保存时带上读到的版本，服务端不匹配就 `409`。
 - `posts.draft = 1` 不出现在公开列表 / RSS / sitemap。
 - `photo_walls.date` 允许空串（未标注时间）。
-- Schema 版本由 `src/server/schema.ts` 的 `SCHEMA_VERSION` 控制（当前 `4`）；启动时自动套用
-  `db/schema.sql` 并补齐旧库缺列，`link_applications` 是 v2 新增表，`visitor_logs` 是 v3 新增表，v4 清理演示样本并补齐复合索引。
+- Schema 版本由 `src/server/schema.ts` 的 `SCHEMA_VERSION` 控制（当前 `5`）；启动时自动套用
+  `db/schema.sql` 并补齐旧库缺列，`link_applications` 是 v2 新增表，`visitor_logs` 是 v3 新增表，
+  v4 清理演示样本并补齐复合索引，v5 清理反代产生的本地/内网 IP 记录。
 - `src/content/` 与 `src/assets/` 是**迁移来源**，运行时不再读取；改内容请走 `/studio/`。
 
 ---
@@ -380,6 +381,9 @@ Schema 唯一来源是 [db/schema.sql](db/schema.sql)（`src/server/schema.ts` �
 - 2026-10-22：内建访客统计模块（后台导航「06 统计」，直达 `/studio/stats`）：`visitor_logs`（Schema v3）、
   middleware 自动记录公开页访问、`/api/analytics` 聚合与原始日志、日/周/月/年整合、IP/设备明细、
   3D 粒子地球、CSV 导出；已移除演示样本与模拟功能，采用真实 IP 识别与零阻塞内存写缓冲。
+- 2026-10-22：合入 v7 的安全部分：Schema v5 清理反代产生的本地/内网 IP 记录；
+  **未启用**浏览器 IP 信标与公开 `/api/analytics/collect` 接口（当前 Nginx 已透传 `X-Real-IP`，
+  服务端能识别真实 IP；避免公开写接口被刷、第三方 IP 探测和重复 PV）。
 
 **待办**
 
