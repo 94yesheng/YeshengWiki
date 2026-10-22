@@ -287,6 +287,25 @@ const CN_IPV4_FIRST_OCTETS = new Set([
   202, 203, 210, 211, 218, 219, 220, 221, 222, 223,
 ]);
 
+/** 粗略判断是否为中国大陆 IP（用于决定是否允许回退到海外库）。 */
+function isLikelyChinaIp(ipRaw: string): boolean {
+  const ip = normalizeIp(ipRaw);
+  if (!ip) return false;
+  if (ip.includes(':')) {
+    const lower = ip.toLowerCase();
+    return (
+      lower.startsWith('240e:') ||
+      lower.startsWith('2408:') ||
+      lower.startsWith('2409:') ||
+      lower.startsWith('240c:') ||
+      lower.startsWith('2001:da8:') ||
+      lower.startsWith('2001:250:')
+    );
+  }
+  const firstOctet = Number(ip.split('.')[0]);
+  return CN_IPV4_FIRST_OCTETS.has(firstOctet);
+}
+
 /* --------------------------------------------------------------------------
    内存级 IP 归属地 LRU 缓存（最大 4000 条，0ms 命中有记录 IP）
    -------------------------------------------------------------------------- */
@@ -566,7 +585,8 @@ export async function fetchAccurateIpGeo(ip: string): Promise<GeoProfile | null>
   try {
     const res = await fetch(
       `https://whois.pconline.com.cn/ipJson.jsp?ip=${encodeURIComponent(ip)}&json=true`,
-      { signal: AbortSignal.timeout(1800) }
+      // 生产环境到太平洋的 RTT 可能达到 ~3s；后台异步补全可以接受更长等待，避免误判超时
+      { signal: AbortSignal.timeout(6000) }
     );
     if (res.ok) {
       const buf = await res.arrayBuffer();
@@ -599,6 +619,10 @@ export async function fetchAccurateIpGeo(ip: string): Promise<GeoProfile | null>
   } catch {
     /* fallback to global provider */
   }
+
+  // 中国 IP 不允许回退到 ip-api：该库对国内移动 IP 的省级数据经常错误（如贵州 IP 返回广东）。
+  // 失败时返回 null，由 enqueueGeoEnrichment 稍后重试太平洋库，避免把错误省份写入统计。
+  if (isLikelyChinaIp(ip)) return null;
 
   // 方案 B：海外或 IPv6 节点调用 ip-api.com (UTF-8 JSON，自带全球国家代码、城市、ISP 与经纬度)
   try {
