@@ -63,6 +63,10 @@ function migrate(db: Db): void {
       db.exec(SCHEMA_SQL);
       ensureColumn(db, 'posts', 'raw_markdown', "raw_markdown TEXT NOT NULL DEFAULT ''");
       ensureColumn(db, 'photo_walls', 'version', 'version INTEGER NOT NULL DEFAULT 1');
+      // v4 升级：彻底清空旧版自动播种的演示样本数据与随机哈希污染记录，保证统计库仅存真实访客
+      if (current < 4) {
+        db.exec('DELETE FROM visitor_logs;');
+      }
       db.prepare('INSERT OR IGNORE INTO schema_migrations (version) VALUES (?)').run(SCHEMA_VERSION);
     })();
   } else {

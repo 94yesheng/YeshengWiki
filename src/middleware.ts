@@ -4,7 +4,12 @@ import artifactJs from './artifact/artifact.js?raw';
 import { bootstrap } from './server/bootstrap';
 import { handleApi } from './server/api/router';
 import { serveUpload } from './server/uploads';
-import { faviconInfo, getSiteConfig } from './server/site';
+import {
+  ARTIFACT_CSS_HASH,
+  ARTIFACT_JS_HASH,
+  faviconInfo,
+  getSiteConfig,
+} from './server/site';
 import { legacyRedirectTarget } from './server/legacy-redirects';
 import { recordVisit } from './server/repositories/analytics';
 
@@ -29,23 +34,37 @@ export const onRequest = defineMiddleware(async (context, next) => {
     }
   }
 
-  // /artifact/artifact.css 与 /artifact/artifact.js：支持带 ?v=<hash> 的长缓存响应
+  // /artifact/artifact.css 与 /artifact/artifact.js：支持带 ?v=<hash> 的长缓存与 ETag 304 响应
   if (
     (context.request.method === 'GET' || context.request.method === 'HEAD') &&
     (context.url.pathname === '/artifact/artifact.css' ||
       context.url.pathname === '/artifact/artifact.js')
   ) {
     const isCss = context.url.pathname.endsWith('.css');
+    const etag = `"${isCss ? ARTIFACT_CSS_HASH : ARTIFACT_JS_HASH}"`;
     const hasVer = context.url.searchParams.has('v');
+    const cacheControl = hasVer
+      ? 'public, max-age=31536000, immutable'
+      : 'public, max-age=2592000';
+
+    if (context.request.headers.get('if-none-match') === etag) {
+      return new Response(null, {
+        status: 304,
+        headers: {
+          ETag: etag,
+          'Cache-Control': cacheControl,
+        },
+      });
+    }
+
     return new Response(context.request.method === 'HEAD' ? null : isCss ? artifactCss : artifactJs, {
       status: 200,
       headers: {
         'Content-Type': isCss
           ? 'text/css; charset=utf-8'
           : 'application/javascript; charset=utf-8',
-        'Cache-Control': hasVer
-          ? 'public, max-age=31536000, immutable'
-          : 'public, max-age=2592000',
+        ETag: etag,
+        'Cache-Control': cacheControl,
         'X-Content-Type-Options': 'nosniff',
         'Referrer-Policy': 'strict-origin-when-cross-origin',
       },
@@ -67,12 +86,17 @@ export const onRequest = defineMiddleware(async (context, next) => {
     return apiResponse;
   }
 
-  // 记录公开页面访客信息（日期、IP、国家坐标、使用设备/系统/浏览器）
-  if (context.request.method === 'GET') {
+  // 先完成页面渲染，不在请求前做任何阻塞动作
+  const response = await next();
+
+  // 仅当公开 HTML 页面成功返回（200 text/html）时，异步将真实访问推入内存缓冲队列
+  if (
+    context.request.method === 'GET' &&
+    response.status === 200 &&
+    (response.headers.get('content-type') ?? '').includes('text/html')
+  ) {
     recordVisit(context);
   }
-
-  const response = await next();
 
   response.headers.set('X-Content-Type-Options', 'nosniff');
   response.headers.set('Referrer-Policy', 'strict-origin-when-cross-origin');

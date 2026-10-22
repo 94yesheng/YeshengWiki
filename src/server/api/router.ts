@@ -50,9 +50,8 @@ import { getSettings, SETTING_KEYS, setSetting, type SettingKey } from '../repos
 import {
   clearAnalyticsLogs,
   getAnalyticsDashboard,
+  getTodayUvSummary,
   listVisitorLogs,
-  seedSampleAnalytics,
-  simulateSingleVisit,
   type StatsGranularity,
 } from '../repositories/analytics';
 import { handleFs } from './fs';
@@ -120,7 +119,7 @@ export async function handleApi(context: APIContext): Promise<Response | null> {
     }
   }
 
-  // /api/analytics：后台「统计」模块接口
+  // /api/analytics：后台「统计」模块接口（仅保留真实数据读取与清空，移除模拟与样本生成接口）
   if (parts[0] === 'analytics') {
     const auth = getAuth(context);
     if (!auth) return fail('未登录', 401);
@@ -147,23 +146,18 @@ export async function handleApi(context: APIContext): Promise<Response | null> {
       );
     }
 
+    if (parts.length === 2 && parts[1] === 'summary' && method === 'GET') {
+      return json({
+        summary: getTodayUvSummary(),
+        clientIp: getClientIp(context),
+      });
+    }
+
     if (parts.length === 2 && parts[1] === 'raw' && method === 'GET') {
-      return json({ logs: listVisitorLogs(5000) });
-    }
-
-    if (parts.length === 2 && parts[1] === 'simulate' && method === 'POST') {
-      const denied = requireCsrf(context);
-      if (denied) return denied;
-      const body = await readJson<{ countryZh?: string }>(context.request);
-      const visit = simulateSingleVisit(body?.countryZh);
-      return json({ ok: true, visit });
-    }
-
-    if (parts.length === 2 && parts[1] === 'seed' && method === 'POST') {
-      const denied = requireCsrf(context);
-      if (denied) return denied;
-      const count = seedSampleAnalytics();
-      return json({ ok: true, inserted: count });
+      return json({
+        logs: listVisitorLogs(5000),
+        clientIp: getClientIp(context),
+      });
     }
 
     if (parts.length === 2 && parts[1] === 'clear' && method === 'DELETE') {

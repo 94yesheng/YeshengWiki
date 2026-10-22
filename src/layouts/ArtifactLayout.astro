@@ -15,19 +15,18 @@
  * 通过内容 SHA-1 指纹引用 `/artifact/artifact.css?v=<hash>` 与 `/artifact/artifact.js?v=<hash>`：
  * · 样式与脚本字节内容完全不经过 Vite 改写（一个字节都不改）；
  * · `<script is:inline src=...>` 放在 `<slot />` 之后、无 async/defer，保证与原先内联脚本完全相同的同步执行顺序；
- * · 浏览器跨页面跳转可直接命中长效缓存，避免每次打开页面重复下载 ~300 KB 的内联 CSS/JS。
+ * · 指纹在模块启动时计算一次并常驻内存，不在每次 SSR 请求时重复哈希。
  */
 
-import { createHash } from 'node:crypto';
-import css from '../artifact/artifact.css?raw';
-import js from '../artifact/artifact.js?raw';
 import homeSnap from '../artifact/home-snap.js?raw';
-import { faviconInfo, getSiteConfig } from '../server/site';
+import {
+  ARTIFACT_CSS_HASH as cssHash,
+  ARTIFACT_JS_HASH as jsHash,
+  faviconInfo,
+  getSiteConfig,
+} from '../server/site';
 import { cjkSpacing } from '../utils/typography';
 import { THEME_BOOT } from '../utils/theme';
-
-const cssHash = createHash('sha1').update(css).digest('hex').slice(0, 10);
-const jsHash = createHash('sha1').update(js).digest('hex').slice(0, 10);
 
 interface Props {
   title?: string;

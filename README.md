@@ -209,8 +209,8 @@ Schema 唯一来源是 [db/schema.sql](db/schema.sql)（`src/server/schema.ts` �
 - `posts.version` 做**乐观锁**：保存时带上读到的版本，服务端不匹配就 `409`。
 - `posts.draft = 1` 不出现在公开列表 / RSS / sitemap。
 - `photo_walls.date` 允许空串（未标注时间）。
-- Schema 版本由 `src/server/schema.ts` 的 `SCHEMA_VERSION` 控制（当前 `3`）；启动时自动套用
-  `db/schema.sql` 并补齐旧库缺列，`link_applications` 是 v2 新增表，`visitor_logs` 是 v3 新增表。
+- Schema 版本由 `src/server/schema.ts` 的 `SCHEMA_VERSION` 控制（当前 `4`）；启动时自动套用
+  `db/schema.sql` 并补齐旧库缺列，`link_applications` 是 v2 新增表，`visitor_logs` 是 v3 新增表，v4 清理演示样本并补齐复合索引。
 - `src/content/` 与 `src/assets/` 是**迁移来源**，运行时不再读取；改内容请走 `/studio/`。
 
 ---
@@ -227,7 +227,7 @@ Schema 唯一来源是 [db/schema.sql](db/schema.sql)（`src/server/schema.ts` �
 | 媒体库 | 「媒体库」按文章归档展示 `uploads/posts/<slug>/` 下的图片与音频（`GET /api/media`），可复制链接 / 试听 / 新窗口打开 / 删除；上传音频会自动读取标签填标题与作者 |
 | 友链申请 | 友链页公开提交到 `link_applications`（限流 + 蜜罐 + 50 条待审上限）；后台「友链」板块查看并批准 / 删除 |
 | 页面 | 「页面」板块集中调整 主页 / 文章 / 相册 / 项目 / 友链 的标题、导语、空态与统计文案，共 **74 个字段**（写 `site_settings.pages`，`GET|PUT /api/pages`），保存即时生效 |
-| 统计 | 后台导航「06 统计」在工作区直接打开统计 HUD：访客 UV/PV、日/周/月/年整合、IP/设备明细与 3D 粒子地球；支持模拟访客 / 重置样本 / 清空（均需 CSRF） |
+| 统计 | 后台导航「06 统计」在工作区直接打开统计 HUD：真实访客 UV/PV、日/周/月/年整合、IP/设备明细与 3D 粒子地球；支持实时刷新、CSV 导出与清空（需 CSRF） |
 | 改账号/密码 | 「设置 → 05 账户与安全」，需当前密码 + CSRF；改完其它设备会话失效 |
 
 **保存模型**：只写你动过的字段；新建/删除先暂存，点顶栏「保存」才提交；确实改了才更新 `updatedDate`；
@@ -271,8 +271,7 @@ Schema 唯一来源是 [db/schema.sql](db/schema.sql)（`src/server/schema.ts` �
 | DELETE | `/api/links/applications/[id]` | 删除申请（需登录） |
 | GET | `/api/analytics` | 访客统计聚合（需登录；日/周/月/年、国家、设备、明细） |
 | GET | `/api/analytics/raw` | 全部访客记录（需登录，统计页本地聚合用） |
-| POST | `/api/analytics/simulate` | 模拟一位访客（需 CSRF） |
-| POST | `/api/analytics/seed` | 重置/追加样本数据（需 CSRF） |
+| GET | `/api/analytics/summary` | 极速获取今日 UV/PV 摘要与当前客户端真实 IP（需登录） |
 | DELETE | `/api/analytics/clear` | 清空全部访客记录（需 CSRF） |
 | GET/PUT | `/api/settings/[key]` | 站点设置分块读写（需登录） |
 | * | `/api/fs/*` | 后台虚拟文件接口（文章、照片墙、设置、上传都走它） |
@@ -380,7 +379,7 @@ Schema 唯一来源是 [db/schema.sql](db/schema.sql)（`src/server/schema.ts` �
   部署脚本改为 `${APP_DIR}.staging` 构建成功后原子切换，消除部署期间的 404/502 窗口。
 - 2026-10-22：内建访客统计模块（后台导航「06 统计」，直达 `/studio/stats`）：`visitor_logs`（Schema v3）、
   middleware 自动记录公开页访问、`/api/analytics` 聚合与原始日志、日/周/月/年整合、IP/设备明细、
-  3D 粒子地球、CSV 导出；支持模拟 / 重置样本 / 清空。已随 2026-10-22 部署上线。
+  3D 粒子地球、CSV 导出；已移除演示样本与模拟功能，采用真实 IP 识别与零阻塞内存写缓冲。
 
 **待办**
 

@@ -1105,29 +1105,9 @@ html.st-embed a[href="/studio/"] { display: none !important; }
       // =========================================================================
       // 3. 访客记录数据引擎（支持每日访客数、IP、设备及按日/周/月/年整合）
       // =========================================================================
-      const GEO_PROFILES = [
-        { code: 'CN', zh: '中国', en: 'China', region: '上海 · 电信骨干', lat: 31.23, lon: 121.47 },
-        { code: 'CN', zh: '中国', en: 'China', region: '北京 · 联通节点', lat: 39.90, lon: 116.40 },
-        { code: 'CN', zh: '中国', en: 'China', region: '深圳 · 粤港澳节点', lat: 22.54, lon: 114.06 },
-        { code: 'CN', zh: '中国', en: 'China', region: '杭州 · 华东节点', lat: 30.27, lon: 120.15 },
-        { code: 'CN', zh: '中国', en: 'China', region: '成都 · 西南节点', lat: 30.57, lon: 104.06 },
-        { code: 'SG', zh: '新加坡', en: 'Singapore', region: 'Singapore', lat: 1.35, lon: 103.82 },
-        { code: 'JP', zh: '日本', en: 'Japan', region: 'Tokyo', lat: 35.68, lon: 139.76 },
-        { code: 'US', zh: '美国', en: 'United States', region: 'San Francisco', lat: 37.77, lon: -122.42 },
-        { code: 'US', zh: '美国', en: 'United States', region: 'New York', lat: 40.71, lon: -74.01 },
-        { code: 'DE', zh: '德国', en: 'Germany', region: 'Frankfurt', lat: 50.11, lon: 8.68 },
-        { code: 'GB', zh: '英国', en: 'United Kingdom', region: 'London', lat: 51.51, lon: -0.13 },
-        { code: 'FR', zh: '法国', en: 'France', region: 'Paris', lat: 48.86, lon: 2.35 },
-        { code: 'KR', zh: '韩国', en: 'South Korea', region: 'Seoul', lat: 37.57, lon: 126.98 },
-        { code: 'CA', zh: '加拿大', en: 'Canada', region: 'Toronto', lat: 43.65, lon: -79.38 },
-        { code: 'AU', zh: '澳大利亚', en: 'Australia', region: 'Sydney', lat: -33.87, lon: 151.21 },
-        { code: 'NL', zh: '荷兰', en: 'Netherlands', region: 'Amsterdam', lat: 52.37, lon: 4.90 },
-        { code: 'CH', zh: '瑞士', en: 'Switzerland', region: 'Zurich', lat: 47.37, lon: 8.54 },
-        { code: 'MY', zh: '马来西亚', en: 'Malaysia', region: 'Kuala Lumpur', lat: 3.14, lon: 101.69 }
-      ];
-
       let visitorLogs = [];
       let nextLogId = 1;
+      let currentClientIp = '';
 
       function formatYmd(d) {
         const y = d.getFullYear();
@@ -1157,100 +1137,6 @@ html.st-embed a[href="/studio/"] { display: none !important; }
         if (granularity === 'week') return `${bucket} 周`;
         if (granularity === 'month') return `${bucket} 月`;
         return `${bucket} 年`;
-      }
-
-      function seedInitialLogs() {
-        visitorLogs = [];
-        nextLogId = 1;
-        const baseNow = new Date(2026, 9, 22, 17, 30, 0);
-
-        const sampleConfigs = [
-          { ip: '116.228.89.142', geoIdx: 0, dev: 'Desktop', os: 'macOS', br: 'Chrome', path: '/' },
-          { ip: '223.72.64.18', geoIdx: 1, dev: 'Mobile', os: 'iOS', br: 'Safari', path: '/posts/three-body-notes/' },
-          { ip: '14.17.32.209', geoIdx: 2, dev: 'Desktop', os: 'Windows 11', br: 'Edge', path: '/photos/' },
-          { ip: '115.236.49.77', geoIdx: 3, dev: 'Mobile', os: 'HarmonyOS', br: 'WeChat', path: '/posts/' },
-          { ip: '182.148.56.91', geoIdx: 4, dev: 'Tablet', os: 'iPadOS', br: 'Safari', path: '/links/' },
-          { ip: '103.252.200.45', geoIdx: 5, dev: 'Desktop', os: 'macOS', br: 'Safari', path: '/' },
-          { ip: '133.242.18.90', geoIdx: 6, dev: 'Mobile', os: 'iOS', br: 'Safari', path: '/photos/' },
-          { ip: '104.28.192.66', geoIdx: 7, dev: 'Desktop', os: 'macOS', br: 'Chrome', path: '/posts/astro-ssr-sqlite/' },
-          { ip: '64.233.160.112', geoIdx: 8, dev: 'Desktop', os: 'Windows 11', br: 'Chrome', path: '/programs/' },
-          { ip: '138.201.88.19', geoIdx: 9, dev: 'Desktop', os: 'Linux', br: 'Firefox', path: '/' },
-          { ip: '81.2.69.142', geoIdx: 10, dev: 'Desktop', os: 'macOS', br: 'Chrome', path: '/posts/' },
-          { ip: '90.84.112.37', geoIdx: 11, dev: 'Mobile', os: 'Android', br: 'Chrome', path: '/photos/' },
-          { ip: '211.234.118.54', geoIdx: 12, dev: 'Mobile', os: 'Android', br: 'Chrome', path: '/' },
-          { ip: '142.112.44.80', geoIdx: 13, dev: 'Desktop', os: 'Windows 11', br: 'Edge', path: '/links/' },
-          { ip: '203.2.218.61', geoIdx: 14, dev: 'Tablet', os: 'iPadOS', br: 'Safari', path: '/photos/' },
-          { ip: '145.97.39.15', geoIdx: 15, dev: 'Desktop', os: 'Linux', br: 'Firefox', path: '/' },
-          { ip: '194.230.158.42', geoIdx: 16, dev: 'Desktop', os: 'macOS', br: 'Safari', path: '/posts/' },
-          { ip: '175.139.142.88', geoIdx: 17, dev: 'Mobile', os: 'Android', br: 'Chrome', path: '/posts/' }
-        ];
-
-        for (let dayOff = 44; dayOff >= 0; dayOff--) {
-          const d = new Date(baseNow);
-          d.setDate(baseNow.getDate() - dayOff);
-          const ymd = formatYmd(d);
-          const count = 5 + ((dayOff * 5 + 3) % 8);
-          for (let k = 0; k < count; k++) {
-            const cfg = sampleConfigs[(dayOff * 3 + k * 2) % sampleConfigs.length];
-            const geo = GEO_PROFILES[cfg.geoIdx];
-            const ipParts = cfg.ip.split('.');
-            const lastOctet = dayOff === 0 && k < 4 ? ipParts[3] : String(((Number(ipParts[3]) + dayOff + k * 9) % 235) + 12);
-            const ip = `${ipParts[0]}.${ipParts[1]}.${ipParts[2]}.${lastOctet}`;
-            const pv = 1 + ((dayOff + k * 3) % 6);
-            const hh = String((8 + k * 2) % 23).padStart(2, '0');
-            const mm = String((12 + dayOff + k * 7) % 58).padStart(2, '0');
-            visitorLogs.push({
-              id: nextLogId++,
-              visitDate: ymd,
-              ip,
-              countryCode: geo.code,
-              countryZh: geo.zh,
-              countryEn: geo.en,
-              region: geo.region,
-              lat: geo.lat,
-              lon: geo.lon,
-              deviceType: cfg.dev,
-              os: cfg.os,
-              browser: cfg.br,
-              path: cfg.path,
-              pvCount: pv,
-              firstSeen: `${ymd} ${hh}:${mm}:10`,
-              lastSeen: `${ymd} ${hh}:${String(Math.min(59, Number(mm) + pv)).padStart(2, '0')}:42`
-            });
-          }
-        }
-
-        for (let mOff = 2; mOff <= 22; mOff++) {
-          const d = new Date(baseNow.getFullYear(), baseNow.getMonth() - mOff, 14);
-          const ymd = formatYmd(d);
-          const mCount = 7 + (mOff % 6);
-          for (let j = 0; j < mCount; j++) {
-            const cfg = sampleConfigs[(mOff * 2 + j) % sampleConfigs.length];
-            const geo = GEO_PROFILES[cfg.geoIdx];
-            const ipParts = cfg.ip.split('.');
-            const ip = `${ipParts[0]}.${ipParts[1]}.${ipParts[2]}.${20 + ((mOff * 5 + j * 11) % 210)}`;
-            const pv = 2 + ((mOff + j) % 7);
-            const ts = `${ymd} 15:${String(10 + j * 3).padStart(2, '0')}:20`;
-            visitorLogs.push({
-              id: nextLogId++,
-              visitDate: ymd,
-              ip,
-              countryCode: geo.code,
-              countryZh: geo.zh,
-              countryEn: geo.en,
-              region: geo.region,
-              lat: geo.lat,
-              lon: geo.lon,
-              deviceType: cfg.dev,
-              os: cfg.os,
-              browser: cfg.br,
-              path: cfg.path,
-              pvCount: pv,
-              firstSeen: ts,
-              lastSeen: ts
-            });
-          }
-        }
       }
 
       function computeDashboard(opts) {
@@ -1490,110 +1376,21 @@ html.st-embed a[href="/studio/"] { display: none !important; }
       }
 
       // =========================================================================
-      // 5. 项目源码弹窗（供一键复制/下载 Astro + SQLite 统计模块文件）
-      // =========================================================================
-      const PROJECT_SOURCE_FILES_B64 = "W10=";
-      let PROJECT_SOURCE_FILES = null;
-      let activeSourceIdx = 0;
-
-      function getProjectSourceFiles() {
-        if (!PROJECT_SOURCE_FILES) {
-          const bin = atob(PROJECT_SOURCE_FILES_B64);
-          const bytes = new Uint8Array(bin.length);
-          for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-          PROJECT_SOURCE_FILES = JSON.parse(new TextDecoder().decode(bytes));
-        }
-        return PROJECT_SOURCE_FILES;
-      }
-
-      function openSourceModal() {
-        const files = getProjectSourceFiles();
-        const old = $('#st-source-backdrop');
-        if (old) old.remove();
-
-        const backdrop = document.createElement('div');
-        backdrop.id = 'st-source-backdrop';
-        backdrop.className = 'st-dialog-backdrop';
-
-        const renderModalContent = () => {
-          const cur = files[activeSourceIdx] || files[0];
-          backdrop.innerHTML = `
-            <div class="st-dialog" style="width:min(100%, 64rem);max-height:86vh;display:flex;flex-direction:column;">
-              <div class="st-dialog-header" style="justify-content:space-between;">
-                <div class="st-dialog-title">「统计」模块项目源码清单（共 ${files.length} 个文件）</div>
-                <div style="display:flex;gap:0.45rem;">
-                  <button type="button" class="st-btn" id="st-src-copy-cur">复制当前文件</button>
-                  <button type="button" class="st-btn" id="st-src-dl-cur">下载当前文件</button>
-                  <button type="button" class="st-btn" id="st-src-close">关闭 ✕</button>
-                </div>
-              </div>
-              <div style="display:grid;grid-template-columns:16rem minmax(0,1fr);flex:1;min-height:0;overflow:hidden;">
-                <div style="border-right:1px solid var(--rule);overflow-y:auto;background:var(--canvas);padding:0.4rem;">
-                  ${files.map((f, i) => `
-                    <button type="button" data-src-idx="${i}" class="st-btn" style="width:100%;justify-content:flex-start;text-align:left;margin-bottom:0.25rem;padding:0.45rem 0.6rem;${i === activeSourceIdx ? 'border-color:var(--accent);color:var(--accent);font-weight:600;' : ''}">
-                      <span style="overflow:hidden;text-overflow:ellipsis;">${String(i + 1).padStart(2, '0')}. ${esc(f.path)}</span>
-                    </button>
-                  `).join('')}
-                </div>
-                <div style="display:flex;flex-direction:column;min-height:0;overflow:hidden;background:var(--code-block);">
-                  <div style="padding:0.45rem 0.9rem;border-bottom:1px solid var(--rule);font-family:var(--mono);font-size:0.74rem;color:var(--muted);background:var(--paper);">
-                    <strong style="color:var(--accent);">${esc(cur.path)}</strong> —— ${esc(cur.desc)}
-                  </div>
-                  <pre style="margin:0;padding:0.9rem 1.1rem;overflow:auto;flex:1;font-family:var(--mono);font-size:0.78rem;line-height:1.55;color:var(--ink);"><code>${esc(cur.content)}</code></pre>
-                </div>
-              </div>
-            </div>
-          `;
-
-          $$('[data-src-idx]', backdrop).forEach((btn) => {
-            btn.addEventListener('click', () => {
-              activeSourceIdx = Number(btn.dataset.srcIdx);
-              renderModalContent();
-            });
-          });
-
-          $('#st-src-copy-cur', backdrop)?.addEventListener('click', () => {
-            copyText(cur.content, `已复制源码：${cur.path}`);
-          });
-
-          $('#st-src-dl-cur', backdrop)?.addEventListener('click', () => {
-            const blob = new Blob([cur.content], { type: 'text/plain;charset=utf-8;' });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = cur.path.split('/').pop();
-            document.body.appendChild(a);
-            a.click();
-            a.remove();
-            URL.revokeObjectURL(url);
-            toast(`已下载文件：${cur.path}`);
-          });
-
-          $('#st-src-close', backdrop)?.addEventListener('click', () => backdrop.remove());
-        };
-
-        renderModalContent();
-        backdrop.addEventListener('click', (e) => {
-          if (e.target === backdrop) backdrop.remove();
-        });
-        document.body.appendChild(backdrop);
-      }
-
-      // =========================================================================
-      // 6. 顶栏与左侧「数据与统计整合」面板渲染
+      // 5. 顶栏与左侧「数据与统计整合」面板渲染（无模拟/样本按钮，仅真实访客数据）
       // =========================================================================
       function renderTopBar() {
         const bar = $('#st-bar');
         if (!bar || !dashboard) return;
         const d = dashboard;
         const dark = isDark();
+        const ipNote = currentClientIp ? ` · 当前终端 IP: ${esc(currentClientIp)}` : '';
 
         bar.innerHTML = `
           <div class="st-topbar-left">
             <div class="st-brand">
               <span class="st-brand-dot"></span>
               <h1 class="st-brand-title">统计</h1>
-              <span class="st-brand-sub">累计 ${d.summary.totalUv} UV / ${d.summary.totalPv} PV · ${d.summary.activeCountries} 国</span>
+              <span class="st-brand-sub">累计 ${d.summary.totalUv} UV / ${d.summary.totalPv} PV · ${d.summary.activeCountries} 国${ipNote}</span>
             </div>
 
             <div class="st-btn-group" role="tablist" aria-label="统计整合周期">
@@ -1605,9 +1402,8 @@ html.st-embed a[href="/studio/"] { display: none !important; }
           </div>
 
           <div class="st-topbar-right">
-            <button type="button" class="st-btn st-btn--primary" id="st-btn-simulate">＋ 模拟新访客</button>
+            <button type="button" class="st-btn st-btn--primary" id="st-btn-refresh" title="同步最新真实访客记录">↻ 刷新数据</button>
             <button type="button" class="st-btn" id="st-btn-export">导出 CSV</button>
-            <button type="button" class="st-btn" id="st-btn-seed" title="恢复跨日/周/月/年初始样本数据">重置样本</button>
             <button type="button" class="st-btn st-btn--danger" id="st-btn-clear" title="清空全部访客记录">清空</button>
             <a class="st-btn" href="/studio/" title="返回后台工作台">← 返回后台</a>
             <button type="button" class="st-btn" id="st-btn-theme">${dark ? '☀ 昼' : '☾ 夜'}</button>
@@ -1623,35 +1419,22 @@ html.st-embed a[href="/studio/"] { display: none !important; }
           });
         });
 
-        $('#st-btn-simulate', bar)?.addEventListener('click', async () => {
-          const cc = globeState.clickedCountry;
+        $('#st-btn-refresh', bar)?.addEventListener('click', async () => {
           try {
-            await apiWrite('/api/analytics/simulate', 'POST', { countryZh: cc ? cc.zh : undefined });
             await loadServerLogs();
             refreshDashboard();
-            toast('已模拟一位新访客');
+            toast('已同步最新真实访客数据');
           } catch (err) {
-            toast('模拟失败：' + (err?.message || err), true);
+            toast('刷新失败：' + (err?.message || err), true);
           }
         });
 
         $('#st-btn-export', bar)?.addEventListener('click', () => exportCsv());
 
-        $('#st-btn-seed', bar)?.addEventListener('click', async () => {
-          try {
-            await apiWrite('/api/analytics/seed', 'POST', {});
-            await loadServerLogs();
-            refreshDashboard();
-            toast('已重置样本数据');
-          } catch (err) {
-            toast('重置失败：' + (err?.message || err), true);
-          }
-        });
-
         $('#st-btn-clear', bar)?.addEventListener('click', async () => {
           const ok = await showConfirm({
             title: '清空访客记录？',
-            body: '确定要清空当前全部访客统计数据吗？（可通过“重置样本”恢复演示数据）',
+            body: '确定要清空当前全部真实访客统计记录吗？清空后不可恢复。',
             confirm: '确认清空',
             cancel: '取消'
           });
@@ -1961,76 +1744,20 @@ html.st-embed a[href="/studio/"] { display: none !important; }
           renderLeftPane();
           return;
         }
+        const targetLat = clickLat !== undefined && Number.isFinite(clickLat) ? clickLat : cMeta.lat;
+        const targetLon = clickLon !== undefined && Number.isFinite(clickLon) ? clickLon : cMeta.lon;
         globeState.clickedCountry = {
           ...cMeta,
-          clickLat: clickLat !== undefined ? clickLat : cMeta.lat,
-          clickLon: clickLon !== undefined ? clickLon : cMeta.lon,
+          clickLat: targetLat,
+          clickLon: targetLon,
           clickedAt: globeState.time
         };
         if (clearBtn) clearBtn.hidden = false;
         if (rotateToCountry) {
-          globeState.targetLon = cMeta.lon;
-          globeState.targetLat = cMeta.lat;
+          globeState.targetLon = targetLon;
+          globeState.targetLat = targetLat;
         }
         renderLeftPane();
-      }
-
-      function simulateVisitor(preferredCountryZh) {
-        const candidates = preferredCountryZh
-          ? GEO_PROFILES.filter((g) => g.zh === preferredCountryZh)
-          : GEO_PROFILES;
-        const geo = candidates.length > 0
-          ? candidates[Math.floor(Math.random() * candidates.length)]
-          : GEO_PROFILES[Math.floor(Math.random() * GEO_PROFILES.length)];
-
-        const meta = countryByZh.get(preferredCountryZh || geo.zh);
-        const targetZh = meta ? meta.zh : geo.zh;
-        const targetEn = meta ? meta.en : geo.en;
-        const targetLat = meta ? meta.lat : geo.lat;
-        const targetLon = meta ? meta.lon : geo.lon;
-
-        const envs = [
-          { dev: 'Desktop', os: 'macOS', br: 'Chrome' },
-          { dev: 'Mobile', os: 'iOS', br: 'Safari' },
-          { dev: 'Desktop', os: 'Windows 11', br: 'Edge' },
-          { dev: 'Mobile', os: 'HarmonyOS', br: 'WeChat' },
-          { dev: 'Tablet', os: 'iPadOS', br: 'Safari' }
-        ];
-        const env = envs[Math.floor(Math.random() * envs.length)];
-        const paths = ['/', '/posts/three-body-notes/', '/photos/', '/links/', '/programs/'];
-        const path = paths[Math.floor(Math.random() * paths.length)];
-        const rOct = () => Math.floor(20 + Math.random() * 210);
-        const ip = `${rOct()}.${rOct()}.${rOct()}.${rOct()}`;
-        const now = new Date();
-        const hh = String(now.getHours()).padStart(2, '0');
-        const mm = String(now.getMinutes()).padStart(2, '0');
-        const ss = String(now.getSeconds()).padStart(2, '0');
-        const ts = `2026-10-22 ${hh}:${mm}:${ss}`;
-
-        visitorLogs.unshift({
-          id: nextLogId++,
-          visitDate: '2026-10-22',
-          ip,
-          countryCode: geo.code,
-          countryZh: targetZh,
-          countryEn: targetEn,
-          region: preferredCountryZh && preferredCountryZh !== geo.zh ? `${targetEn} · Gateway` : geo.region,
-          lat: targetLat,
-          lon: targetLon,
-          deviceType: env.dev,
-          os: env.os,
-          browser: env.br,
-          path,
-          pvCount: 1,
-          firstSeen: ts,
-          lastSeen: ts
-        });
-
-        refreshDashboard();
-        if (meta) {
-          selectCountryOnGlobe(meta, targetLat, targetLon, true);
-        }
-        toast(`新访客已记录：${targetZh} (${ip}) · ${env.dev} / ${env.os}`);
       }
 
       function exportCsv() {
@@ -2660,8 +2387,19 @@ html.st-embed a[href="/studio/"] { display: none !important; }
         }
 
         ctx.restore();
-        globeState.rafId = requestAnimationFrame(renderGlobeFrame);
+        if (!document.hidden) {
+          globeState.rafId = requestAnimationFrame(renderGlobeFrame);
+        } else {
+          globeState.rafId = 0;
+        }
       }
+
+      document.addEventListener('visibilitychange', () => {
+        if (!document.hidden && !globeState.rafId) {
+          globeState.lastFrameTime = performance.now();
+          globeState.rafId = requestAnimationFrame(renderGlobeFrame);
+        }
+      });
 
       let authCsrf = '';
 
@@ -2671,6 +2409,9 @@ html.st-embed a[href="/studio/"] { display: none !important; }
         if (!res.ok) throw new Error('analytics api ' + res.status);
         const data = await res.json();
         visitorLogs = Array.isArray(data.logs) ? data.logs : [];
+        if (typeof data.clientIp === 'string' && data.clientIp) {
+          currentClientIp = data.clientIp;
+        }
         nextLogId = visitorLogs.reduce((max, row) => Math.max(max, Number(row.id) || 0), 0) + 1;
         return true;
       }

@@ -4,9 +4,16 @@
  * 动态版里 `site` 存在 site_settings 表；`src/site.config` 只作默认兜底。
  * 所有 header / footer / meta 都应走这里，避免“后台改了、页面还读静态文件”。
  */
+import { createHash } from 'node:crypto';
+import artifactCss from '../artifact/artifact.css?raw';
+import artifactJs from '../artifact/artifact.js?raw';
 import { site as staticSite, type SiteConfig } from '../site.config';
 import { getSetting } from './repositories/settings';
 import { copy, getPageValues } from './pages';
+
+/** 进程启动时一次性计算 ~290KB 静态资源的 SHA-1 指纹，避免每次 SSR 页面请求重复计算 */
+export const ARTIFACT_CSS_HASH = createHash('sha1').update(artifactCss).digest('hex').slice(0, 10);
+export const ARTIFACT_JS_HASH = createHash('sha1').update(artifactJs).digest('hex').slice(0, 10);
 
 const esc = (s: string) =>
   s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');

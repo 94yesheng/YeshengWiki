@@ -1,11 +1,12 @@
 /**
  * 访客统计数据层（`visitor_logs` 表）：
- *   1. 自动记录每日访客 IP、地理位置（与 3D 粒子地球仪国家元数据对齐）、使用设备（Desktop/Mobile/Tablet）、操作系统、浏览器与受访路径；
- *   2. 支持按日（day）、按周（week）、按月（month）、按年（year）四个时间维度整合统计；
- *   3. 提供国家/地区聚合（供 3D 粒子地球仪高亮与脉冲标注）、设备/系统/浏览器占比，以及可按时间/国家/设备/关键词检索的 IP 明细表。
+ *   1. 零阻塞记录真实访客 IP、地理位置（与 3D 粒子地球仪国家元数据对齐）、使用设备（Desktop/Mobile/Tablet）、操作系统、浏览器与受访路径；
+ *   2. 采用「内存写缓冲合并 + 预编译事务落盘 + LRU 归属地缓存 + 后台异步省市级精准补全」，对前台页面加载速度零阻塞（0ms TTFB 开销）；
+ *   3. 支持按日（day）、按周（week）、按月（month）、按年（year）四个时间维度整合统计，不含任何伪造/模拟样本数据。
  */
 import type { APIContext } from 'astro';
-import { getClientIp } from '../auth';
+import type Database from 'better-sqlite3';
+import { getClientIp, isPrivateOrLoopbackIp, normalizeIp } from '../auth';
 import { getDb } from '../db';
 
 export type StatsGranularity = 'day' | 'week' | 'month' | 'year';
@@ -100,45 +101,163 @@ export interface AnalyticsDashboardData {
   };
 }
 
-interface GeoProfile {
+export interface GeoProfile {
   code: string;
   zh: string;
   en: string;
   region: string;
   lat: number;
   lon: number;
+  enriched?: boolean;
 }
 
-const GEO_PROFILES: GeoProfile[] = [
-  { code: 'CN', zh: '中国', en: 'China', region: '上海 · 电信骨干网', lat: 31.23, lon: 121.47 },
-  { code: 'CN', zh: '中国', en: 'China', region: '北京 · 联通数据节点', lat: 39.90, lon: 116.40 },
-  { code: 'CN', zh: '中国', en: 'China', region: '深圳 · 粤港澳节点', lat: 22.54, lon: 114.06 },
-  { code: 'CN', zh: '中国', en: 'China', region: '杭州 · 华东节点', lat: 30.27, lon: 120.15 },
-  { code: 'CN', zh: '中国', en: 'China', region: '成都 · 西南节点', lat: 30.57, lon: 104.06 },
-  { code: 'SG', zh: '新加坡', en: 'Singapore', region: 'Singapore · Marina Bay', lat: 1.35, lon: 103.82 },
-  { code: 'JP', zh: '日本', en: 'Japan', region: 'Tokyo · Chiyoda', lat: 35.68, lon: 139.76 },
-  { code: 'US', zh: '美国', en: 'United States', region: 'San Francisco · CA', lat: 37.77, lon: -122.42 },
-  { code: 'US', zh: '美国', en: 'United States', region: 'New York · NY', lat: 40.71, lon: -74.01 },
-  { code: 'DE', zh: '德国', en: 'Germany', region: 'Frankfurt · Hesse', lat: 50.11, lon: 8.68 },
-  { code: 'GB', zh: '英国', en: 'United Kingdom', region: 'London · Docklands', lat: 51.51, lon: -0.13 },
-  { code: 'FR', zh: '法国', en: 'France', region: 'Paris · Île-de-France', lat: 48.86, lon: 2.35 },
-  { code: 'KR', zh: '韩国', en: 'South Korea', region: 'Seoul · Gangnam', lat: 37.57, lon: 126.98 },
-  { code: 'CA', zh: '加拿大', en: 'Canada', region: 'Toronto · Ontario', lat: 43.65, lon: -79.38 },
-  { code: 'AU', zh: '澳大利亚', en: 'Australia', region: 'Sydney · NSW', lat: -33.87, lon: 151.21 },
-  { code: 'NL', zh: '荷兰', en: 'Netherlands', region: 'Amsterdam · North Holland', lat: 52.37, lon: 4.90 },
-  { code: 'SE', zh: '瑞典', en: 'Sweden', region: 'Stockholm', lat: 59.33, lon: 18.07 },
-  { code: 'CH', zh: '瑞士', en: 'Switzerland', region: 'Zurich', lat: 47.37, lon: 8.54 },
-  { code: 'MY', zh: '马来西亚', en: 'Malaysia', region: 'Kuala Lumpur', lat: 3.14, lon: 101.69 },
-  { code: 'TH', zh: '泰国', en: 'Thailand', region: 'Bangkok', lat: 13.76, lon: 100.50 },
-  { code: 'BR', zh: '巴西', en: 'Brazil', region: 'São Paulo', lat: -23.55, lon: -46.63 },
+/* --------------------------------------------------------------------------
+   全球国家元数据字典（与 stats.html 3D 粒子地球仪 174 国名称严格对齐）
+   -------------------------------------------------------------------------- */
+const COUNTRY_BY_CODE: Record<string, Omit<GeoProfile, 'region' | 'enriched'>> = {
+  CN: { code: 'CN', zh: '中国', en: 'China', lat: 35.0, lon: 104.0 },
+  HK: { code: 'CN', zh: '中国', en: 'China', lat: 22.32, lon: 114.17 },
+  MO: { code: 'CN', zh: '中国', en: 'China', lat: 22.2, lon: 113.54 },
+  TW: { code: 'CN', zh: '中国', en: 'China', lat: 25.03, lon: 121.56 },
+  SG: { code: 'SG', zh: '新加坡', en: 'Singapore', lat: 1.35, lon: 103.82 },
+  JP: { code: 'JP', zh: '日本', en: 'Japan', lat: 35.68, lon: 139.76 },
+  KR: { code: 'KR', zh: '韩国', en: 'South Korea', lat: 37.57, lon: 126.98 },
+  KP: { code: 'KP', zh: '朝鲜', en: 'North Korea', lat: 40.3, lon: 126.8 },
+  MY: { code: 'MY', zh: '马来西亚', en: 'Malaysia', lat: 3.14, lon: 101.69 },
+  TH: { code: 'TH', zh: '泰国', en: 'Thailand', lat: 13.76, lon: 100.5 },
+  VN: { code: 'VN', zh: '越南', en: 'Vietnam', lat: 16.0, lon: 107.8 },
+  ID: { code: 'ID', zh: '印度尼西亚', en: 'Indonesia', lat: -0.2, lon: 113.3 },
+  PH: { code: 'PH', zh: '菲律宾', en: 'Philippines', lat: 15.7, lon: 120.8 },
+  IN: { code: 'IN', zh: '印度', en: 'India', lat: 21.9, lon: 79.2 },
+  PK: { code: 'PK', zh: '巴基斯坦', en: 'Pakistan', lat: 30.4, lon: 70.1 },
+  BD: { code: 'BD', zh: '孟加拉国', en: 'Bangladesh', lat: 23.6, lon: 89.9 },
+  LK: { code: 'LK', zh: '斯里兰卡', en: 'Sri Lanka', lat: 7.9, lon: 80.7 },
+  NP: { code: 'NP', zh: '尼泊尔', en: 'Nepal', lat: 28.3, lon: 83.4 },
+  KH: { code: 'KH', zh: '柬埔寨', en: 'Cambodia', lat: 12.9, lon: 105.0 },
+  LA: { code: 'LA', zh: '老挝', en: 'Laos', lat: 18.2, lon: 102.1 },
+  MM: { code: 'MM', zh: '缅甸', en: 'Myanmar', lat: 19.0, lon: 95.9 },
+  MN: { code: 'MN', zh: '蒙古', en: 'Mongolia', lat: 46.8, lon: 105.3 },
+  KZ: { code: 'KZ', zh: '哈萨克斯坦', en: 'Kazakhstan', lat: 48.1, lon: 66.3 },
+  UZ: { code: 'UZ', zh: '乌兹别克斯坦', en: 'Uzbekistan', lat: 41.4, lon: 63.4 },
+  AE: { code: 'AE', zh: '阿联酋', en: 'United Arab Emirates', lat: 24.3, lon: 55.0 },
+  SA: { code: 'SA', zh: '沙特阿拉伯', en: 'Saudi Arabia', lat: 24.3, lon: 44.6 },
+  IL: { code: 'IL', zh: '以色列', en: 'Israel', lat: 31.4, lon: 34.7 },
+  TR: { code: 'TR', zh: '土耳其', en: 'Turkey', lat: 38.6, lon: 35.5 },
+  IR: { code: 'IR', zh: '伊朗', en: 'Iran', lat: 32.3, lon: 54.1 },
+  US: { code: 'US', zh: '美国', en: 'United States', lat: 39.0, lon: -98.0 },
+  CA: { code: 'CA', zh: '加拿大', en: 'Canada', lat: 56.7, lon: -110.2 },
+  MX: { code: 'MX', zh: '墨西哥', en: 'Mexico', lat: 23.6, lon: -102.3 },
+  BR: { code: 'BR', zh: '巴西', en: 'Brazil', lat: -14.1, lon: -49.7 },
+  AR: { code: 'AR', zh: '阿根廷', en: 'Argentina', lat: -37.2, lon: -64.1 },
+  CL: { code: 'CL', zh: '智利', en: 'Chile', lat: -35.8, lon: -71.5 },
+  CO: { code: 'CO', zh: '哥伦比亚', en: 'Colombia', lat: 4.0, lon: -72.5 },
+  PE: { code: 'PE', zh: '秘鲁', en: 'Peru', lat: -9.2, lon: -75.9 },
+  GB: { code: 'GB', zh: '英国', en: 'United Kingdom', lat: 54.2, lon: -1.8 },
+  DE: { code: 'DE', zh: '德国', en: 'Germany', lat: 51.4, lon: 10.4 },
+  FR: { code: 'FR', zh: '法国', en: 'France', lat: 46.9, lon: 2.1 },
+  NL: { code: 'NL', zh: '荷兰', en: 'Netherlands', lat: 52.0, lon: 5.4 },
+  CH: { code: 'CH', zh: '瑞士', en: 'Switzerland', lat: 46.8, lon: 8.3 },
+  SE: { code: 'SE', zh: '瑞典', en: 'Sweden', lat: 62.3, lon: 14.8 },
+  NO: { code: 'NO', zh: '挪威', en: 'Norway', lat: 64.6, lon: 12.2 },
+  FI: { code: 'FI', zh: '芬兰', en: 'Finland', lat: 65.0, lon: 27.4 },
+  DK: { code: 'DK', zh: '丹麦', en: 'Denmark', lat: 56.3, lon: 9.5 },
+  IS: { code: 'IS', zh: '冰岛', en: 'Iceland', lat: 65.0, lon: -18.5 },
+  IE: { code: 'IE', zh: '爱尔兰', en: 'Ireland', lat: 53.5, lon: -7.8 },
+  BE: { code: 'BE', zh: '比利时', en: 'Belgium', lat: 50.6, lon: 4.7 },
+  LU: { code: 'LU', zh: '卢森堡', en: 'Luxembourg', lat: 49.7, lon: 6.0 },
+  AT: { code: 'AT', zh: '奥地利', en: 'Austria', lat: 47.9, lon: 15.0 },
+  IT: { code: 'IT', zh: '意大利', en: 'Italy', lat: 42.6, lon: 12.6 },
+  ES: { code: 'ES', zh: '西班牙', en: 'Spain', lat: 39.9, lon: -3.5 },
+  PT: { code: 'PT', zh: '葡萄牙', en: 'Portugal', lat: 39.5, lon: -8.4 },
+  PL: { code: 'PL', zh: '波兰', en: 'Poland', lat: 51.9, lon: 19.1 },
+  CZ: { code: 'CZ', zh: '捷克', en: 'Czechia', lat: 49.8, lon: 15.5 },
+  HU: { code: 'HU', zh: '匈牙利', en: 'Hungary', lat: 47.2, lon: 19.1 },
+  RO: { code: 'RO', zh: '罗马尼亚', en: 'Romania', lat: 46.0, lon: 24.2 },
+  BG: { code: 'BG', zh: '保加利亚', en: 'Bulgaria', lat: 42.7, lon: 25.1 },
+  GR: { code: 'GR', zh: '希腊', en: 'Greece', lat: 39.1, lon: 21.8 },
+  UA: { code: 'UA', zh: '乌克兰', en: 'Ukraine', lat: 48.8, lon: 31.0 },
+  BY: { code: 'BY', zh: '白俄罗斯', en: 'Belarus', lat: 53.7, lon: 27.8 },
+  RU: { code: 'RU', zh: '俄罗斯', en: 'Russia', lat: 55.75, lon: 37.62 },
+  AU: { code: 'AU', zh: '澳大利亚', en: 'Australia', lat: -24.8, lon: 133.1 },
+  NZ: { code: 'NZ', zh: '新西兰', en: 'New Zealand', lat: -43.7, lon: 171.2 },
+  ZA: { code: 'ZA', zh: '南非', en: 'South Africa', lat: -28.4, lon: 26.1 },
+  EG: { code: 'EG', zh: '埃及', en: 'Egypt', lat: 26.9, lon: 29.4 },
+  NG: { code: 'NG', zh: '尼日利亚', en: 'Nigeria', lat: 8.9, lon: 7.8 },
+  KE: { code: 'KE', zh: '肯尼亚', en: 'Kenya', lat: 0.3, lon: 37.5 },
+};
+
+/** 中国各省/直辖市/自治区及主要城市经纬度坐标表（用于离线或省市文本匹配定位） */
+const CN_PROVINCE_COORDS: Array<{ match: string; lat: number; lon: number }> = [
+  { match: '深圳', lat: 22.54, lon: 114.06 },
+  { match: '广州', lat: 23.13, lon: 113.26 },
+  { match: '杭州', lat: 30.27, lon: 120.15 },
+  { match: '南京', lat: 32.06, lon: 118.8 },
+  { match: '苏州', lat: 31.3, lon: 120.58 },
+  { match: '成都', lat: 30.57, lon: 104.06 },
+  { match: '武汉', lat: 30.59, lon: 114.31 },
+  { match: '西安', lat: 34.26, lon: 108.94 },
+  { match: '青岛', lat: 36.07, lon: 120.38 },
+  { match: '厦门', lat: 24.48, lon: 118.09 },
+  { match: '北京', lat: 39.9, lon: 116.4 },
+  { match: '上海', lat: 31.23, lon: 121.47 },
+  { match: '天津', lat: 39.08, lon: 117.2 },
+  { match: '重庆', lat: 29.56, lon: 106.55 },
+  { match: '广东', lat: 23.13, lon: 113.26 },
+  { match: '浙江', lat: 30.27, lon: 120.15 },
+  { match: '江苏', lat: 32.06, lon: 118.8 },
+  { match: '四川', lat: 30.57, lon: 104.06 },
+  { match: '湖北', lat: 30.59, lon: 114.31 },
+  { match: '湖南', lat: 28.23, lon: 112.94 },
+  { match: '福建', lat: 26.08, lon: 119.3 },
+  { match: '山东', lat: 36.65, lon: 117.12 },
+  { match: '河南', lat: 34.75, lon: 113.62 },
+  { match: '河北', lat: 38.04, lon: 114.51 },
+  { match: '陕西', lat: 34.26, lon: 108.94 },
+  { match: '安徽', lat: 31.82, lon: 117.23 },
+  { match: '江西', lat: 28.68, lon: 115.86 },
+  { match: '辽宁', lat: 41.8, lon: 123.43 },
+  { match: '吉林', lat: 43.82, lon: 125.32 },
+  { match: '黑龙江', lat: 45.8, lon: 126.53 },
+  { match: '广西', lat: 22.82, lon: 108.37 },
+  { match: '云南', lat: 25.04, lon: 102.71 },
+  { match: '贵州', lat: 26.65, lon: 106.63 },
+  { match: '山西', lat: 37.87, lon: 112.55 },
+  { match: '内蒙古', lat: 40.84, lon: 111.75 },
+  { match: '新疆', lat: 43.83, lon: 87.62 },
+  { match: '西藏', lat: 29.65, lon: 91.11 },
+  { match: '甘肃', lat: 36.06, lon: 103.83 },
+  { match: '宁夏', lat: 38.49, lon: 106.23 },
+  { match: '青海', lat: 36.62, lon: 101.78 },
+  { match: '海南', lat: 20.04, lon: 110.2 },
+  { match: '香港', lat: 22.32, lon: 114.17 },
+  { match: '澳门', lat: 22.2, lon: 113.54 },
+  { match: '台湾', lat: 25.03, lon: 121.56 },
 ];
 
-const COUNTRY_BY_CODE: Record<string, GeoProfile> = {};
-for (const g of GEO_PROFILES) {
-  if (!COUNTRY_BY_CODE[g.code]) COUNTRY_BY_CODE[g.code] = g;
+/** 中国常见公网 IPv4 首段集合（APNIC 分配给中国大陆骨干网的主要 A 类段） */
+const CN_IPV4_FIRST_OCTETS = new Set([
+  1, 14, 27, 36, 39, 42, 43, 49, 58, 59, 60, 61, 101, 106, 110, 111, 112, 113, 114, 115, 116, 117,
+  118, 119, 120, 121, 122, 123, 124, 125, 139, 140, 144, 150, 153, 163, 171, 175, 180, 182, 183,
+  202, 203, 210, 211, 218, 219, 220, 221, 222, 223,
+]);
+
+/* --------------------------------------------------------------------------
+   内存级 IP 归属地 LRU 缓存（最大 4000 条，0ms 命中有记录 IP）
+   -------------------------------------------------------------------------- */
+const MAX_GEO_CACHE = 4000;
+const ipGeoCache = new Map<string, GeoProfile>();
+
+function setGeoCache(ip: string, profile: GeoProfile): void {
+  if (!ip) return;
+  if (ipGeoCache.has(ip)) ipGeoCache.delete(ip);
+  else if (ipGeoCache.size >= MAX_GEO_CACHE) {
+    const oldest = ipGeoCache.keys().next().value;
+    if (oldest !== undefined) ipGeoCache.delete(oldest);
+  }
+  ipGeoCache.set(ip, profile);
 }
 
-/** 解析 User-Agent，提取设备类型、操作系统、浏览器 */
+/** 解析 User-Agent，提取设备类型、操作系统、浏览器，并过滤常见爬虫与健康检查探针 */
 export function parseUserAgent(uaRaw: string): {
   deviceType: 'Desktop' | 'Mobile' | 'Tablet' | 'Bot';
   os: string;
@@ -149,7 +268,11 @@ export function parseUserAgent(uaRaw: string): {
     return { deviceType: 'Desktop', os: 'Unknown OS', browser: 'Direct' };
   }
 
-  if (/(bot|spider|crawl|slurp|mediapartners|headless|curl|wget|python-requests)/i.test(ua)) {
+  if (
+    /(bot|spider|crawl|slurp|mediapartners|headless|curl|wget|python-requests|go-http-client|axios|node-fetch|uptimerobot|statuscake|petalbot|bytespider|baiduspider|bingpreview|facebookexternalhit|semrush|ahrefs|mj12bot)/i.test(
+      ua
+    )
+  ) {
     return { deviceType: 'Bot', os: 'Crawler', browser: 'Bot' };
   }
 
@@ -163,79 +286,487 @@ export function parseUserAgent(uaRaw: string): {
   let os = 'Linux';
   if (/windows nt 10\.0/i.test(ua)) os = 'Windows 11/10';
   else if (/windows nt/i.test(ua)) os = 'Windows';
-  else if (/iphone|ipad|ipod/i.test(ua)) os = 'iOS';
-  else if (/mac os x|macintosh/i.test(ua)) os = 'macOS';
   else if (/harmonyos/i.test(ua)) os = 'HarmonyOS';
+  else if (/ipad/i.test(ua)) os = 'iPadOS';
+  else if (/iphone|ipod/i.test(ua)) os = 'iOS';
+  else if (/mac os x|macintosh/i.test(ua)) os = 'macOS';
   else if (/android/i.test(ua)) os = 'Android';
   else if (/cros/i.test(ua)) os = 'ChromeOS';
 
   let browser = 'Browser';
   if (/micromessenger/i.test(ua)) browser = 'WeChat';
+  else if (/quark/i.test(ua)) browser = 'Quark';
+  else if (/ucbrowser/i.test(ua)) browser = 'UC';
   else if (/edg\//i.test(ua)) browser = 'Edge';
   else if (/opr\/|opera/i.test(ua)) browser = 'Opera';
-  else if (/firefox\//i.test(ua)) browser = 'Firefox';
+  else if (/firefox\/|fxios\//i.test(ua)) browser = 'Firefox';
   else if (/chrome\/|crios\//i.test(ua)) browser = 'Chrome';
   else if (/safari\//i.test(ua)) browser = 'Safari';
 
   return { deviceType, os, browser };
 }
 
-/** 根据请求头或 IP 推断国家与经纬度坐标（与 3D 粒子地球仪 174 国元数据对齐） */
-export function resolveIpGeo(ip: string, headers?: Headers): GeoProfile {
-  const countryHeader =
-    headers?.get('cf-ipcountry')?.toUpperCase() ||
-    headers?.get('x-vercel-ip-country')?.toUpperCase() ||
-    headers?.get('x-country-code')?.toUpperCase() ||
-    '';
+/**
+ * 第一层：纯内存 0ms 确定性归属地初判（严禁使用随机哈希映射，确保即使离线也准确可靠）。
+ * 对公网 IP 会在写入后触发第二层后台异步精准省市/运营商补全。
+ */
+export function resolveIpGeo(ipRaw: string, headers?: Headers): GeoProfile {
+  const cleanIp = normalizeIp(ipRaw);
 
-  if (countryHeader && COUNTRY_BY_CODE[countryHeader]) {
-    return COUNTRY_BY_CODE[countryHeader]!;
-  }
+  // 1. 优先命中内存 LRU 缓存
+  const cached = cleanIp ? ipGeoCache.get(cleanIp) : undefined;
+  if (cached) return cached;
 
-  const cleanIp = (ip || '').trim();
-  if (
-    !cleanIp ||
-    cleanIp === '127.0.0.1' ||
-    cleanIp === '::1' ||
-    cleanIp.startsWith('192.168.') ||
-    cleanIp.startsWith('10.') ||
-    cleanIp === 'unknown'
-  ) {
-    return {
+  // 2. 本机环回与局域网私网地址
+  if (!cleanIp || isPrivateOrLoopbackIp(cleanIp)) {
+    const localProfile: GeoProfile = {
       code: 'CN',
       zh: '中国',
       en: 'China',
-      region: '本地环回 · 站长终端',
+      region: '本地网络 · 内网终端',
       lat: 35.0,
       lon: 104.0,
+      enriched: true,
     };
+    if (cleanIp) setGeoCache(cleanIp, localProfile);
+    return localProfile;
   }
 
-  // 根据常见公网网段前缀或稳定哈希映射到全球节点
-  if (cleanIp.startsWith('103.') || cleanIp.startsWith('128.199.')) {
-    return COUNTRY_BY_CODE['SG']!;
-  }
-  if (cleanIp.startsWith('133.') || cleanIp.startsWith('126.') || cleanIp.startsWith('210.140.')) {
-    return COUNTRY_BY_CODE['JP']!;
-  }
-  if (cleanIp.startsWith('8.') || cleanIp.startsWith('64.') || cleanIp.startsWith('104.') || cleanIp.startsWith('172.')) {
-    return COUNTRY_BY_CODE['US']!;
-  }
-  if (cleanIp.startsWith('85.') || cleanIp.startsWith('138.201.') || cleanIp.startsWith('78.')) {
-    return COUNTRY_BY_CODE['DE']!;
-  }
-  if (cleanIp.startsWith('81.') || cleanIp.startsWith('51.140.')) {
-    return COUNTRY_BY_CODE['GB']!;
-  }
-  if (cleanIp.startsWith('211.') || cleanIp.startsWith('175.')) {
-    return COUNTRY_BY_CODE['KR']!;
+  // 3. 查询数据库中是否已有该 IP 的已补全历史归属地
+  try {
+    const prev = getStmts().findIpGeo.get(cleanIp) as
+      | {
+          country_code: string;
+          country_zh: string;
+          country_en: string;
+          region: string;
+          lat: number;
+          lon: number;
+        }
+      | undefined;
+    if (prev && prev.region && !prev.region.endsWith('公网节点')) {
+      const dbProfile: GeoProfile = {
+        code: prev.country_code,
+        zh: prev.country_zh,
+        en: prev.country_en,
+        region: prev.region,
+        lat: prev.lat,
+        lon: prev.lon,
+        enriched: true,
+      };
+      setGeoCache(cleanIp, dbProfile);
+      return dbProfile;
+    }
+  } catch {
+    /* ignore DB lookup error during early init */
   }
 
-  let hash = 0;
-  for (let i = 0; i < cleanIp.length; i++) {
-    hash = (hash * 31 + cleanIp.charCodeAt(i)) >>> 0;
+  // 4. 读取 CDN 边缘节点注入的国家代码头（若有）
+  const countryHeader = (
+    headers?.get('cf-ipcountry') ||
+    headers?.get('ali-cdn-real-ip-country') ||
+    headers?.get('x-vercel-ip-country') ||
+    headers?.get('x-country-code') ||
+    ''
+  )
+    .trim()
+    .toUpperCase();
+
+  if (countryHeader && COUNTRY_BY_CODE[countryHeader]) {
+    const c = COUNTRY_BY_CODE[countryHeader]!;
+    const regionLabel =
+      countryHeader === 'HK'
+        ? '中国香港'
+        : countryHeader === 'MO'
+          ? '中国澳门'
+          : countryHeader === 'TW'
+            ? '中国台湾'
+            : `${c.zh} · 公网节点`;
+    const headerProfile: GeoProfile = {
+      code: c.code,
+      zh: c.zh,
+      en: c.en,
+      region: regionLabel,
+      lat: c.lat,
+      lon: c.lon,
+      enriched: false,
+    };
+    setGeoCache(cleanIp, headerProfile);
+    return headerProfile;
   }
-  return GEO_PROFILES[hash % GEO_PROFILES.length]!;
+
+  // 5. 确定性 IPv6 运营商/大区前缀识别
+  if (cleanIp.includes(':')) {
+    const lower = cleanIp.toLowerCase();
+    let profile: GeoProfile;
+    if (lower.startsWith('240e:')) {
+      profile = { code: 'CN', zh: '中国', en: 'China', region: '中国 · 电信 IPv6', lat: 35.0, lon: 104.0, enriched: false };
+    } else if (lower.startsWith('2408:')) {
+      profile = { code: 'CN', zh: '中国', en: 'China', region: '中国 · 联通 IPv6', lat: 35.0, lon: 104.0, enriched: false };
+    } else if (lower.startsWith('2409:')) {
+      profile = { code: 'CN', zh: '中国', en: 'China', region: '中国 · 移动 IPv6', lat: 35.0, lon: 104.0, enriched: false };
+    } else if (lower.startsWith('240c:') || lower.startsWith('2001:da8:') || lower.startsWith('2001:250:')) {
+      profile = { code: 'CN', zh: '中国', en: 'China', region: '中国 · 教育网 IPv6', lat: 39.9, lon: 116.4, enriched: false };
+    } else if (lower.startsWith('26')) {
+      profile = { ...COUNTRY_BY_CODE.US!, region: '美国 · IPv6 节点', enriched: false };
+    } else {
+      profile = { code: 'CN', zh: '中国', en: 'China', region: '中国 · IPv6 公网节点', lat: 35.0, lon: 104.0, enriched: false };
+    }
+    setGeoCache(cleanIp, profile);
+    return profile;
+  }
+
+  // 6. 确定性 IPv4 首段识别（不再做随机哈希映射）
+  const firstOctet = Number(cleanIp.split('.')[0]);
+  const fallbackProfile: GeoProfile = CN_IPV4_FIRST_OCTETS.has(firstOctet)
+    ? {
+        code: 'CN',
+        zh: '中国',
+        en: 'China',
+        region: '中国 · 公网节点',
+        lat: 35.0,
+        lon: 104.0,
+        enriched: false,
+      }
+    : {
+        code: 'CN',
+        zh: '中国',
+        en: 'China',
+        region: '公网节点',
+        lat: 35.0,
+        lon: 104.0,
+        enriched: false,
+      };
+
+  setGeoCache(cleanIp, fallbackProfile);
+  return fallbackProfile;
+}
+
+/* --------------------------------------------------------------------------
+   第二层：后台异步非阻塞精准 IP 归属地补全（省市 + 运营商 + 经纬度）
+   - 仅在新公网 IP 落库后于后台空闲时触发一次，完全不阻塞任何前台请求
+   - 结果缓存在内存与 SQLite 中，同一 IP 终身只查一次
+   -------------------------------------------------------------------------- */
+const pendingGeoIps = new Set<string>();
+const failedGeoIps = new Map<string, number>();
+let geoWorkerRunning = false;
+
+function inferCoordsFromText(text: string, fallbackLat: number, fallbackLon: number): { lat: number; lon: number } {
+  for (const item of CN_PROVINCE_COORDS) {
+    if (text.includes(item.match)) {
+      return { lat: item.lat, lon: item.lon };
+    }
+  }
+  return { lat: fallbackLat, lon: fallbackLon };
+}
+
+async function fetchAccurateIpGeo(ip: string): Promise<GeoProfile | null> {
+  // 方案 A：优先对于国内/全球 IP 调用 ip-api.com (UTF-8 JSON，自带精准经纬度、省市与运营商)
+  try {
+    const res = await fetch(
+      `http://ip-api.com/json/${encodeURIComponent(ip)}?fields=status,country,countryCode,regionName,city,isp,org,lat,lon&lang=zh-CN`,
+      { signal: AbortSignal.timeout(2500) }
+    );
+    if (res.ok) {
+      const data = (await res.json()) as {
+        status?: string;
+        country?: string;
+        countryCode?: string;
+        regionName?: string;
+        city?: string;
+        isp?: string;
+        org?: string;
+        lat?: number;
+        lon?: number;
+      };
+      if (data.status === 'success' && data.countryCode) {
+        const cc = data.countryCode.toUpperCase();
+        const known = COUNTRY_BY_CODE[cc];
+        const code = known ? known.code : cc;
+        const zh = known ? known.zh : data.country || cc;
+        const en = known ? known.en : data.country || cc;
+
+        const rName = (data.regionName || '').trim();
+        const cName = (data.city || '').trim();
+        const locPart =
+          rName && cName && rName !== cName
+            ? `${rName}${cName}`
+            : rName || cName || (cc === 'HK' ? '中国香港' : cc === 'MO' ? '中国澳门' : cc === 'TW' ? '中国台湾' : zh);
+
+        const rawIsp = (data.isp || data.org || '').trim();
+        let ispShort = '';
+        if (/chinanet|telecom|电信/i.test(rawIsp)) ispShort = '电信';
+        else if (/unicom|联通/i.test(rawIsp)) ispShort = '联通';
+        else if (/mobile|cmnet|移动/i.test(rawIsp)) ispShort = '移动';
+        else if (/cernet|education|教育网/i.test(rawIsp)) ispShort = '教育网';
+        else if (/alibaba|aliyun|阿里云/i.test(rawIsp)) ispShort = '阿里云';
+        else if (/tencent|腾讯云/i.test(rawIsp)) ispShort = '腾讯云';
+        else if (/huawei|华为云/i.test(rawIsp)) ispShort = '华为云';
+        else if (/cloudflare/i.test(rawIsp)) ispShort = 'Cloudflare';
+        else if (rawIsp && rawIsp.length <= 24) ispShort = rawIsp;
+
+        const region = [locPart, ispShort].filter(Boolean).join(' · ').slice(0, 64) || zh;
+        const lat = typeof data.lat === 'number' && Number.isFinite(data.lat) ? Number(data.lat.toFixed(2)) : (known?.lat ?? 35.0);
+        const lon = typeof data.lon === 'number' && Number.isFinite(data.lon) ? Number(data.lon.toFixed(2)) : (known?.lon ?? 104.0);
+
+        return { code, zh, en, region, lat, lon, enriched: true };
+      }
+    }
+  } catch {
+    /* fallback to next provider */
+  }
+
+  // 方案 B：国内太平洋 IP 库兜底（对国内省市与三大运营商识别极快）
+  try {
+    const res = await fetch(
+      `https://whois.pconline.com.cn/ipJson.jsp?ip=${encodeURIComponent(ip)}&json=true`,
+      { signal: AbortSignal.timeout(2500) }
+    );
+    if (res.ok) {
+      const buf = await res.arrayBuffer();
+      const text = new TextDecoder('gbk').decode(buf);
+      const data = JSON.parse(text) as {
+        pro?: string;
+        city?: string;
+        addr?: string;
+      };
+      const pro = (data.pro || '').trim();
+      const city = (data.city || '').trim();
+      const addr = (data.addr || '').trim();
+      if (pro || city || addr) {
+        const loc = pro && city && pro !== city ? `${pro}${city}` : pro || city;
+        const ispPart = addr.replace(pro, '').replace(city, '').trim();
+        const region = [loc, ispPart].filter(Boolean).join(' · ').slice(0, 64) || '中国';
+        const coords = inferCoordsFromText(`${pro}${city}${addr}`, 35.0, 104.0);
+        return {
+          code: 'CN',
+          zh: '中国',
+          en: 'China',
+          region,
+          lat: coords.lat,
+          lon: coords.lon,
+          enriched: true,
+        };
+      }
+    }
+  } catch {
+    /* ignore network offline or timeout */
+  }
+
+  return null;
+}
+
+function enqueueGeoEnrichment(ip: string): void {
+  const cleanIp = normalizeIp(ip);
+  if (!cleanIp || isPrivateOrLoopbackIp(cleanIp)) return;
+  const cached = ipGeoCache.get(cleanIp);
+  if (cached?.enriched) return;
+
+  const lastFail = failedGeoIps.get(cleanIp);
+  if (lastFail && Date.now() - lastFail < 30 * 60 * 1000) return;
+
+  pendingGeoIps.add(cleanIp);
+  if (geoWorkerRunning) return;
+  geoWorkerRunning = true;
+
+  setImmediate(async () => {
+    try {
+      while (pendingGeoIps.size > 0) {
+        const nextIp = pendingGeoIps.values().next().value;
+        if (!nextIp) break;
+        pendingGeoIps.delete(nextIp);
+
+        const enriched = await fetchAccurateIpGeo(nextIp);
+        if (enriched) {
+          setGeoCache(nextIp, enriched);
+          try {
+            getStmts().updateIpGeo.run(
+              enriched.code,
+              enriched.zh,
+              enriched.en,
+              enriched.region,
+              enriched.lat,
+              enriched.lon,
+              nextIp
+            );
+          } catch (err) {
+            console.error('[analytics] updateIpGeo failed:', err);
+          }
+        } else {
+          failedGeoIps.set(nextIp, Date.now());
+        }
+      }
+    } finally {
+      geoWorkerRunning = false;
+    }
+  });
+}
+
+/* --------------------------------------------------------------------------
+   SQLite 预编译语句缓存与零阻塞内存写缓冲队列
+   -------------------------------------------------------------------------- */
+interface PreparedStatements {
+  db: Database.Database;
+  findVisit: Database.Statement;
+  updateVisit: Database.Statement;
+  insertVisit: Database.Statement;
+  findIpGeo: Database.Statement;
+  updateIpGeo: Database.Statement;
+  todaySummary: Database.Statement;
+}
+
+let cachedStmts: PreparedStatements | null = null;
+
+function getStmts(): PreparedStatements {
+  const db = getDb();
+  if (cachedStmts && cachedStmts.db === db) return cachedStmts;
+
+  cachedStmts = {
+    db,
+    findVisit: db.prepare(
+      `SELECT id, pv_count FROM visitor_logs
+        WHERE visit_date = ? AND ip = ? AND device_type = ? AND os = ? AND browser = ?
+        LIMIT 1`
+    ),
+    updateVisit: db.prepare(
+      `UPDATE visitor_logs
+          SET pv_count = pv_count + ?,
+              path = ?,
+              last_seen = ?
+        WHERE id = ?`
+    ),
+    insertVisit: db.prepare(
+      `INSERT INTO visitor_logs (
+        visit_date, ip, country_code, country_zh, country_en, region,
+        lat, lon, device_type, os, browser, user_agent, path, referrer,
+        pv_count, first_seen, last_seen
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    ),
+    findIpGeo: db.prepare(
+      `SELECT country_code, country_zh, country_en, region, lat, lon
+         FROM visitor_logs
+        WHERE ip = ?
+        ORDER BY id DESC
+        LIMIT 1`
+    ),
+    updateIpGeo: db.prepare(
+      `UPDATE visitor_logs
+          SET country_code = ?,
+              country_zh = ?,
+              country_en = ?,
+              region = ?,
+              lat = ?,
+              lon = ?
+        WHERE ip = ?`
+    ),
+    todaySummary: db.prepare(
+      `SELECT COUNT(DISTINCT ip) AS uv, COALESCE(SUM(pv_count), 0) AS pv
+         FROM visitor_logs WHERE visit_date = ?`
+    ),
+  };
+
+  return cachedStmts;
+}
+
+interface PendingVisitItem {
+  visitDate: string;
+  ip: string;
+  deviceType: string;
+  os: string;
+  browser: string;
+  userAgent: string;
+  path: string;
+  referrer: string;
+  pvCount: number;
+  firstSeen: string;
+  lastSeen: string;
+  countryHeader: string;
+}
+
+const pendingVisits = new Map<string, PendingVisitItem>();
+let flushTimer: ReturnType<typeof setTimeout> | null = null;
+const FLUSH_DELAY_MS = 1200;
+
+/** 立即将内存中的待写入访客记录批量事务写入 SQLite */
+export function flushPendingVisits(): void {
+  if (flushTimer) {
+    clearTimeout(flushTimer);
+    flushTimer = null;
+  }
+  if (pendingVisits.size === 0) return;
+
+  const batch = Array.from(pendingVisits.values());
+  pendingVisits.clear();
+
+  try {
+    const stmts = getStmts();
+    const newIpsToEnrich: string[] = [];
+
+    stmts.db.transaction(() => {
+      for (const item of batch) {
+        const existing = stmts.findVisit.get(
+          item.visitDate,
+          item.ip,
+          item.deviceType,
+          item.os,
+          item.browser
+        ) as { id: number; pv_count: number } | undefined;
+
+        if (existing) {
+          stmts.updateVisit.run(item.pvCount, item.path, item.lastSeen, existing.id);
+        } else {
+          const fakeHeaders = item.countryHeader
+            ? new Headers({ 'x-country-code': item.countryHeader })
+            : undefined;
+          const geo = resolveIpGeo(item.ip, fakeHeaders);
+          stmts.insertVisit.run(
+            item.visitDate,
+            item.ip,
+            geo.code,
+            geo.zh,
+            geo.en,
+            geo.region,
+            geo.lat,
+            geo.lon,
+            item.deviceType,
+            item.os,
+            item.browser,
+            item.userAgent,
+            item.path,
+            item.referrer,
+            item.pvCount,
+            item.firstSeen,
+            item.lastSeen
+          );
+          if (!geo.enriched) {
+            newIpsToEnrich.push(item.ip);
+          }
+        }
+      }
+    })();
+
+    for (const ip of newIpsToEnrich) {
+      enqueueGeoEnrichment(ip);
+    }
+  } catch (err) {
+    console.error('[analytics] flushPendingVisits failed:', err);
+  }
+}
+
+function scheduleVisitFlush(): void {
+  if (flushTimer) return;
+  flushTimer = setTimeout(() => {
+    flushTimer = null;
+    flushPendingVisits();
+  }, FLUSH_DELAY_MS);
+  flushTimer.unref?.();
+}
+
+// 进程退出前确保缓冲队列落盘
+const globalForHooks = globalThis as unknown as { __analyticsExitHooked?: boolean };
+if (!globalForHooks.__analyticsExitHooked) {
+  globalForHooks.__analyticsExitHooked = true;
+  process.once('beforeExit', () => flushPendingVisits());
 }
 
 /** 获取本地 YYYY-MM-DD 日期字符串 */
@@ -254,9 +785,12 @@ function formatDateTimeSql(date = new Date()): string {
   return `${ymd} ${hh}:${mm}:${ss}`;
 }
 
+const STATIC_EXT_RE =
+  /\.(?:xml|js|mjs|css|png|jpe?g|webp|avif|gif|svg|ico|woff2?|ttf|otf|eot|mp3|wav|ogg|m4a|flac|aac|opus|webm|json|txt|map|webmanifest)$/i;
+
 /**
- * 在 middleware 中调用：记录公开页面的访问日志。
- * 同一天 + 同一 IP + 同一设备类型合并计数（pv_count + 1），更新最后访问时间与受访路径。
+ * 在 middleware 响应生成后调用：将真实公开 HTML 页面访问异步推入内存写缓冲队列。
+ * 0ms 磁盘 I/O，完全不阻塞页面响应速度。
  */
 export function recordVisit(context: APIContext): void {
   try {
@@ -264,275 +798,89 @@ export function recordVisit(context: APIContext): void {
     if (
       pathname.startsWith('/api/') ||
       pathname.startsWith('/studio') ||
+      pathname.startsWith('/_astro/') ||
       pathname.startsWith('/uploads/') ||
       pathname.startsWith('/artifact/') ||
       pathname === '/favicon.ico' ||
       pathname === '/favicon.svg' ||
-      pathname.endsWith('.xml') ||
-      pathname.endsWith('.js') ||
-      pathname.endsWith('.css') ||
-      pathname.endsWith('.png') ||
-      pathname.endsWith('.jpg') ||
-      pathname.endsWith('.webp') ||
-      pathname.endsWith('.svg') ||
-      pathname.endsWith('.ico')
+      pathname === '/robots.txt' ||
+      STATIC_EXT_RE.test(pathname)
     ) {
       return;
     }
 
-    const ua = context.request.headers.get('user-agent') ?? '';
+    const headers = context.request.headers;
+    // 排除浏览器后台预取（prefetch / preload / prerender）避免虚增 PV 和额外写盘
+    const purpose = (
+      headers.get('sec-purpose') ||
+      headers.get('purpose') ||
+      headers.get('x-moz') ||
+      ''
+    ).toLowerCase();
+    if (purpose.includes('prefetch') || purpose.includes('preview')) {
+      return;
+    }
+
+    const ua = headers.get('user-agent') ?? '';
     const parsedUa = parseUserAgent(ua);
     if (parsedUa.deviceType === 'Bot') return;
 
     const ip = getClientIp(context);
-    const geo = resolveIpGeo(ip, context.request.headers);
     const today = formatDateYmd();
     const nowSql = formatDateTimeSql();
-    const referrer = (context.request.headers.get('referer') ?? '').slice(0, 240);
     const cleanPath = (pathname || '/').slice(0, 160);
+    const referrer = (headers.get('referer') ?? '').slice(0, 240);
+    const countryHeader = (
+      headers.get('cf-ipcountry') ||
+      headers.get('ali-cdn-real-ip-country') ||
+      headers.get('x-vercel-ip-country') ||
+      headers.get('x-country-code') ||
+      ''
+    ).trim();
 
-    const db = getDb();
-    const existing = db
-      .prepare(
-        `SELECT id, pv_count FROM visitor_logs
-          WHERE visit_date = ? AND ip = ? AND device_type = ? AND os = ? AND browser = ?
-          LIMIT 1`
-      )
-      .get(today, ip, parsedUa.deviceType, parsedUa.os, parsedUa.browser) as
-      | { id: number; pv_count: number }
-      | undefined;
-
+    const key = `${today}|${ip}|${parsedUa.deviceType}|${parsedUa.os}|${parsedUa.browser}`;
+    const existing = pendingVisits.get(key);
     if (existing) {
-      db.prepare(
-        `UPDATE visitor_logs
-            SET pv_count = pv_count + 1,
-                path = ?,
-                last_seen = ?
-          WHERE id = ?`
-      ).run(cleanPath, nowSql, existing.id);
+      existing.pvCount += 1;
+      existing.path = cleanPath;
+      existing.lastSeen = nowSql;
     } else {
-      db.prepare(
-        `INSERT INTO visitor_logs (
-          visit_date, ip, country_code, country_zh, country_en, region,
-          lat, lon, device_type, os, browser, user_agent, path, referrer,
-          pv_count, first_seen, last_seen
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)`
-      ).run(
-        today,
+      pendingVisits.set(key, {
+        visitDate: today,
         ip,
-        geo.code,
-        geo.zh,
-        geo.en,
-        geo.region,
-        geo.lat,
-        geo.lon,
-        parsedUa.deviceType,
-        parsedUa.os,
-        parsedUa.browser,
-        ua.slice(0, 300),
-        cleanPath,
+        deviceType: parsedUa.deviceType,
+        os: parsedUa.os,
+        browser: parsedUa.browser,
+        userAgent: ua.slice(0, 300),
+        path: cleanPath,
         referrer,
-        nowSql,
-        nowSql
-      );
+        pvCount: 1,
+        firstSeen: nowSql,
+        lastSeen: nowSql,
+        countryHeader,
+      });
     }
+
+    scheduleVisitFlush();
   } catch (err) {
     console.error('[analytics] recordVisit failed:', err);
   }
 }
 
-/** 若数据库尚无访客记录，可初始化真实感历史样本（覆盖跨年/跨月/跨周/每日多国节点），方便后台即刻检视 */
-export function ensureInitialAnalyticsSeed(): void {
-  const db = getDb();
-  const countRow = db.prepare('SELECT COUNT(*) AS n FROM visitor_logs').get() as { n: number };
-  if (countRow.n > 0) return;
-  seedSampleAnalytics();
-}
-
-export function seedSampleAnalytics(): number {
-  const db = getDb();
-  const now = new Date();
-
-  const sampleNodes = [
-    { ip: '116.228.89.142', code: 'CN', zh: '中国', en: 'China', region: '上海 · 电信', lat: 31.23, lon: 121.47, dev: 'Desktop', os: 'macOS', br: 'Chrome', path: '/' },
-    { ip: '223.72.64.18', code: 'CN', zh: '中国', en: 'China', region: '北京 · 移动', lat: 39.90, lon: 116.40, dev: 'Mobile', os: 'iOS', br: 'Safari', path: '/posts/' },
-    { ip: '14.17.32.209', code: 'CN', zh: '中国', en: 'China', region: '深圳 · 电信', lat: 22.54, lon: 114.06, dev: 'Desktop', os: 'Windows 11/10', br: 'Edge', path: '/photos/' },
-    { ip: '115.236.49.77', code: 'CN', zh: '中国', en: 'China', region: '杭州 · 联通', lat: 30.27, lon: 120.15, dev: 'Mobile', os: 'HarmonyOS', br: 'WeChat', path: '/posts/' },
-    { ip: '182.148.56.91', code: 'CN', zh: '中国', en: 'China', region: '成都 · 电信', lat: 30.57, lon: 104.06, dev: 'Tablet', os: 'iOS', br: 'Safari', path: '/links/' },
-    { ip: '103.252.200.45', code: 'SG', zh: '新加坡', en: 'Singapore', region: 'Singapore · Central', lat: 1.35, lon: 103.82, dev: 'Desktop', os: 'macOS', br: 'Safari', path: '/' },
-    { ip: '133.242.18.90', code: 'JP', zh: '日本', en: 'Japan', region: 'Tokyo · Shinjuku', lat: 35.69, lon: 139.70, dev: 'Mobile', os: 'iOS', br: 'Safari', path: '/photos/' },
-    { ip: '104.28.192.66', code: 'US', zh: '美国', en: 'United States', region: 'San Francisco · CA', lat: 37.77, lon: -122.42, dev: 'Desktop', os: 'macOS', br: 'Chrome', path: '/posts/' },
-    { ip: '64.233.160.112', code: 'US', zh: '美国', en: 'United States', region: 'New York · NY', lat: 40.71, lon: -74.01, dev: 'Desktop', os: 'Windows 11/10', br: 'Chrome', path: '/programs/' },
-    { ip: '138.201.88.19', code: 'DE', zh: '德国', en: 'Germany', region: 'Frankfurt · DE', lat: 50.11, lon: 8.68, dev: 'Desktop', os: 'Linux', br: 'Firefox', path: '/' },
-    { ip: '81.2.69.142', code: 'GB', zh: '英国', en: 'United Kingdom', region: 'London · UK', lat: 51.51, lon: -0.13, dev: 'Desktop', os: 'macOS', br: 'Chrome', path: '/posts/' },
-    { ip: '90.84.112.37', code: 'FR', zh: '法国', en: 'France', region: 'Paris · FR', lat: 48.86, lon: 2.35, dev: 'Mobile', os: 'Android', br: 'Chrome', path: '/photos/' },
-    { ip: '211.234.118.54', code: 'KR', zh: '韩国', en: 'South Korea', region: 'Seoul · KR', lat: 37.57, lon: 126.98, dev: 'Mobile', os: 'Android', br: 'Chrome', path: '/' },
-    { ip: '142.112.44.80', code: 'CA', zh: '加拿大', en: 'Canada', region: 'Toronto · ON', lat: 43.65, lon: -79.38, dev: 'Desktop', os: 'Windows 11/10', br: 'Edge', path: '/links/' },
-    { ip: '203.2.218.61', code: 'AU', zh: '澳大利亚', en: 'Australia', region: 'Sydney · NSW', lat: -33.87, lon: 151.21, dev: 'Tablet', os: 'iOS', br: 'Safari', path: '/photos/' },
-    { ip: '145.97.39.15', code: 'NL', zh: '荷兰', en: 'Netherlands', region: 'Amsterdam · NL', lat: 52.37, lon: 4.90, dev: 'Desktop', os: 'Linux', br: 'Firefox', path: '/' },
-    { ip: '175.139.142.88', code: 'MY', zh: '马来西亚', en: 'Malaysia', region: 'Kuala Lumpur · MY', lat: 3.14, lon: 101.69, dev: 'Mobile', os: 'Android', br: 'Chrome', path: '/posts/' },
-  ];
-
-  const insertStmt = db.prepare(`
-    INSERT INTO visitor_logs (
-      visit_date, ip, country_code, country_zh, country_en, region,
-      lat, lon, device_type, os, browser, user_agent, path, referrer,
-      pv_count, first_seen, last_seen
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '', ?, ?, ?)
-  `);
-
-  let inserted = 0;
-  db.transaction(() => {
-    // 1) 最近 45 天的逐日详细记录
-    for (let dayOffset = 44; dayOffset >= 0; dayOffset--) {
-      const d = new Date(now);
-      d.setDate(now.getDate() - dayOffset);
-      const ymd = formatDateYmd(d);
-      const dailyCount = 4 + ((dayOffset * 5 + 3) % 9);
-
-      for (let k = 0; k < dailyCount; k++) {
-        const nodeIdx = (dayOffset * 3 + k * 2) % sampleNodes.length;
-        const base = sampleNodes[nodeIdx]!;
-        const lastOctet = ((parseInt(base.ip.split('.')[3] || '10', 10) + dayOffset + k * 7) % 240) + 10;
-        const ipPrefix = base.ip.split('.').slice(0, 3).join('.');
-        const ip = dayOffset === 0 && k < 3 ? base.ip : `${ipPrefix}.${lastOctet}`;
-        const pv = 1 + ((dayOffset + k * 3) % 6);
-        const hour = String((8 + k * 2) % 23).padStart(2, '0');
-        const min = String((11 + dayOffset + k * 7) % 59).padStart(2, '0');
-        const firstSeen = `${ymd} ${hour}:${min}:12`;
-        const lastSeen = `${ymd} ${hour}:${String(Math.min(59, Number(min) + pv)).padStart(2, '0')}:45`;
-
-        insertStmt.run(
-          ymd,
-          ip,
-          base.code,
-          base.zh,
-          base.en,
-          base.region,
-          base.lat,
-          base.lon,
-          base.dev,
-          base.os,
-          base.br,
-          `Mozilla/5.0 (${base.os}) ${base.br}`,
-          base.path,
-          pv,
-          firstSeen,
-          lastSeen
-        );
-        inserted++;
-      }
-    }
-
-    // 2) 过去 14 个月与跨年的历史样本点（支持按月、按年视图的完整展示）
-    for (let mOffset = 2; mOffset <= 15; mOffset++) {
-      const d = new Date(now.getFullYear(), now.getMonth() - mOffset, 15);
-      const ymd = formatDateYmd(d);
-      const monthVisitors = 6 + (mOffset % 5);
-      for (let j = 0; j < monthVisitors; j++) {
-        const base = sampleNodes[(mOffset * 2 + j) % sampleNodes.length]!;
-        const ipPrefix = base.ip.split('.').slice(0, 3).join('.');
-        const ip = `${ipPrefix}.${30 + mOffset * 4 + j}`;
-        const pv = 2 + ((mOffset + j) % 7);
-        const ts = `${ymd} 14:${String(10 + j * 4).padStart(2, '0')}:00`;
-        insertStmt.run(
-          ymd,
-          ip,
-          base.code,
-          base.zh,
-          base.en,
-          base.region,
-          base.lat,
-          base.lon,
-          base.dev,
-          base.os,
-          base.br,
-          `Mozilla/5.0 (${base.os}) ${base.br}`,
-          base.path,
-          pv,
-          ts,
-          ts
-        );
-        inserted++;
-      }
-    }
-  })();
-
-  return inserted;
-}
-
-/** 模拟一条新的实时访客记录（用于后台演示测试） */
-export function simulateSingleVisit(customCountryZh?: string): VisitorLogItem {
-  const db = getDb();
-  const candidates = customCountryZh
-    ? GEO_PROFILES.filter((g) => g.zh === customCountryZh)
-    : GEO_PROFILES;
-  const geo = candidates[Math.floor(Math.random() * candidates.length)] ?? GEO_PROFILES[0]!;
-  const devices: Array<{ dev: 'Desktop' | 'Mobile' | 'Tablet'; os: string; br: string }> = [
-    { dev: 'Desktop', os: 'macOS', br: 'Chrome' },
-    { dev: 'Mobile', os: 'iOS', br: 'Safari' },
-    { dev: 'Desktop', os: 'Windows 11/10', br: 'Edge' },
-    { dev: 'Mobile', os: 'Android', br: 'Chrome' },
-    { dev: 'Tablet', os: 'iOS', br: 'Safari' },
-  ];
-  const env = devices[Math.floor(Math.random() * devices.length)]!;
-  const paths = ['/', '/posts/', '/photos/', '/links/', '/programs/'];
-  const path = paths[Math.floor(Math.random() * paths.length)]!;
-  const randOctet = () => Math.floor(20 + Math.random() * 210);
-  const ip = `${randOctet()}.${randOctet()}.${randOctet()}.${randOctet()}`;
-  const today = formatDateYmd();
-  const nowSql = formatDateTimeSql();
-
-  const info = db
-    .prepare(
-      `INSERT INTO visitor_logs (
-        visit_date, ip, country_code, country_zh, country_en, region,
-        lat, lon, device_type, os, browser, user_agent, path, referrer,
-        pv_count, first_seen, last_seen
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '', 1, ?, ?)`
-    )
-    .run(
-      today,
-      ip,
-      geo.code,
-      geo.zh,
-      geo.en,
-      geo.region,
-      geo.lat,
-      geo.lon,
-      env.dev,
-      env.os,
-      env.br,
-      `Mozilla/5.0 (${env.os}) ${env.br}`,
-      path,
-      nowSql,
-      nowSql
-    );
-
-  return {
-    id: Number(info.lastInsertRowid),
-    visitDate: today,
-    ip,
-    countryCode: geo.code,
-    countryZh: geo.zh,
-    countryEn: geo.en,
-    region: geo.region,
-    lat: geo.lat,
-    lon: geo.lon,
-    deviceType: env.dev,
-    os: env.os,
-    browser: env.br,
-    userAgent: `Mozilla/5.0 (${env.os}) ${env.br}`,
-    path,
-    referrer: '',
-    pvCount: 1,
-    firstSeen: nowSql,
-    lastSeen: nowSql,
-  };
-}
-
 export function clearAnalyticsLogs(): void {
+  pendingVisits.clear();
   getDb().prepare('DELETE FROM visitor_logs').run();
+}
+
+/** 极速获取今日 UV 与 PV（供后台顶栏导航角标使用，避免全表 11 次聚合查询） */
+export function getTodayUvSummary(): { todayUv: number; todayPv: number } {
+  flushPendingVisits();
+  const today = formatDateYmd();
+  const row = getStmts().todaySummary.get(today) as { uv: number; pv: number } | undefined;
+  return {
+    todayUv: row?.uv ?? 0,
+    todayPv: row?.pv ?? 0,
+  };
 }
 
 /** 计算给定日期所属自然周的起始日（周一 YYYY-MM-DD） */
@@ -565,6 +913,7 @@ export interface AnalyticsQueryOptions {
 }
 
 export function getAnalyticsDashboard(opts: AnalyticsQueryOptions = {}): AnalyticsDashboardData {
+  flushPendingVisits();
   const db = getDb();
   const granularity: StatsGranularity =
     opts.granularity === 'week' || opts.granularity === 'month' || opts.granularity === 'year'
@@ -582,12 +931,7 @@ export function getAnalyticsDashboard(opts: AnalyticsQueryOptions = {}): Analyti
   const thisYear = today.slice(0, 4);
 
   // 1. 顶部核心指标汇总
-  const todayRow = db
-    .prepare(
-      `SELECT COUNT(DISTINCT ip) AS uv, COALESCE(SUM(pv_count), 0) AS pv
-         FROM visitor_logs WHERE visit_date = ?`
-    )
-    .get(today) as { uv: number; pv: number };
+  const todayRow = getStmts().todaySummary.get(today) as { uv: number; pv: number };
 
   const weekStartRow = db
     .prepare(`SELECT ${getWeekBucketExpr('?')} AS ws`)
@@ -875,10 +1219,11 @@ export function getAnalyticsDashboard(opts: AnalyticsQueryOptions = {}): Analyti
 }
 
 /**
- * 返回全部访客记录（供统计页本地聚合引擎与 CSV 导出使用）。
- * 单机博客量级很小，默认最多 5000 条，避免一次查询无限增长。
+ * 返回全部真实访客记录（供统计页聚合引擎与 CSV 导出使用）。
+ * 查询前先刷入内存写缓冲队列，保证后台打开即见最新实时访客。
  */
 export function listVisitorLogs(limit = 5000): VisitorLogItem[] {
+  flushPendingVisits();
   const db = getDb();
   const rows = db
     .prepare(
@@ -909,6 +1254,13 @@ export function listVisitorLogs(limit = 5000): VisitorLogItem[] {
     first_seen: string;
     last_seen: string;
   }>;
+
+  // 若发现尚处于初始占位态的公网 IP，后台顺带触发异步归属地补全
+  for (const r of rows) {
+    if (r.region.endsWith('公网节点') && !isPrivateOrLoopbackIp(r.ip)) {
+      enqueueGeoEnrichment(r.ip);
+    }
+  }
 
   return rows.map((r) => ({
     id: r.id,

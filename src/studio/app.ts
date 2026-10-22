@@ -258,11 +258,11 @@ const NAV: Array<{ key: Collection; label: string; count: () => number }> = [
   { key: 'site',  label: '设置', count: () => 2 },
 ];
 
-/** 统计导航角标：今日 UV（登录后异步拉一次，不阻塞工作台） */
+/** 统计导航角标：今日 UV（调用轻量级 summary 接口，避免全表聚合查询） */
 let statsTodayUv = 0;
 async function refreshStatsNavCount(): Promise<void> {
   try {
-    const res = await fetch('/api/analytics?pageSize=10');
+    const res = await fetch('/api/analytics/summary');
     if (!res.ok) return;
     const data = (await res.json()) as { summary?: { todayUv?: number } };
     statsTodayUv = Number(data.summary?.todayUv) || 0;

@@ -197,33 +197,155 @@ export function clearSessionCookie(context: APIContext): void {
 }
 
 /**
+ * 规范化 IP 字符串：
+ * - 去除空白、引号、方括号与端口后缀（如 1.2.3.4:56789 或 [240e::1]:443）
+ * - 将 IPv4-mapped IPv6（::ffff:1.2.3.4）还原为标准 IPv4
+ * - 校验 IPv4 / IPv6 格式合法性，过滤非法伪造字符
+ */
+export function normalizeIp(raw: string | null | undefined): string {
+  if (!raw) return '';
+  let s = raw.trim().replace(/^["']+|["']+$/g, '');
+  if (!s || s.toLowerCase() === 'unknown') return '';
+
+  // RFC 7239 Forwarded: for=1.2.3.4;proto=https
+  if (/^for=/i.test(s)) {
+    s = s.slice(4).split(';')[0]?.trim().replace(/^["']+|["']+$/g, '') ?? '';
+  }
+
+  // 处理 [IPv6]:port 或 [IPv6]
+  if (s.startsWith('[')) {
+    const closeIdx = s.indexOf(']');
+    if (closeIdx > 1) {
+      s = s.slice(1, closeIdx);
+    }
+  } else if (s.includes('.') && /^[0-9.]+:\d+$/.test(s)) {
+    // 处理 IPv4:port
+    s = s.split(':')[0] ?? s;
+  }
+
+  // 剥离 IPv4-mapped IPv6 前缀 ::ffff:
+  if (/^::ffff:/i.test(s)) {
+    const v4 = s.slice(7);
+    if (/^\d{1,3}(\.\d{1,3}){3}$/.test(v4)) {
+      s = v4;
+    }
+  }
+
+  // 校验标准 IPv4
+  if (/^\d{1,3}(\.\d{1,3}){3}$/.test(s)) {
+    const parts = s.split('.').map(Number);
+    if (parts.every((n) => n >= 0 && n <= 255)) return s;
+    return '';
+  }
+
+  // 校验标准 IPv6（含冒号且仅由十六进制、冒号、点号组成）
+  if (s.includes(':') && /^[0-9a-fA-F:.]+$/.test(s) && s.length <= 45) {
+    return s.toLowerCase();
+  }
+
+  return '';
+}
+
+/** 判断 IP 是否为本机环回、局域网私网或保留网段 */
+export function isPrivateOrLoopbackIp(ip: string): boolean {
+  const clean = normalizeIp(ip);
+  if (!clean) return true;
+  if (clean === '127.0.0.1' || clean === '0.0.0.0' || clean === '::1' || clean === '::') {
+    return true;
+  }
+  if (clean.includes('.')) {
+    const [a, b] = clean.split('.').map(Number);
+    if (a === 10 || a === 127 || a === 0) return true;
+    if (a === 192 && b === 168) return true;
+    if (a === 172 && b !== undefined && b >= 16 && b <= 31) return true;
+    if (a === 169 && b === 254) return true;
+    if (a === 100 && b !== undefined && b >= 64 && b <= 127) return true;
+    return false;
+  }
+  const lower = clean.toLowerCase();
+  if (
+    lower.startsWith('fc') ||
+    lower.startsWith('fd') ||
+    lower.startsWith('fe8') ||
+    lower.startsWith('fe9') ||
+    lower.startsWith('fea') ||
+    lower.startsWith('feb')
+  ) {
+    return true;
+  }
+  return false;
+}
+
+/**
  * 解析真实客户端 IP：
- * 当 Node 运行在本机反向代理（127.0.0.1 / ::1）之后时，优先读取 Nginx 传入的 X-Real-IP 或 X-Forwarded-For，
- * 避免所有外部请求共享 127.0.0.1 导致登录限流误锁真管理员。
+ * 1. 优先读取主流 CDN / 边缘节点透传的真实客户端 IP 头（Cloudflare、阿里云 CDN/DCDN/ESA、腾讯云 EdgeOne 等）；
+ * 2. 解析 X-Forwarded-For 代理链，提取第一个非私网/非环回的公网 IP（避免被末跳 Nginx $remote_addr 覆盖为代理节点 IP）；
+ * 3. 依次回退读取 X-Real-IP、Forwarded 头与底层 socket 地址，并统一剥离 ::ffff: 前缀与端口号。
  */
 export function getClientIp(context: APIContext): string {
+  const headers = context.request.headers;
+
+  const cdnHeaders = [
+    'cf-connecting-ip',
+    'ali-cdn-real-ip',
+    'eo-connecting-ip',
+    'true-client-ip',
+    'x-client-ip',
+    'x-cluster-client-ip',
+    'x-original-forwarded-for',
+  ];
+
+  let firstValidFallback = '';
+
+  for (const h of cdnHeaders) {
+    const raw = headers.get(h);
+    if (!raw) continue;
+    for (const part of raw.split(',')) {
+      const candidate = normalizeIp(part);
+      if (!candidate) continue;
+      if (!isPrivateOrLoopbackIp(candidate)) return candidate;
+      if (!firstValidFallback) firstValidFallback = candidate;
+    }
+  }
+
+  const xff = headers.get('x-forwarded-for');
+  if (xff) {
+    for (const part of xff.split(',')) {
+      const candidate = normalizeIp(part);
+      if (!candidate) continue;
+      if (!isPrivateOrLoopbackIp(candidate)) return candidate;
+      if (!firstValidFallback) firstValidFallback = candidate;
+    }
+  }
+
+  const realIp = normalizeIp(headers.get('x-real-ip'));
+  if (realIp) {
+    if (!isPrivateOrLoopbackIp(realIp)) return realIp;
+    if (!firstValidFallback) firstValidFallback = realIp;
+  }
+
+  const forwarded = headers.get('forwarded');
+  if (forwarded) {
+    for (const part of forwarded.split(',')) {
+      const candidate = normalizeIp(part);
+      if (!candidate) continue;
+      if (!isPrivateOrLoopbackIp(candidate)) return candidate;
+      if (!firstValidFallback) firstValidFallback = candidate;
+    }
+  }
+
   let rawAddr = '';
   try {
     rawAddr = context.clientAddress || '';
   } catch {
     rawAddr = '';
   }
-  const isLoopback =
-    !rawAddr ||
-    rawAddr === '127.0.0.1' ||
-    rawAddr === '::1' ||
-    rawAddr === '::ffff:127.0.0.1';
-
-  if (isLoopback) {
-    const realIp = context.request.headers.get('x-real-ip')?.trim();
-    if (realIp) return realIp.slice(0, 64);
-    const xff = context.request.headers.get('x-forwarded-for');
-    if (xff) {
-      const first = xff.split(',')[0]?.trim();
-      if (first) return first.slice(0, 64);
-    }
+  const socketIp = normalizeIp(rawAddr);
+  if (socketIp && !isPrivateOrLoopbackIp(socketIp)) {
+    return socketIp;
   }
-  return (rawAddr || 'unknown').slice(0, 64);
+
+  return firstValidFallback || socketIp || '127.0.0.1';
 }
 
 /* --------------------------------------------------------------------------
