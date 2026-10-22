@@ -20,6 +20,7 @@ import path from 'node:path';
 import type { APIContext } from 'astro';
 import { getAuth, hasValidCsrf } from '../auth';
 import { getDb } from '../db';
+import { bumpContentVersion } from '../page-cache';
 import { buildPostMarkdown, parsePostMarkdown } from '../post-markdown';
 import {
   createWall,
@@ -680,6 +681,7 @@ async function putBinaryBuffer(filePath: string, bytes: Buffer, sha?: string): P
     mime: inspected.mime ?? extMime,
     size: bytes.length,
   });
+  bumpContentVersion();
   return json({ ok: true, sha: digest, path: target.publicPath });
 }
 
@@ -710,6 +712,7 @@ async function deleteFile(filePath: string, sha?: string): Promise<Response> {
       return fail('文件不存在', 404);
     }
     getDb().prepare('DELETE FROM media WHERE path = ?').run(target.publicPath);
+    bumpContentVersion();
     return json({ ok: true });
   }
 

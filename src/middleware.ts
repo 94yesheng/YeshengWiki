@@ -11,9 +11,38 @@ import {
   getSiteConfig,
 } from './server/site';
 import { legacyRedirectTarget } from './server/legacy-redirects';
+import { getCachedPage, setCachedPage } from './server/page-cache';
 import { recordVisit } from './server/repositories/analytics';
 
 bootstrap();
+
+const STATIC_EXT_RE =
+  /\.(?:xml|js|mjs|css|png|jpe?g|webp|avif|gif|svg|ico|woff2?|ttf|otf|eot|mp3|wav|ogg|m4a|flac|aac|opus|webm|json|txt|map|webmanifest)$/i;
+
+function isCacheablePublicRoute(pathname: string): boolean {
+  if (
+    pathname.startsWith('/api/') ||
+    pathname.startsWith('/studio') ||
+    pathname.startsWith('/uploads/') ||
+    pathname.startsWith('/_astro/') ||
+    pathname.startsWith('/artifact/') ||
+    pathname === '/favicon.ico' ||
+    pathname === '/favicon.svg' ||
+    pathname === '/robots.txt' ||
+    STATIC_EXT_RE.test(pathname)
+  ) {
+    return false;
+  }
+  return true;
+}
+
+/** 部分 Node/代理实现会把 If-None-Match 的引号剥掉，这里统一比较裸 ETag。 */
+function etagMatches(header: string | null, etag: string): boolean {
+  if (!header) return false;
+  const normalize = (value: string) => value.trim().replace(/^W\//, '').replace(/^"+|"+$/g, '');
+  const expected = normalize(etag);
+  return header.split(',').some((part) => normalize(part) === expected);
+}
 
 export const onRequest = defineMiddleware(async (context, next) => {
   // 后台配了自定义图标时，让 /favicon.ico 也跳到它（书签/后台页兜底）
@@ -47,7 +76,7 @@ export const onRequest = defineMiddleware(async (context, next) => {
       ? 'public, max-age=31536000, immutable'
       : 'public, max-age=2592000';
 
-    if (context.request.headers.get('if-none-match') === etag) {
+    if (etagMatches(context.request.headers.get('if-none-match'), etag)) {
       return new Response(null, {
         status: 304,
         headers: {
@@ -86,16 +115,66 @@ export const onRequest = defineMiddleware(async (context, next) => {
     return apiResponse;
   }
 
+  // 公开 HTML 页面极速内存缓存层（0ms TTFB + 后台修改实时失效 + 每次访问照常异步记录访客统计）
+  const canUsePageCache =
+    (context.request.method === 'GET' || context.request.method === 'HEAD') &&
+    isCacheablePublicRoute(context.url.pathname);
+  const cacheKey = canUsePageCache ? `${context.url.pathname}${context.url.search}` : '';
+
+  if (canUsePageCache) {
+    const cached = getCachedPage(cacheKey);
+    if (cached) {
+      if (context.request.method === 'GET') {
+        recordVisit(context);
+      }
+      if (etagMatches(context.request.headers.get('if-none-match'), cached.etag)) {
+        return new Response(null, {
+          status: 304,
+          headers: {
+            ETag: cached.etag,
+            'Cache-Control': 'no-cache',
+            'X-Content-Type-Options': 'nosniff',
+            'Referrer-Policy': 'strict-origin-when-cross-origin',
+          },
+        });
+      }
+      return new Response(context.request.method === 'HEAD' ? null : cached.html, {
+        status: 200,
+        headers: {
+          'Content-Type': cached.contentType,
+          ETag: cached.etag,
+          'Cache-Control': 'no-cache',
+          'X-Content-Type-Options': 'nosniff',
+          'Referrer-Policy': 'strict-origin-when-cross-origin',
+        },
+      });
+    }
+  }
+
   // 先完成页面渲染，不在请求前做任何阻塞动作
   const response = await next();
 
+  const contentType = response.headers.get('content-type') ?? '';
+  const isHtml200 = response.status === 200 && contentType.includes('text/html');
+
   // 仅当公开 HTML 页面成功返回（200 text/html）时，异步将真实访问推入内存缓冲队列
-  if (
-    context.request.method === 'GET' &&
-    response.status === 200 &&
-    (response.headers.get('content-type') ?? '').includes('text/html')
-  ) {
+  if (context.request.method === 'GET' && isHtml200) {
     recordVisit(context);
+  }
+
+  if (canUsePageCache && context.request.method === 'GET' && isHtml200) {
+    const html = await response.text();
+    const cached = setCachedPage(cacheKey, html, contentType);
+    return new Response(html, {
+      status: 200,
+      headers: {
+        'Content-Type': cached.contentType,
+        ETag: cached.etag,
+        'Cache-Control': 'no-cache',
+        'X-Content-Type-Options': 'nosniff',
+        'Referrer-Policy': 'strict-origin-when-cross-origin',
+      },
+    });
   }
 
   response.headers.set('X-Content-Type-Options', 'nosniff');

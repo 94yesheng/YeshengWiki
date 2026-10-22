@@ -148,8 +148,8 @@ CREATE TABLE IF NOT EXISTS visitor_logs (
   first_seen   TEXT NOT NULL DEFAULT (datetime('now')),
   last_seen    TEXT NOT NULL DEFAULT (datetime('now'))
 );
+DROP INDEX IF EXISTS visitor_logs_ip_date_idx;
 CREATE INDEX IF NOT EXISTS visitor_logs_date_idx ON visitor_logs(visit_date DESC, last_seen DESC);
-CREATE INDEX IF NOT EXISTS visitor_logs_ip_date_idx ON visitor_logs(visit_date, ip);
 CREATE INDEX IF NOT EXISTS visitor_logs_lookup_idx ON visitor_logs(visit_date, ip, device_type, os, browser);
 CREATE INDEX IF NOT EXISTS visitor_logs_ip_idx ON visitor_logs(ip, id DESC);
 CREATE INDEX IF NOT EXISTS visitor_logs_country_idx ON visitor_logs(country_zh);

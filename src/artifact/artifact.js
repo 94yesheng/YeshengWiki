@@ -97,14 +97,14 @@
   var loaderStartTs = 0;
   var loaderActive = false;
 
-  function runInfinityLoader(durationMs) {
+  function runInfinityLoader(durationMs, isReplay) {
     if (window.__YeshengLoader) {
       if (typeof window.__YeshengLoader.runInfinityLoader === "function") {
-        window.__YeshengLoader.runInfinityLoader({ durationMs: durationMs || 1050, replay: true });
+        window.__YeshengLoader.runInfinityLoader({ durationMs: durationMs || 540, replay: Boolean(isReplay) });
         return;
       }
       if (typeof window.__YeshengLoader.run === "function") {
-        window.__YeshengLoader.run(durationMs || 1050);
+        window.__YeshengLoader.run(durationMs || 540);
         return;
       }
     }
@@ -113,7 +113,17 @@
     loaderEl.dataset.loaded = 'false';
     loaderActive = true;
     loaderStartTs = performance.now();
-    var dur = durationMs || 1050;
+    var dur = durationMs || 540;
+    if (!isReplay) {
+      try {
+        if (sessionStorage.getItem('yesheng_loader_seen') === '1') {
+          dur = 240;
+        } else {
+          sessionStorage.setItem('yesheng_loader_seen', '1');
+          dur = Math.min(dur, 540);
+        }
+      } catch (e) {}
+    }
 
     // 预生成 80 颗初始粒子：从中心奇点向外旋转绽放后收束至无限流形
     var loaderParticles = [];
@@ -282,7 +292,7 @@
   var btnReplayLoader = document.getElementById('btn-replay-loader');
   if (btnReplayLoader) {
     btnReplayLoader.addEventListener('click', function () {
-      runInfinityLoader(1100);
+      runInfinityLoader(1100, true);
     });
   }
 
@@ -1151,6 +1161,7 @@
     window.scrollTo({ top: 0, behavior: 'smooth' });
     setTimeout(function () {
       resizeCanvas();
+      ensureRenderLoopRunning();
       if (nextView === 'home') fitHomePhotoWallBounds();
       if (nextView === 'photos') {
         if (param !== undefined && param !== null) {
@@ -1960,7 +1971,16 @@
       }
     }
   }
-  window.addEventListener('scroll', onScrollUpdate, { passive: true });
+  var scrollRafPending = false;
+  function onScrollThrottled() {
+    if (scrollRafPending) return;
+    scrollRafPending = true;
+    requestAnimationFrame(function () {
+      scrollRafPending = false;
+      onScrollUpdate();
+    });
+  }
+  window.addEventListener('scroll', onScrollThrottled, { passive: true });
 
   /* ========================================================================
      核心三维渲染引擎：
@@ -3024,6 +3044,20 @@
   var lastTs = performance.now();
   var heroCanvasInView = true;
   var articleCanvasInView = true;
+  var mainRafId = 0;
+
+  function ensureRenderLoopRunning() {
+    if (mainRafId || document.hidden) return;
+    var activeHomeCanvas = state.view === 'home' && stageCanvas && heroCanvasInView;
+    var activeArticleCanvas = state.view === 'article' && articleCanvas && articleCanvasInView;
+    if (!activeHomeCanvas && !activeArticleCanvas) return;
+    lastTs = performance.now();
+    mainRafId = requestAnimationFrame(renderFrame);
+  }
+
+  document.addEventListener('visibilitychange', function () {
+    if (!document.hidden) ensureRenderLoopRunning();
+  });
 
   if (typeof IntersectionObserver === 'function') {
     var canvasObserver = new IntersectionObserver(
@@ -3033,6 +3067,7 @@
           if (entry.target === stageCanvas) heroCanvasInView = entry.isIntersecting;
           else if (entry.target === articleCanvas) articleCanvasInView = entry.isIntersecting;
         }
+        ensureRenderLoopRunning();
       },
       { threshold: 0.01 }
     );
@@ -3041,16 +3076,15 @@
   }
 
   function renderFrame(now) {
+    mainRafId = 0;
     if (document.hidden) {
       lastTs = now;
-      requestAnimationFrame(renderFrame);
       return;
     }
     var activeHomeCanvas = state.view === 'home' && stageCanvas && stageCanvas.width >= 10 && heroCanvasInView;
     var activeArticleCanvas = state.view === 'article' && articleCanvas && articleCanvas.width >= 10 && articleCanvasInView;
     if (!activeHomeCanvas && !activeArticleCanvas) {
       lastTs = now;
-      requestAnimationFrame(renderFrame);
       return;
     }
 
@@ -3123,7 +3157,7 @@
       aCtx.restore();
     }
 
-    requestAnimationFrame(renderFrame);
+    mainRafId = requestAnimationFrame(renderFrame);
   }
 
   /* ========================================================================
@@ -3760,5 +3794,5 @@
 
   resizeCanvas();
   onScrollUpdate();
-  requestAnimationFrame(renderFrame);
+  ensureRenderLoopRunning();
 })();

@@ -2,6 +2,7 @@
  * 照片墙数据访问层。
  */
 import { getDb } from '../db';
+import { bumpContentVersion, getContentVersion } from '../page-cache';
 
 export interface Photo {
   id: number;
@@ -172,27 +173,50 @@ function mapWall(row: WallRow, photos: Photo[]): PhotoWall {
   };
 }
 
-export function listWalls(options: { includeEmpty?: boolean } = {}): PhotoWall[] {
+let wallsCacheVersion = -1;
+let cachedAllWalls: PhotoWall[] | null = null;
+
+function ensureWallsCacheFresh(): PhotoWall[] {
+  const currentVer = getContentVersion();
+  if (wallsCacheVersion === currentVer && cachedAllWalls) {
+    return cachedAllWalls;
+  }
   const db = getDb();
   const walls = db
     .prepare('SELECT * FROM photo_walls ORDER BY (date IS NULL), date DESC, sort_order ASC, id ASC')
     .all() as WallRow[];
-  const photoStmt = db.prepare('SELECT * FROM photos WHERE wall_id = ? ORDER BY sort_order, id');
-  return walls
-    .map((wall) => mapWall(wall, (photoStmt.all(wall.id) as PhotoRow[]).map(mapPhoto)))
-    .filter((wall) => options.includeEmpty || wall.photos.length > 0);
+  const allPhotos = db
+    .prepare('SELECT * FROM photos ORDER BY wall_id, sort_order, id')
+    .all() as PhotoRow[];
+
+  const photosByWall = new Map<number, Photo[]>();
+  for (const pRow of allPhotos) {
+    let list = photosByWall.get(pRow.wall_id);
+    if (!list) {
+      list = [];
+      photosByWall.set(pRow.wall_id, list);
+    }
+    list.push(mapPhoto(pRow));
+  }
+
+  cachedAllWalls = walls.map((wall) => mapWall(wall, photosByWall.get(wall.id) ?? []));
+  wallsCacheVersion = currentVer;
+  return cachedAllWalls;
+}
+
+function invalidateWallsCache(): void {
+  cachedAllWalls = null;
+  bumpContentVersion();
+}
+
+export function listWalls(options: { includeEmpty?: boolean } = {}): PhotoWall[] {
+  const walls = ensureWallsCacheFresh();
+  return options.includeEmpty ? walls : walls.filter((wall) => wall.photos.length > 0);
 }
 
 export function getWallBySlug(slug: string): PhotoWall | null {
-  const db = getDb();
-  const row = db.prepare('SELECT * FROM photo_walls WHERE slug = ?').get(slug) as
-    | WallRow
-    | undefined;
-  if (!row) return null;
-  const photos = db
-    .prepare('SELECT * FROM photos WHERE wall_id = ? ORDER BY sort_order, id')
-    .all(row.id) as PhotoRow[];
-  return mapWall(row, photos.map(mapPhoto));
+  const walls = ensureWallsCacheFresh();
+  return walls.find((w) => w.slug === slug) ?? null;
 }
 
 export function countWalls(): number {
@@ -256,6 +280,7 @@ export function createWall(input: WallInput): PhotoWall {
       });
     writePhotos(Number(info.lastInsertRowid), input.photos);
   })();
+  invalidateWallsCache();
   return getWallBySlug(input.slug)!;
 }
 
@@ -293,14 +318,17 @@ export function updateWall(
     return true;
   })();
   if (!updated) return null;
+  invalidateWallsCache();
   return getWallBySlug(next.slug);
 }
 
 export function deleteWall(id: number): boolean {
   const db = getDb();
-  return db.transaction(() => {
+  const deleted = db.transaction(() => {
     db.prepare('DELETE FROM photos WHERE wall_id = ?').run(id);
     const info = db.prepare('DELETE FROM photo_walls WHERE id = ?').run(id);
     return info.changes > 0;
   })();
+  if (deleted) invalidateWallsCache();
+  return deleted;
 }

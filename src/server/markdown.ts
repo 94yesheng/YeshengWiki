@@ -24,6 +24,9 @@ const md = new MarkdownIt({
   breaks: false,
 });
 
+const MAX_MD_CACHE = 100;
+const mdRenderCache = new Map<string, RenderResult>();
+
 function plainText(token: { content: string; children?: Array<{ type: string; content: string }> | null }): string {
   if (!token.children) return token.content;
   return token.children
@@ -43,6 +46,13 @@ function slugify(text: string): string {
 }
 
 export function renderMarkdown(source: string): RenderResult {
+  const cached = mdRenderCache.get(source);
+  if (cached) {
+    mdRenderCache.delete(source);
+    mdRenderCache.set(source, cached);
+    return cached;
+  }
+
   const env: Record<string, unknown> = {};
   const tokens = md.parse(source, env);
   const headings: Heading[] = [];
@@ -68,8 +78,15 @@ export function renderMarkdown(source: string): RenderResult {
     }
   }
 
-  return {
+  const result: RenderResult = {
     html: md.renderer.render(tokens, md.options, env),
     headings,
   };
+
+  if (mdRenderCache.size >= MAX_MD_CACHE) {
+    const oldest = mdRenderCache.keys().next().value;
+    if (oldest !== undefined) mdRenderCache.delete(oldest);
+  }
+  mdRenderCache.set(source, result);
+  return result;
 }

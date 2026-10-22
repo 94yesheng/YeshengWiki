@@ -2,6 +2,7 @@
  * 文章数据访问层。所有 SQL 只在这里出现，页面/API 只拿类型化对象。
  */
 import { getDb } from '../db';
+import { bumpContentVersion, getContentVersion } from '../page-cache';
 import { synthesizePostMarkdown } from '../post-markdown';
 
 export interface RailSpec {
@@ -154,13 +155,46 @@ const LIST_COLUMNS = `
   tags_json, auto_updated, version, created_at, updated_at
 `;
 
+let postsCacheVersion = -1;
+let cachedPublicPosts: Post[] | null = null;
+let cachedAllPosts: Post[] | null = null;
+const cachedPostBySlug = new Map<string, Post | null>();
+
+function ensurePostsCacheFresh(): void {
+  const currentVer = getContentVersion();
+  if (postsCacheVersion !== currentVer) {
+    postsCacheVersion = currentVer;
+    cachedPublicPosts = null;
+    cachedAllPosts = null;
+    cachedPostBySlug.clear();
+  }
+}
+
+function invalidatePostsCache(): void {
+  cachedPublicPosts = null;
+  cachedAllPosts = null;
+  cachedPostBySlug.clear();
+  bumpContentVersion();
+}
+
 export function listPosts(options: { includeDrafts?: boolean; tag?: string } = {}): Post[] {
+  ensurePostsCacheFresh();
   const db = getDb();
-  const sql = options.includeDrafts
-    ? `SELECT ${LIST_COLUMNS} FROM posts ORDER BY pub_date DESC, id DESC`
-    : `SELECT ${LIST_COLUMNS} FROM posts WHERE draft = 0 ORDER BY pub_date DESC, id DESC`;
-  let posts = (db.prepare(sql).all() as PostRow[]).map(mapRow);
-  if (options.tag) posts = posts.filter((p) => p.tags.includes(options.tag!));
+  let posts: Post[];
+  if (options.includeDrafts) {
+    if (!cachedAllPosts) {
+      const sql = `SELECT ${LIST_COLUMNS} FROM posts ORDER BY pub_date DESC, id DESC`;
+      cachedAllPosts = (db.prepare(sql).all() as PostRow[]).map(mapRow);
+    }
+    posts = cachedAllPosts;
+  } else {
+    if (!cachedPublicPosts) {
+      const sql = `SELECT ${LIST_COLUMNS} FROM posts WHERE draft = 0 ORDER BY pub_date DESC, id DESC`;
+      cachedPublicPosts = (db.prepare(sql).all() as PostRow[]).map(mapRow);
+    }
+    posts = cachedPublicPosts;
+  }
+  if (options.tag) return posts.filter((p) => p.tags.includes(options.tag!));
   return posts;
 }
 
@@ -194,6 +228,11 @@ export function listPostMeta(options: { includeDrafts?: boolean } = {}): PostMet
 }
 
 export function getPostBySlug(slug: string, includeDrafts = false): Post | null {
+  ensurePostsCacheFresh();
+  const cacheKey = `${includeDrafts ? '1' : '0'}:${slug}`;
+  if (cachedPostBySlug.has(cacheKey)) {
+    return cachedPostBySlug.get(cacheKey) ?? null;
+  }
   const db = getDb();
   const row = db
     .prepare(
@@ -202,7 +241,9 @@ export function getPostBySlug(slug: string, includeDrafts = false): Post | null 
         : 'SELECT * FROM posts WHERE slug = ? AND draft = 0'
     )
     .get(slug) as PostRow | undefined;
-  return row ? mapRow(row) : null;
+  const mapped = row ? mapRow(row) : null;
+  cachedPostBySlug.set(cacheKey, mapped);
+  return mapped;
 }
 
 export function getPostById(id: number): Post | null {
@@ -256,6 +297,7 @@ export function createPost(input: PostInput): Post {
       autoUpdated:
         typeof input.autoUpdated === 'boolean' ? (input.autoUpdated ? 1 : 0) : null,
     });
+  invalidatePostsCache();
   return getPostById(Number(info.lastInsertRowid))!;
 }
 
@@ -329,10 +371,12 @@ export function updatePost(
         typeof next.autoUpdated === 'boolean' ? (next.autoUpdated ? 1 : 0) : null,
     });
 
+  invalidatePostsCache();
   return getPostById(id);
 }
 
 export function deletePost(id: number): boolean {
   const info = getDb().prepare('DELETE FROM posts WHERE id = ?').run(id);
+  if (info.changes > 0) invalidatePostsCache();
   return info.changes > 0;
 }

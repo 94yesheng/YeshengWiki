@@ -10,6 +10,8 @@ export interface InfinityLoaderOptions {
   durationMs?: number;
 }
 
+const LOADER_SESSION_KEY = 'yesheng_loader_seen';
+
 let loaderEl: HTMLElement | null = null;
 let loaderCanvas: HTMLCanvasElement | null = null;
 let loaderFill: HTMLElement | null = null;
@@ -19,13 +21,29 @@ let loaderAnimId = 0;
 let loaderStartTs = 0;
 let loaderActive = false;
 
-export function runInfinityLoader(
-  optionsOrDuration: number | (InfinityLoaderOptions & { replay?: boolean }) = 1050
-): void {
-  const durationMs =
+function resolveEffectiveLoaderDuration(
+  optionsOrDuration: number | (InfinityLoaderOptions & { replay?: boolean })
+): number {
+  const isReplay = typeof optionsOrDuration === 'object' && Boolean(optionsOrDuration?.replay);
+  const rawDur =
     typeof optionsOrDuration === 'number'
       ? optionsOrDuration
-      : (optionsOrDuration?.durationMs ?? 1050);
+      : (optionsOrDuration?.durationMs ?? 540);
+  if (isReplay) return rawDur;
+  try {
+    if (sessionStorage.getItem(LOADER_SESSION_KEY) === '1') {
+      return 240;
+    }
+    sessionStorage.setItem(LOADER_SESSION_KEY, '1');
+  } catch {
+    /* ignore storage error */
+  }
+  return Math.min(rawDur, 540);
+}
+
+export function runInfinityLoader(
+  optionsOrDuration: number | (InfinityLoaderOptions & { replay?: boolean }) = 540
+): void {
   const el = loaderEl ?? (document.getElementById('infinity-loader') as HTMLElement | null);
   const canvas =
     loaderCanvas ?? (document.getElementById('loader-infinity-canvas') as HTMLCanvasElement | null);
@@ -38,9 +56,9 @@ export function runInfinityLoader(
   el.dataset.loaded = 'false';
   loaderActive = true;
   loaderStartTs = performance.now();
-  const dur = durationMs || 1050;
+  const dur = resolveEffectiveLoaderDuration(optionsOrDuration);
 
-  // 预生成 80 颗初始粒子：从中心奇点向外旋转绽放后收束至无限流形
+  // 预生成粒子：从中心奇点向外旋转绽放后收束至无限流形
   const particles: Array<{
     burstAngle: number;
     burstDist: number;
@@ -51,7 +69,7 @@ export function runInfinityLoader(
     color: string;
     spread: number;
   }> = [];
-  for (let k = 0; k < 80; k++) {
+  for (let k = 0; k < 64; k++) {
     particles.push({
       burstAngle: Math.random() * Math.PI * 2,
       burstDist: 30 + Math.random() * 260,
@@ -123,8 +141,8 @@ export function runInfinityLoader(
         const lineAlpha = Math.min(1, (p - 0.25) / 0.45);
         lctx.save();
         lctx.beginPath();
-        for (let s = 0; s <= 100; s++) {
-          const tVal = (s / 100) * Math.PI * 2;
+        for (let s = 0; s <= 80; s++) {
+          const tVal = (s / 80) * Math.PI * 2;
           const sinT = Math.sin(tVal);
           const cosT = Math.cos(tVal);
           const den = 1 + sinT * sinT;
@@ -149,15 +167,14 @@ export function runInfinityLoader(
         lctx.restore();
       }
 
-      // 4. 80 颗粒子绽放与收束过渡
+      // 4. 粒子绽放与收束过渡
       const convergeWeight = Math.max(0, Math.min(1, (p - 0.2) / 0.55));
+      const pAlpha = Math.min(0.95, 0.4 + 0.55 * Math.sin(p * Math.PI));
       for (const lp of particles) {
-        // 绽放形态下的坐标
         const burstR = lp.burstDist * easeP * lp.burstSpeed;
         const bx = cx + Math.cos(lp.burstAngle + elapsed * 0.001) * burstR;
         const by = cy + Math.sin(lp.burstAngle + elapsed * 0.001) * burstR * 0.75;
 
-        // 无限流形形态下的坐标
         lp.loopU = (lp.loopU + lp.loopSpeed * 0.025) % (Math.PI * 2);
         const sinLu = Math.sin(lp.loopU);
         const cosLu = Math.cos(lp.loopU);
@@ -165,10 +182,8 @@ export function runInfinityLoader(
         const ix = cx + (a * cosLu) / denL + Math.cos(lp.loopU * 2) * lp.spread;
         const iy = cy + (b * sinLu * cosLu) / denL + Math.sin(lp.loopU * 2) * lp.spread;
 
-        // 平滑线性插值
         const curX = bx * (1 - convergeWeight) + ix * convergeWeight;
         const curY = by * (1 - convergeWeight) + iy * convergeWeight;
-        const pAlpha = Math.min(0.95, 0.4 + 0.55 * Math.sin(p * Math.PI));
 
         if (lp.size > 2.0) {
           lctx.beginPath();
@@ -217,10 +232,10 @@ export function initInfinityLoader(options: InfinityLoaderOptions = {}): void {
   loaderStatus = document.getElementById('loader-status-text');
   loaderPct = document.getElementById('loader-pct-readout');
 
-  runInfinityLoader(options.durationMs ?? 1050);
+  runInfinityLoader(options);
 
   document.getElementById('btn-replay-loader')?.addEventListener('click', () => {
-    runInfinityLoader(1100);
+    runInfinityLoader({ durationMs: 1100, replay: true });
   });
 
   (window as unknown as { __YeshengLoader?: unknown }).__YeshengLoader = {

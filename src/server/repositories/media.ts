@@ -13,6 +13,7 @@
 import { existsSync, mkdirSync, readdirSync, renameSync, rmdirSync, unlinkSync } from 'node:fs';
 import path from 'node:path';
 import { getDb } from '../db';
+import { bumpContentVersion } from '../page-cache';
 import { uploadRoot } from '../uploads';
 
 export interface MediaItem {
@@ -188,7 +189,9 @@ export function deleteMedia(mediaPath: string): boolean {
   }
 
   const info = getDb().prepare('DELETE FROM media WHERE path = ?').run(mediaPath);
-  return fileRemoved || info.changes > 0;
+  const changed = fileRemoved || info.changes > 0;
+  if (changed) bumpContentVersion();
+  return changed;
 }
 
 /**
@@ -256,4 +259,5 @@ export function migratePostSlugAssets(oldSlug: string, newSlug: string): void {
       }
     }
   })();
+  bumpContentVersion();
 }

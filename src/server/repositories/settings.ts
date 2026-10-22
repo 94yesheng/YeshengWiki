@@ -1,5 +1,6 @@
 /** 站点设置（site / home / authorDossier / articleRail / programs / studio / pages）。 */
 import { getDb } from '../db';
+import { bumpContentVersion } from '../page-cache';
 
 export const SETTING_KEYS = [
   'site',
@@ -19,16 +20,17 @@ interface SettingRow {
 }
 
 /**
- * 内存级配置缓存（TTL 5 秒 + 写时即时失效）：
+ * 内存级配置缓存（TTL 60 秒 + 写时即时失效）：
  * 单次 SSR 渲染首页或文章页会调用 10+ 次 getSetting()，
  * 内存缓存可彻底消除每次请求重复执行的 SQLite 查询与 JSON.parse 开销。
  */
-const SETTINGS_CACHE_TTL_MS = 5000;
+const SETTINGS_CACHE_TTL_MS = 60_000;
 const settingsCache = new Map<SettingKey, { value: unknown; expiresAt: number }>();
 
 export function invalidateSettingsCache(key?: SettingKey): void {
   if (key) settingsCache.delete(key);
   else settingsCache.clear();
+  bumpContentVersion();
 }
 
 export function getSetting<T>(key: SettingKey, fallback: T): T {
@@ -80,4 +82,5 @@ export function setSetting(key: SettingKey, value: unknown): void {
     )
     .run(key, JSON.stringify(value));
   settingsCache.set(key, { value, expiresAt: Date.now() + SETTINGS_CACHE_TTL_MS });
+  bumpContentVersion();
 }

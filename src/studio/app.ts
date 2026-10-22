@@ -165,6 +165,14 @@ function setColHidden(col: Col, hidden: boolean): void {
 /* --------------------------------------------------------------------------
    顶栏（与前台 .site-nav-bar 样式完全统一）
    -------------------------------------------------------------------------- */
+function syncThemeToStats(theme: 'light' | 'dark' = isDark() ? 'dark' : 'light'): void {
+  const frame = $('#st-stats-frame') as HTMLIFrameElement | null;
+  frame?.contentWindow?.postMessage(
+    { type: 'yesheng:studio-theme', theme },
+    window.location.origin
+  );
+}
+
 function renderBar(): void {
   const bar = $('#st-bar');
   if (!bar) return;
@@ -207,8 +215,11 @@ function renderBar(): void {
     </div>`;
 
   $('#st-theme-btn')?.addEventListener('click', () => {
-    toggleTheme();
+    const next = toggleTheme();
     renderBar();
+    const themeBtn = $('#st-theme-btn');
+    if (themeBtn) themeBtn.textContent = next === 'dark' ? 'DAY // 昼' : 'NIGHT // 夜';
+    syncThemeToStats(next);
     fab?.sync();
   });
 
@@ -448,6 +459,8 @@ function renderShell(): void {
     if (!$('#st-stats-frame')) {
       main.innerHTML =
         '<iframe class="st-stats-frame" id="st-stats-frame" src="/studio/stats?embed=1" title="统计"></iframe>';
+      const frame = $('#st-stats-frame') as HTMLIFrameElement | null;
+      frame?.addEventListener('load', () => syncThemeToStats());
     }
     return;
   }
@@ -620,6 +633,11 @@ async function boot(): Promise<void> {
 }
 
 registerHooks({ render: renderApp, reload: loadAll, settle: settleLeaving, dirty: renderBar });
+
+window.addEventListener('themechange', (event) => {
+  const theme = (event as CustomEvent<{ theme?: string }>).detail?.theme;
+  syncThemeToStats(theme === 'dark' ? 'dark' : 'light');
+});
 
 window.addEventListener('beforeunload', (e) => {
   if (!hasUnsavedWork()) return;

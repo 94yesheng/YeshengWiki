@@ -1,5 +1,6 @@
 /** 友链与友链申请数据访问层。 */
 import { getDb } from '../db';
+import { bumpContentVersion, getContentVersion } from '../page-cache';
 
 export interface Link {
   id: string;
@@ -47,11 +48,23 @@ interface LinkApplicationRow {
   created_at: string;
 }
 
+let linksCacheVersion = -1;
+let cachedLinks: Link[] | null = null;
+
+function invalidateLinksCache(): void {
+  cachedLinks = null;
+  bumpContentVersion();
+}
+
 export function listLinks(): Link[] {
+  const currentVer = getContentVersion();
+  if (linksCacheVersion === currentVer && cachedLinks) {
+    return cachedLinks;
+  }
   const rows = getDb()
     .prepare('SELECT * FROM links ORDER BY sort_order, id')
     .all() as LinkRow[];
-  return rows.map((row) => ({
+  cachedLinks = rows.map((row) => ({
     id: row.link_id,
     name: row.name,
     url: row.url,
@@ -61,6 +74,8 @@ export function listLinks(): Link[] {
     owner: row.owner,
     sortOrder: row.sort_order,
   }));
+  linksCacheVersion = currentVer;
+  return cachedLinks;
 }
 
 function sanitizeLinkUrl(raw: unknown): string {
@@ -95,6 +110,7 @@ export function replaceLinks(links: Array<Omit<Link, 'sortOrder'>>): Link[] {
       });
     });
   })();
+  invalidateLinksCache();
   return listLinks();
 }
 
@@ -221,6 +237,7 @@ export function approveLinkApplication(id: number): {
     }
   })();
 
+  invalidateLinksCache();
   const updated = db
     .prepare('SELECT * FROM link_applications WHERE id = ?')
     .get(id) as LinkApplicationRow;

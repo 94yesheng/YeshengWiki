@@ -247,7 +247,7 @@
       align-items: center;
       justify-content: center;
       overflow: hidden;
-      transition: opacity 640ms cubic-bezier(0.16, 1, 0.3, 1), transform 640ms cubic-bezier(0.16, 1, 0.3, 1), filter 640ms cubic-bezier(0.16, 1, 0.3, 1), visibility 0s linear 640ms;
+      transition: opacity 320ms cubic-bezier(0.16, 1, 0.3, 1), transform 320ms cubic-bezier(0.16, 1, 0.3, 1), filter 320ms cubic-bezier(0.16, 1, 0.3, 1), visibility 0s linear 320ms;
     }
     .infinity-loader[data-loaded="true"] {
       opacity: 0;

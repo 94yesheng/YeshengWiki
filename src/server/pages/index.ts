@@ -9,6 +9,7 @@
  * - 后台「页面」板块直接按 SCHEMA 生成表单，不需要为每个字段写 UI。
  * - 文案里可以用 `{count}` / `{total}` / `{chars}` 这类占位符，由页面传入。
  */
+import { getContentVersion } from '../page-cache';
 import { getSetting } from '../repositories/settings';
 
 export type PageKey = 'home' | 'posts' | 'photos' | 'programs' | 'links';
@@ -222,8 +223,15 @@ export const PAGE_KEYS: string[] = Object.keys(DEFAULTS);
 
 export type PageValues = Record<string, string>;
 
-/** 读「默认值 ← 数据库覆盖」合并后的文案表。 */
+let pageValuesCacheVer = -1;
+let cachedPageValues: PageValues | null = null;
+
+/** 读「默认值 ← 数据库覆盖」合并后的文案表（带内存版本号缓存）。 */
 export function getPageValues(): PageValues {
+  const ver = getContentVersion();
+  if (pageValuesCacheVer === ver && cachedPageValues) {
+    return cachedPageValues;
+  }
   const stored = getSetting<Record<string, unknown>>('pages', {});
   const values: PageValues = { ...DEFAULTS };
   if (stored && typeof stored === 'object') {
@@ -232,6 +240,8 @@ export function getPageValues(): PageValues {
       if (typeof value === 'string') values[key] = value;
     }
   }
+  cachedPageValues = values;
+  pageValuesCacheVer = ver;
   return values;
 }
 

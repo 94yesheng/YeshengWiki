@@ -57,11 +57,17 @@ export function dottedDate(date: Date): string {
   return `${date.getFullYear()}.${m}.${d}`;
 }
 
+const MAX_READING_TIME_CACHE = 200;
+const readingTimeCache = new Map<string, { chars: number; minutes: number }>();
+
 /**
- * 中文阅读时长估算。
+ * 中文阅读时长估算（带内存 LRU 缓存，避免 SSR 每次重复执行多轮全量正则替换）。
  * 中文阅读速度约每分钟 300–500 字，取 300 偏保守（技术文章要慢一些）。
  */
 export function readingTime(body: string): { chars: number; minutes: number } {
+  const cached = readingTimeCache.get(body);
+  if (cached) return cached;
+
   // 去掉 Markdown 语法和空白，只留下真正要读的字
   const text = body
     .replace(/```[\s\S]*?```/g, ' ')      // 代码块不计入阅读时间
@@ -72,5 +78,12 @@ export function readingTime(body: string): { chars: number; minutes: number } {
     .replace(/\s+/g, '');
 
   const chars = text.length;
-  return { chars, minutes: Math.max(1, Math.round(chars / 300)) };
+  const result = { chars, minutes: Math.max(1, Math.round(chars / 300)) };
+
+  if (readingTimeCache.size >= MAX_READING_TIME_CACHE) {
+    const oldest = readingTimeCache.keys().next().value;
+    if (oldest !== undefined) readingTimeCache.delete(oldest);
+  }
+  readingTimeCache.set(body, result);
+  return result;
 }

@@ -909,21 +909,23 @@ html.st-embed a[href="/studio/"] { display: none !important; }
         });
       }
 
-      function isDark() {
-        return document.documentElement.getAttribute('data-theme') === 'dark';
-      }
-
-      function toggleTheme() {
-        const nextDark = !isDark();
-        if (nextDark) {
+      function applyTheme(theme) {
+        if (theme === 'dark') {
           document.documentElement.setAttribute('data-theme', 'dark');
         } else {
           document.documentElement.removeAttribute('data-theme');
         }
         try {
-          localStorage.setItem('theme', nextDark ? 'dark' : 'light');
+          localStorage.setItem('theme', theme);
         } catch (e) {}
       }
+
+      // Studio 顶栏统一控制主题；统计页不再保留自己的切换按钮。
+      window.addEventListener('message', (event) => {
+        if (event.origin !== window.location.origin) return;
+        if (!event.data || event.data.type !== 'yesheng:studio-theme') return;
+        applyTheme(event.data.theme === 'dark' ? 'dark' : 'light');
+      });
 
       try {
         if (localStorage.getItem('theme') === 'dark') {
@@ -942,6 +944,7 @@ html.st-embed a[href="/studio/"] { display: none !important; }
       const gridCountry = new Uint8Array(MAP_W * MAP_H);
       const gridCoast = new Uint8Array(MAP_W * MAP_H);
       const gridBorder = new Uint8Array(MAP_W * MAP_H);
+      const gridBorderPeer = new Uint8Array(MAP_W * MAP_H);
       const countryById = new Map();
       const countryByZh = new Map();
 
@@ -964,6 +967,7 @@ html.st-embed a[href="/studio/"] { display: none !important; }
         }
 
         // 识别海岸线像素 (gridCoast) 与国际国界线像素 (gridBorder)
+        // 关键修复：两个相邻国家的共享国界线只在单侧（cid < 邻国 id）生成一次白线像素，彻底消除双白线重复！
         for (let r = 1; r < MAP_H - 1; r++) {
           const rowOff = r * MAP_W;
           for (let c = 0; c < MAP_W; c++) {
@@ -980,8 +984,40 @@ html.st-embed a[href="/studio/"] { display: none !important; }
             const n4 = gridCountry[down];
             if (n1 === 0 || n2 === 0 || n3 === 0 || n4 === 0) {
               gridCoast[idx] = 1;
-            } else if ((n1 > 0 && n1 !== cid) || (n2 > 0 && n2 !== cid) || (n3 > 0 && n3 !== cid) || (n4 > 0 && n4 !== cid)) {
-              gridBorder[idx] = 1;
+            } else {
+              const peer =
+                (n1 > cid ? n1 : 0) ||
+                (n2 > cid ? n2 : 0) ||
+                (n3 > cid ? n3 : 0) ||
+                (n4 > cid ? n4 : 0);
+              if (peer > 0) {
+                gridBorder[idx] = 1;
+                gridBorderPeer[idx] = peer;
+              }
+            }
+          }
+        }
+
+        // 对阶梯状斜向国界线做 1 像素单线化细化（剔除 2×2 直角冗余拐点，确保任意国界处白线只显示单层）
+        for (let r = 1; r < MAP_H - 1; r++) {
+          const rowOff = r * MAP_W;
+          for (let c = 0; c < MAP_W; c++) {
+            const idx = rowOff + c;
+            if (!gridBorder[idx]) continue;
+            const cLeft = (c - 1 + MAP_W) % MAP_W;
+            const cRight = (c + 1) % MAP_W;
+            const right = rowOff + cRight;
+            const left = rowOff + cLeft;
+            const up = (r - 1) * MAP_W + c;
+            const down = (r + 1) * MAP_W + c;
+            if (gridBorder[right] && gridBorder[down] && !gridBorder[(r + 1) * MAP_W + cRight]) {
+              gridBorder[idx] = 0;
+            } else if (gridBorder[left] && gridBorder[down] && !gridBorder[(r + 1) * MAP_W + cLeft]) {
+              gridBorder[idx] = 0;
+            } else if (gridBorder[right] && gridBorder[up] && !gridBorder[(r - 1) * MAP_W + cRight]) {
+              gridBorder[idx] = 0;
+            } else if (gridBorder[left] && gridBorder[up] && !gridBorder[(r - 1) * MAP_W + cLeft]) {
+              gridBorder[idx] = 0;
             }
           }
         }
@@ -996,7 +1032,7 @@ html.st-embed a[href="/studio/"] { display: none !important; }
         particles = [];
         const goldenAngle = Math.PI * (3.0 - Math.sqrt(5.0));
 
-        // (A) 斐波那契球面均匀晶格粒子
+        // (A) 斐波那契球面均匀晶格粒子（仅负责海洋与陆地内部填充，不再重复叠加国界/海岸白线粒子）
         for (let i = 0; i < fibCount; i++) {
           const wy = 1.0 - (2.0 * (i + 0.5)) / fibCount;
           const radius = Math.sqrt(Math.max(0, 1.0 - wy * wy));
@@ -1011,22 +1047,25 @@ html.st-embed a[href="/studio/"] { display: none !important; }
           r = Math.max(0, Math.min(MAP_H - 1, r));
           const idx = r * MAP_W + c;
           const cid = gridCountry[idx];
-          const isCoast = gridCoast[idx] === 1;
-          const isBorder = gridBorder[idx] === 1;
+          if (cid > 0 && (gridBorder[idx] === 1 || gridCoast[idx] === 1)) {
+            // 边界与海岸位置交由下方 (B) 独立单次描边层精确生成，避免晶格点与描边层产生双白线重影
+            continue;
+          }
           let type = 0;
           let tone = 1.0;
           if (cid > 0) {
-            type = isCoast ? 2 : isBorder ? 3 : 1;
+            type = 1;
             const cMeta = countryById.get(cid);
             if (cMeta) tone = cMeta.tone;
           }
           particles.push({
-            wx, wy, wz, lat, lon, cid, type, tone,
+            wx, wy, wz, lat, lon, cid, borderCid: 0, type, tone,
             phase: (i * 0.6180339) % (Math.PI * 2)
           });
         }
 
-        // (B) 独立高精度海岸线与国界描边轮廓粒子（从 0.5° 栅格提取，使国家描边锐利独立）
+        // (B) 独立高精度海岸线与单次去重国界描边轮廓粒子（每个边界位置严格只显示一次）
+        const seenOutlinePos = new Set();
         for (let r = 2; r < MAP_H - 2; r += 1) {
           const lat = 90.0 - (r + 0.5) * (180.0 / MAP_H);
           const latR = degToRad(lat);
@@ -1034,13 +1073,25 @@ html.st-embed a[href="/studio/"] { display: none !important; }
           const rCos = Math.cos(latR);
           const stepC = Math.max(1, Math.round(1.3 / Math.max(0.18, rCos)));
           const rowOff = r * MAP_W;
-          for (let c = 0; c < MAP_W; c += stepC) {
+          for (let c = 0; c < MAP_W; c += 1) {
             const idx = rowOff + c;
             const isCoast = gridCoast[idx] === 1;
             const isBorder = gridBorder[idx] === 1;
             if (!isCoast && !isBorder) continue;
-            if (isCoast && !isBorder && (r + c) % 2 !== 0) continue;
+            if (isCoast && !isBorder) {
+              if (stepC > 1 && c % stepC !== 0) continue;
+              if ((r + c) % 2 !== 0) continue;
+            } else if (isBorder && stepC > 1) {
+              // 高纬度横向连续边界适度抽稀，纵向边界保持完整不断线
+              const prevC = (c - 1 + MAP_W) % MAP_W;
+              if (gridBorder[rowOff + prevC] === 1 && c % stepC !== 0) continue;
+            }
+            const posKey = `${r}:${c}`;
+            if (seenOutlinePos.has(posKey)) continue;
+            seenOutlinePos.add(posKey);
+
             const cid = gridCountry[idx];
+            const peerCid = isBorder ? gridBorderPeer[idx] : 0;
             const lon = -180.0 + (c + 0.5) * (360.0 / MAP_W);
             const lonR = degToRad(lon);
             const wx = rCos * Math.sin(lonR);
@@ -1048,6 +1099,7 @@ html.st-embed a[href="/studio/"] { display: none !important; }
             const cMeta = countryById.get(cid);
             particles.push({
               wx, wy, wz, lat, lon, cid,
+              borderCid: peerCid,
               type: isBorder ? 3 : 2,
               tone: cMeta ? cMeta.tone : 1.0,
               phase: ((r * 31 + c) % 100) * 0.0628
@@ -1100,6 +1152,397 @@ html.st-embed a[href="/studio/"] { display: none !important; }
           }
         }
         return 0;
+      }
+
+      // =========================================================================
+      // 2.5 精准省市/地区经纬度映射与球面陆地网格吸附校准（解决 IP 定位在地球模型上的位置偏差）
+      // =========================================================================
+      const CN_CITY_COORDS = [
+        // 特别行政区与台湾主要城市
+        { match: '香港', lat: 22.32, lon: 114.17 },
+        { match: '澳门', lat: 22.20, lon: 113.55 },
+        { match: '台北', lat: 25.03, lon: 121.56 },
+        { match: '新北', lat: 25.01, lon: 121.46 },
+        { match: '桃园', lat: 24.99, lon: 121.30 },
+        { match: '台中', lat: 24.15, lon: 120.67 },
+        { match: '台南', lat: 22.99, lon: 120.21 },
+        { match: '高雄', lat: 22.63, lon: 120.30 },
+        { match: '新竹', lat: 24.80, lon: 120.97 },
+        { match: '花莲', lat: 23.99, lon: 121.60 },
+        // 广东
+        { match: '深圳', lat: 22.54, lon: 114.06 },
+        { match: '广州', lat: 23.13, lon: 113.26 },
+        { match: '东莞', lat: 23.02, lon: 113.75 },
+        { match: '佛山', lat: 23.02, lon: 113.12 },
+        { match: '珠海', lat: 22.27, lon: 113.58 },
+        { match: '中山', lat: 22.52, lon: 113.39 },
+        { match: '惠州', lat: 23.11, lon: 114.42 },
+        { match: '江门', lat: 22.58, lon: 113.08 },
+        { match: '汕头', lat: 23.35, lon: 116.68 },
+        { match: '湛江', lat: 21.27, lon: 110.36 },
+        { match: '肇庆', lat: 23.05, lon: 112.47 },
+        { match: '茂名', lat: 21.66, lon: 110.92 },
+        { match: '揭阳', lat: 23.55, lon: 116.37 },
+        { match: '潮州', lat: 23.66, lon: 116.62 },
+        { match: '清远', lat: 23.68, lon: 113.06 },
+        { match: '韶关', lat: 24.81, lon: 113.60 },
+        { match: '梅州', lat: 24.29, lon: 116.12 },
+        { match: '汕尾', lat: 22.79, lon: 115.37 },
+        { match: '河源', lat: 23.74, lon: 114.70 },
+        { match: '阳江', lat: 21.86, lon: 111.98 },
+        { match: '云浮', lat: 22.92, lon: 112.04 },
+        // 浙江
+        { match: '杭州', lat: 30.27, lon: 120.15 },
+        { match: '宁波', lat: 29.87, lon: 121.55 },
+        { match: '温州', lat: 28.00, lon: 120.70 },
+        { match: '嘉兴', lat: 30.75, lon: 120.76 },
+        { match: '湖州', lat: 30.89, lon: 120.09 },
+        { match: '绍兴', lat: 30.00, lon: 120.58 },
+        { match: '金华', lat: 29.08, lon: 119.65 },
+        { match: '义乌', lat: 29.31, lon: 120.07 },
+        { match: '衢州', lat: 28.97, lon: 118.86 },
+        { match: '舟山', lat: 29.99, lon: 122.21 },
+        { match: '台州', lat: 28.66, lon: 121.42 },
+        { match: '丽水', lat: 28.47, lon: 119.92 },
+        // 江苏
+        { match: '南京', lat: 32.06, lon: 118.80 },
+        { match: '苏州', lat: 31.30, lon: 120.58 },
+        { match: '昆山', lat: 31.38, lon: 120.98 },
+        { match: '无锡', lat: 31.49, lon: 120.31 },
+        { match: '常州', lat: 31.81, lon: 119.97 },
+        { match: '徐州', lat: 34.20, lon: 117.28 },
+        { match: '南通', lat: 31.98, lon: 120.89 },
+        { match: '连云港', lat: 34.60, lon: 119.22 },
+        { match: '淮安', lat: 33.61, lon: 119.02 },
+        { match: '盐城', lat: 33.35, lon: 120.16 },
+        { match: '扬州', lat: 32.39, lon: 119.41 },
+        { match: '镇江', lat: 32.19, lon: 119.43 },
+        { match: '泰州', lat: 32.46, lon: 119.92 },
+        { match: '宿迁', lat: 33.96, lon: 118.28 },
+        // 四川
+        { match: '成都', lat: 30.57, lon: 104.06 },
+        { match: '绵阳', lat: 31.47, lon: 104.68 },
+        { match: '自贡', lat: 29.34, lon: 104.78 },
+        { match: '攀枝花', lat: 26.58, lon: 101.72 },
+        { match: '泸州', lat: 28.87, lon: 105.44 },
+        { match: '德阳', lat: 31.13, lon: 104.40 },
+        { match: '广元', lat: 32.44, lon: 105.84 },
+        { match: '遂宁', lat: 30.53, lon: 105.59 },
+        { match: '内江', lat: 29.58, lon: 105.06 },
+        { match: '乐山', lat: 29.55, lon: 103.77 },
+        { match: '南充', lat: 30.84, lon: 106.11 },
+        { match: '眉山', lat: 30.08, lon: 103.85 },
+        { match: '宜宾', lat: 28.75, lon: 104.64 },
+        { match: '广安', lat: 30.46, lon: 106.63 },
+        { match: '达州', lat: 31.21, lon: 107.47 },
+        { match: '雅安', lat: 29.98, lon: 103.01 },
+        { match: '巴中', lat: 31.87, lon: 106.75 },
+        { match: '资阳', lat: 30.13, lon: 104.63 },
+        { match: '凉山', lat: 27.88, lon: 102.26 },
+        { match: '西昌', lat: 27.88, lon: 102.26 },
+        // 湖北
+        { match: '武汉', lat: 30.59, lon: 114.31 },
+        { match: '黄石', lat: 30.20, lon: 115.04 },
+        { match: '十堰', lat: 32.65, lon: 110.78 },
+        { match: '宜昌', lat: 30.69, lon: 111.29 },
+        { match: '襄阳', lat: 32.01, lon: 112.12 },
+        { match: '鄂州', lat: 30.39, lon: 114.89 },
+        { match: '荆门', lat: 31.04, lon: 112.20 },
+        { match: '孝感', lat: 30.92, lon: 113.92 },
+        { match: '荆州', lat: 30.34, lon: 112.24 },
+        { match: '黄冈', lat: 30.45, lon: 114.87 },
+        { match: '咸宁', lat: 29.84, lon: 114.32 },
+        { match: '随州', lat: 31.69, lon: 113.38 },
+        { match: '恩施', lat: 30.27, lon: 109.49 },
+        // 湖南
+        { match: '长沙', lat: 28.23, lon: 112.94 },
+        { match: '株洲', lat: 27.83, lon: 113.13 },
+        { match: '湘潭', lat: 27.83, lon: 112.94 },
+        { match: '衡阳', lat: 26.89, lon: 112.57 },
+        { match: '邵阳', lat: 27.24, lon: 111.47 },
+        { match: '岳阳', lat: 29.36, lon: 113.13 },
+        { match: '常德', lat: 29.03, lon: 111.70 },
+        { match: '张家界', lat: 29.12, lon: 110.48 },
+        { match: '益阳', lat: 28.55, lon: 112.36 },
+        { match: '郴州', lat: 25.77, lon: 113.01 },
+        { match: '永州', lat: 26.42, lon: 111.61 },
+        { match: '怀化', lat: 27.55, lon: 110.00 },
+        { match: '娄底', lat: 27.70, lon: 112.00 },
+        { match: '湘西', lat: 28.31, lon: 109.74 },
+        // 福建
+        { match: '福州', lat: 26.08, lon: 119.30 },
+        { match: '厦门', lat: 24.48, lon: 118.09 },
+        { match: '泉州', lat: 24.87, lon: 118.68 },
+        { match: '漳州', lat: 24.51, lon: 117.65 },
+        { match: '莆田', lat: 25.45, lon: 119.01 },
+        { match: '三明', lat: 26.26, lon: 117.64 },
+        { match: '南平', lat: 26.64, lon: 118.18 },
+        { match: '龙岩', lat: 25.08, lon: 117.02 },
+        { match: '宁德', lat: 26.67, lon: 119.55 },
+        // 山东
+        { match: '济南', lat: 36.65, lon: 117.12 },
+        { match: '青岛', lat: 36.07, lon: 120.38 },
+        { match: '淄博', lat: 36.81, lon: 118.05 },
+        { match: '枣庄', lat: 34.81, lon: 117.32 },
+        { match: '东营', lat: 37.43, lon: 118.67 },
+        { match: '烟台', lat: 37.46, lon: 121.45 },
+        { match: '潍坊', lat: 36.71, lon: 119.16 },
+        { match: '济宁', lat: 35.42, lon: 116.59 },
+        { match: '泰安', lat: 36.20, lon: 117.09 },
+        { match: '威海', lat: 37.51, lon: 122.12 },
+        { match: '日照', lat: 35.42, lon: 119.53 },
+        { match: '临沂', lat: 35.10, lon: 118.36 },
+        { match: '德州', lat: 37.44, lon: 116.36 },
+        { match: '聊城', lat: 36.46, lon: 115.99 },
+        { match: '滨州', lat: 37.38, lon: 117.97 },
+        { match: '菏泽', lat: 35.23, lon: 115.48 },
+        // 河南
+        { match: '郑州', lat: 34.75, lon: 113.62 },
+        { match: '洛阳', lat: 34.62, lon: 112.45 },
+        { match: '开封', lat: 34.80, lon: 114.31 },
+        { match: '平顶山', lat: 33.77, lon: 113.19 },
+        { match: '安阳', lat: 36.10, lon: 114.39 },
+        { match: '鹤壁', lat: 35.75, lon: 114.30 },
+        { match: '新乡', lat: 35.30, lon: 113.93 },
+        { match: '焦作', lat: 35.22, lon: 113.24 },
+        { match: '濮阳', lat: 35.76, lon: 115.03 },
+        { match: '许昌', lat: 34.04, lon: 113.85 },
+        { match: '漯河', lat: 33.58, lon: 114.02 },
+        { match: '三门峡', lat: 34.77, lon: 111.20 },
+        { match: '南阳', lat: 32.99, lon: 112.53 },
+        { match: '商丘', lat: 34.41, lon: 115.66 },
+        { match: '信阳', lat: 32.15, lon: 114.09 },
+        { match: '周口', lat: 33.63, lon: 114.70 },
+        { match: '驻马店', lat: 32.98, lon: 114.02 },
+        // 河北
+        { match: '石家庄', lat: 38.04, lon: 114.51 },
+        { match: '唐山', lat: 39.63, lon: 118.18 },
+        { match: '秦皇岛', lat: 39.94, lon: 119.60 },
+        { match: '邯郸', lat: 36.63, lon: 114.54 },
+        { match: '邢台', lat: 37.07, lon: 114.50 },
+        { match: '保定', lat: 38.87, lon: 115.46 },
+        { match: '张家口', lat: 40.77, lon: 114.89 },
+        { match: '承德', lat: 40.95, lon: 117.96 },
+        { match: '沧州', lat: 38.30, lon: 116.84 },
+        { match: '廊坊', lat: 39.54, lon: 116.68 },
+        { match: '衡水', lat: 37.74, lon: 115.67 },
+        // 陕西
+        { match: '西安', lat: 34.26, lon: 108.94 },
+        { match: '铜川', lat: 34.90, lon: 108.95 },
+        { match: '宝鸡', lat: 34.36, lon: 107.24 },
+        { match: '咸阳', lat: 34.33, lon: 108.71 },
+        { match: '渭南', lat: 34.50, lon: 109.51 },
+        { match: '延安', lat: 36.59, lon: 109.49 },
+        { match: '汉中', lat: 33.07, lon: 107.02 },
+        { match: '榆林', lat: 38.29, lon: 109.73 },
+        { match: '安康', lat: 32.68, lon: 109.03 },
+        { match: '商洛', lat: 33.87, lon: 109.94 },
+        // 安徽
+        { match: '合肥', lat: 31.82, lon: 117.23 },
+        { match: '芜湖', lat: 31.35, lon: 118.43 },
+        { match: '蚌埠', lat: 32.92, lon: 117.39 },
+        { match: '淮南', lat: 32.63, lon: 117.00 },
+        { match: '马鞍山', lat: 31.67, lon: 118.51 },
+        { match: '淮北', lat: 33.96, lon: 116.80 },
+        { match: '铜陵', lat: 30.95, lon: 117.81 },
+        { match: '安庆', lat: 30.54, lon: 117.06 },
+        { match: '黄山', lat: 29.72, lon: 118.34 },
+        { match: '滁州', lat: 32.30, lon: 118.32 },
+        { match: '阜阳', lat: 32.89, lon: 115.81 },
+        { match: '宿州', lat: 33.65, lon: 116.96 },
+        { match: '六安', lat: 31.74, lon: 116.52 },
+        { match: '亳州', lat: 33.84, lon: 115.78 },
+        { match: '池州', lat: 30.66, lon: 117.49 },
+        { match: '宣城', lat: 30.94, lon: 118.76 },
+        // 江西
+        { match: '南昌', lat: 28.68, lon: 115.86 },
+        { match: '景德镇', lat: 29.27, lon: 117.18 },
+        { match: '萍乡', lat: 27.62, lon: 113.85 },
+        { match: '九江', lat: 29.71, lon: 116.00 },
+        { match: '新余', lat: 27.82, lon: 114.92 },
+        { match: '鹰潭', lat: 28.26, lon: 117.07 },
+        { match: '赣州', lat: 25.83, lon: 114.93 },
+        { match: '吉安', lat: 27.11, lon: 114.99 },
+        { match: '宜春', lat: 27.82, lon: 114.42 },
+        { match: '抚州', lat: 27.95, lon: 116.36 },
+        { match: '上饶', lat: 28.45, lon: 117.94 },
+        // 辽宁 / 吉林 / 黑龙江
+        { match: '沈阳', lat: 41.80, lon: 123.43 },
+        { match: '大连', lat: 38.91, lon: 121.61 },
+        { match: '鞍山', lat: 41.11, lon: 122.99 },
+        { match: '抚顺', lat: 41.88, lon: 123.96 },
+        { match: '本溪', lat: 41.30, lon: 123.77 },
+        { match: '丹东', lat: 40.00, lon: 124.35 },
+        { match: '锦州', lat: 41.10, lon: 121.13 },
+        { match: '营口', lat: 40.67, lon: 122.24 },
+        { match: '阜新', lat: 42.02, lon: 121.67 },
+        { match: '辽阳', lat: 41.27, lon: 123.24 },
+        { match: '盘锦', lat: 41.12, lon: 122.07 },
+        { match: '铁岭', lat: 42.29, lon: 123.84 },
+        { match: '朝阳', lat: 41.57, lon: 120.45 },
+        { match: '葫芦岛', lat: 40.71, lon: 120.84 },
+        { match: '长春', lat: 43.82, lon: 125.32 },
+        { match: '四平', lat: 43.17, lon: 124.35 },
+        { match: '通化', lat: 41.73, lon: 125.94 },
+        { match: '松原', lat: 45.14, lon: 124.82 },
+        { match: '延边', lat: 42.89, lon: 129.51 },
+        { match: '延吉', lat: 42.89, lon: 129.51 },
+        { match: '哈尔滨', lat: 45.80, lon: 126.53 },
+        { match: '齐齐哈尔', lat: 47.35, lon: 123.92 },
+        { match: '大庆', lat: 46.59, lon: 125.10 },
+        { match: '佳木斯', lat: 46.80, lon: 130.32 },
+        { match: '牡丹江', lat: 44.55, lon: 129.63 },
+        { match: '绥化', lat: 46.65, lon: 126.97 },
+        // 广西 / 云南 / 贵州
+        { match: '南宁', lat: 22.82, lon: 108.37 },
+        { match: '柳州', lat: 24.33, lon: 109.42 },
+        { match: '桂林', lat: 25.27, lon: 110.29 },
+        { match: '梧州', lat: 23.48, lon: 111.28 },
+        { match: '北海', lat: 21.48, lon: 109.12 },
+        { match: '钦州', lat: 21.98, lon: 108.65 },
+        { match: '贵港', lat: 23.11, lon: 109.60 },
+        { match: '玉林', lat: 22.64, lon: 110.16 },
+        { match: '百色', lat: 23.90, lon: 106.62 },
+        { match: '河池', lat: 24.69, lon: 108.09 },
+        { match: '昆明', lat: 25.04, lon: 102.71 },
+        { match: '曲靖', lat: 25.49, lon: 103.80 },
+        { match: '玉溪', lat: 24.35, lon: 102.55 },
+        { match: '昭通', lat: 27.34, lon: 103.72 },
+        { match: '丽江', lat: 26.86, lon: 100.23 },
+        { match: '大理', lat: 25.61, lon: 100.27 },
+        { match: '红河', lat: 23.36, lon: 103.38 },
+        { match: '西双版纳', lat: 22.01, lon: 100.80 },
+        { match: '贵阳', lat: 26.65, lon: 106.63 },
+        { match: '六盘水', lat: 26.59, lon: 104.83 },
+        { match: '遵义', lat: 27.73, lon: 106.93 },
+        { match: '安顺', lat: 26.25, lon: 105.95 },
+        { match: '毕节', lat: 27.30, lon: 105.29 },
+        { match: '铜仁', lat: 27.72, lon: 109.19 },
+        { match: '黔西南', lat: 25.09, lon: 104.91 },
+        { match: '黔东南', lat: 26.58, lon: 107.98 },
+        { match: '黔南', lat: 26.26, lon: 107.52 },
+        // 山西 / 内蒙古 / 西北 / 西藏 / 海南
+        { match: '太原', lat: 37.87, lon: 112.55 },
+        { match: '大同', lat: 40.08, lon: 113.30 },
+        { match: '长治', lat: 36.20, lon: 113.12 },
+        { match: '晋城', lat: 35.49, lon: 112.85 },
+        { match: '晋中', lat: 37.69, lon: 112.75 },
+        { match: '运城', lat: 35.03, lon: 111.01 },
+        { match: '临汾', lat: 36.09, lon: 111.52 },
+        { match: '吕梁', lat: 37.52, lon: 111.14 },
+        { match: '呼和浩特', lat: 40.84, lon: 111.75 },
+        { match: '包头', lat: 40.66, lon: 109.84 },
+        { match: '赤峰', lat: 42.26, lon: 118.89 },
+        { match: '通辽', lat: 43.65, lon: 122.24 },
+        { match: '鄂尔多斯', lat: 39.61, lon: 109.78 },
+        { match: '呼伦贝尔', lat: 49.21, lon: 119.77 },
+        { match: '兰州', lat: 36.06, lon: 103.83 },
+        { match: '天水', lat: 34.58, lon: 105.72 },
+        { match: '酒泉', lat: 39.73, lon: 98.49 },
+        { match: '银川', lat: 38.49, lon: 106.23 },
+        { match: '西宁', lat: 36.62, lon: 101.78 },
+        { match: '乌鲁木齐', lat: 43.83, lon: 87.62 },
+        { match: '喀什', lat: 39.47, lon: 75.99 },
+        { match: '伊犁', lat: 43.92, lon: 81.32 },
+        { match: '拉萨', lat: 29.65, lon: 91.11 },
+        { match: '海口', lat: 20.04, lon: 110.20 },
+        { match: '三亚', lat: 18.25, lon: 109.51 },
+        // 直辖市与省级兜底
+        { match: '北京', lat: 39.90, lon: 116.40 },
+        { match: '上海', lat: 31.23, lon: 121.47 },
+        { match: '天津', lat: 39.08, lon: 117.20 },
+        { match: '重庆', lat: 29.56, lon: 106.55 },
+        { match: '广东', lat: 23.13, lon: 113.26 },
+        { match: '浙江', lat: 30.27, lon: 120.15 },
+        { match: '江苏', lat: 32.06, lon: 118.80 },
+        { match: '四川', lat: 30.57, lon: 104.06 },
+        { match: '湖北', lat: 30.59, lon: 114.31 },
+        { match: '湖南', lat: 28.23, lon: 112.94 },
+        { match: '福建', lat: 26.08, lon: 119.30 },
+        { match: '山东', lat: 36.65, lon: 117.12 },
+        { match: '河南', lat: 34.75, lon: 113.62 },
+        { match: '河北', lat: 38.04, lon: 114.51 },
+        { match: '陕西', lat: 34.26, lon: 108.94 },
+        { match: '安徽', lat: 31.82, lon: 117.23 },
+        { match: '江西', lat: 28.68, lon: 115.86 },
+        { match: '辽宁', lat: 41.80, lon: 123.43 },
+        { match: '吉林', lat: 43.82, lon: 125.32 },
+        { match: '黑龙江', lat: 45.80, lon: 126.53 },
+        { match: '广西', lat: 22.82, lon: 108.37 },
+        { match: '云南', lat: 25.04, lon: 102.71 },
+        { match: '贵州', lat: 26.65, lon: 106.63 },
+        { match: '山西', lat: 37.87, lon: 112.55 },
+        { match: '内蒙古', lat: 40.84, lon: 111.75 },
+        { match: '新疆', lat: 43.83, lon: 87.62 },
+        { match: '西藏', lat: 29.65, lon: 91.11 },
+        { match: '甘肃', lat: 36.06, lon: 103.83 },
+        { match: '宁夏', lat: 38.49, lon: 106.23 },
+        { match: '青海', lat: 36.62, lon: 101.78 },
+        { match: '海南', lat: 20.04, lon: 110.20 },
+        { match: '台湾', lat: 24.15, lon: 120.95 }
+      ];
+
+      /**
+       * 若沿海/海岛城市的经纬度在 0.5° 栅格中恰好落在海岸线外侧 1~2 格的海水像素上，
+       * 自动向所属国家的最近陆地像素微调吸附，确保地球模型上的信标严格落在陆地轮廓内且贴合真实地理位置。
+       */
+      function snapToCountryLand(lat, lon, targetCid) {
+        if (!Number.isFinite(lat) || !Number.isFinite(lon)) return { lat: 35.0, lon: 104.0 };
+        let c = Math.floor(((lon + 180.0) / 360.0) * MAP_W) % MAP_W;
+        if (c < 0) c += MAP_W;
+        let r = Math.floor(((90.0 - lat) / 180.0) * MAP_H);
+        r = Math.max(0, Math.min(MAP_H - 1, r));
+        const curCid = gridCountry[r * MAP_W + c];
+        if (curCid > 0 && (!targetCid || curCid === targetCid)) {
+          return { lat, lon };
+        }
+        let bestDistSq = 999;
+        let bestLat = lat;
+        let bestLon = lon;
+        for (let dr = -3; dr <= 3; dr++) {
+          const nr = r + dr;
+          if (nr < 1 || nr >= MAP_H - 1) continue;
+          for (let dc = -3; dc <= 3; dc++) {
+            const nc = (c + dc + MAP_W) % MAP_W;
+            const nCid = gridCountry[nr * MAP_W + nc];
+            if (nCid === 0) continue;
+            if (targetCid && nCid !== targetCid) continue;
+            const d2 = dr * dr + dc * dc;
+            if (d2 < bestDistSq) {
+              bestDistSq = d2;
+              bestLat = Number((90.0 - (nr + 0.5) * (180.0 / MAP_H)).toFixed(2));
+              bestLon = Number((-180.0 + (nc + 0.5) * (360.0 / MAP_W)).toFixed(2));
+            }
+          }
+        }
+        return { lat: bestLat, lon: bestLon };
+      }
+
+      function resolveVisitorCoords(r) {
+        const meta = countryByZh.get(r.countryZh);
+        const targetCid = meta ? meta.id : 0;
+        const text = `${r.region || ''} ${r.countryZh || ''}`;
+        if (r.countryCode === 'CN' || r.countryZh === '中国') {
+          for (let i = 0; i < CN_CITY_COORDS.length; i++) {
+            const item = CN_CITY_COORDS[i];
+            if (text.includes(item.match)) {
+              return snapToCountryLand(item.lat, item.lon, targetCid);
+            }
+          }
+        }
+        const rawLat = Number(r.lat);
+        const rawLon = Number(r.lon);
+        const isGenericChinaCenter =
+          Math.abs(rawLat - 35.0) < 0.08 && Math.abs(rawLon - 104.0) < 0.08;
+        if (Number.isFinite(rawLat) && Number.isFinite(rawLon)) {
+          if (!isGenericChinaCenter || r.countryZh === '中国' || r.countryCode === 'CN') {
+            return snapToCountryLand(rawLat, rawLon, targetCid);
+          }
+        }
+        if (meta) {
+          return snapToCountryLand(meta.lat, meta.lon, targetCid);
+        }
+        return { lat: Number.isFinite(rawLat) ? rawLat : 35.0, lon: Number.isFinite(rawLon) ? rawLon : 104.0 };
       }
 
       // =========================================================================
@@ -1214,20 +1657,25 @@ html.st-embed a[href="/studio/"] { display: none !important; }
           }));
 
         const countryMap = new Map();
+        const beaconMap = new Map();
         for (const r of visitorLogs) {
           if (selBucket && getBucketKey(r.visitDate, granularity) !== selBucket) continue;
+          const resolved = resolveVisitorCoords(r);
+          r.lat = resolved.lat;
+          r.lon = resolved.lon;
+
           let c = countryMap.get(r.countryZh);
           if (!c) {
-            const meta = countryByZh.get(r.countryZh);
             c = {
               countryZh: r.countryZh,
               countryEn: r.countryEn,
               countryCode: r.countryCode,
-              lat: meta ? meta.lat : r.lat,
-              lon: meta ? meta.lon : r.lon,
+              lat: resolved.lat,
+              lon: resolved.lon,
               ips: new Set(),
               pv: 0,
               latestIp: r.ip,
+              latestRegion: r.region || r.countryZh,
               latestDevice: `${r.deviceType} · ${r.os} / ${r.browser}`,
               lastSeen: r.lastSeen
             };
@@ -1238,7 +1686,34 @@ html.st-embed a[href="/studio/"] { display: none !important; }
           if (r.lastSeen >= c.lastSeen) {
             c.lastSeen = r.lastSeen;
             c.latestIp = r.ip;
+            c.latestRegion = r.region || r.countryZh;
             c.latestDevice = `${r.deviceType} · ${r.os} / ${r.browser}`;
+            c.lat = resolved.lat;
+            c.lon = resolved.lon;
+          }
+
+          const bKey = `${r.countryZh}|${resolved.lat.toFixed(1)},${resolved.lon.toFixed(1)}`;
+          let b = beaconMap.get(bKey);
+          if (!b) {
+            b = {
+              countryZh: r.countryZh,
+              countryEn: r.countryEn,
+              region: r.region || r.countryZh,
+              lat: resolved.lat,
+              lon: resolved.lon,
+              ips: new Set(),
+              pv: 0,
+              latestIp: r.ip,
+              lastSeen: r.lastSeen
+            };
+            beaconMap.set(bKey, b);
+          }
+          b.ips.add(r.ip);
+          b.pv += r.pvCount;
+          if (r.lastSeen >= b.lastSeen) {
+            b.lastSeen = r.lastSeen;
+            b.latestIp = r.ip;
+            b.region = r.region || r.countryZh;
           }
         }
         const rawCountries = Array.from(countryMap.values()).sort((a, b) => b.ips.size - a.ips.size || b.pv - a.pv);
@@ -1253,8 +1728,20 @@ html.st-embed a[href="/studio/"] { display: none !important; }
           pv: c.pv,
           share: Number(((c.pv / sumCountryPv) * 100).toFixed(1)),
           latestIp: c.latestIp,
+          latestRegion: c.latestRegion,
           latestDevice: c.latestDevice,
           lastSeen: c.lastSeen
+        }));
+        const beacons = Array.from(beaconMap.values()).map((b) => ({
+          countryZh: b.countryZh,
+          countryEn: b.countryEn,
+          region: b.region,
+          lat: b.lat,
+          lon: b.lon,
+          uv: b.ips.size,
+          pv: b.pv,
+          latestIp: b.latestIp,
+          lastSeen: b.lastSeen
         }));
 
         const filteredLogs = visitorLogs
@@ -1293,6 +1780,7 @@ html.st-embed a[href="/studio/"] { display: none !important; }
           },
           series,
           countries,
+          beacons,
           logs: {
             items: pageItems,
             total: filteredLogs.length,
@@ -1382,7 +1870,6 @@ html.st-embed a[href="/studio/"] { display: none !important; }
         const bar = $('#st-bar');
         if (!bar || !dashboard) return;
         const d = dashboard;
-        const dark = isDark();
         const ipNote = currentClientIp ? ` · 当前终端 IP: ${esc(currentClientIp)}` : '';
 
         bar.innerHTML = `
@@ -1406,7 +1893,6 @@ html.st-embed a[href="/studio/"] { display: none !important; }
             <button type="button" class="st-btn" id="st-btn-export">导出 CSV</button>
             <button type="button" class="st-btn st-btn--danger" id="st-btn-clear" title="清空全部访客记录">清空</button>
             <a class="st-btn" href="/studio/" title="返回后台工作台">← 返回后台</a>
-            <button type="button" class="st-btn" id="st-btn-theme">${dark ? '☀ 昼' : '☾ 夜'}</button>
           </div>
         `;
 
@@ -1448,11 +1934,6 @@ html.st-embed a[href="/studio/"] { display: none !important; }
           } catch (err) {
             toast('清空失败：' + (err?.message || err), true);
           }
-        });
-
-        $('#st-btn-theme', bar)?.addEventListener('click', () => {
-          toggleTheme();
-          renderTopBar();
         });
       }
 
@@ -1599,7 +2080,7 @@ html.st-embed a[href="/studio/"] { display: none !important; }
                   ` : d.logs.items.map((item) => {
                     const isCountrySelected = globeState.clickedCountry && globeState.clickedCountry.zh === item.countryZh;
                     return `
-                      <tr class="${isCountrySelected ? 'is-active' : ''}" data-log-row="${item.id}" data-country="${esc(item.countryZh)}" data-lat="${item.lat}" data-lon="${item.lon}" style="cursor:pointer;" title="点击在右侧地球模型上定位该访客所在国家">
+                      <tr class="${isCountrySelected ? 'is-active' : ''}" data-log-row="${item.id}" data-country="${esc(item.countryZh)}" data-region="${esc(item.region)}" data-ip="${esc(item.ip)}" data-lat="${item.lat}" data-lon="${item.lon}" style="cursor:pointer;" title="点击在右侧地球模型上精准定位该访客所在位置">
                         <td class="st-mono">
                           <div>${esc(item.visitDate)}</div>
                           <div style="font-size:0.68rem;color:var(--muted);">${esc(item.lastSeen.slice(11, 19))}</div>
@@ -1712,12 +2193,19 @@ html.st-embed a[href="/studio/"] { display: none !important; }
         $$('[data-log-row]', pane).forEach((row) => {
           row.addEventListener('click', () => {
             const zh = row.dataset.country;
+            const region = row.dataset.region || '';
+            const ip = row.dataset.ip || '';
             const lat = Number(row.dataset.lat);
             const lon = Number(row.dataset.lon);
-            const meta = countryByZh.get(zh);
-            if (meta) {
-              selectCountryOnGlobe(meta, Number.isFinite(lat) ? lat : meta.lat, Number.isFinite(lon) ? lon : meta.lon, true);
-            }
+            const meta = countryByZh.get(zh) || { id: 140, zh: zh || '中国', en: '', cont: '亚洲', lat: 35.0, lon: 104.0 };
+            const resolved = resolveVisitorCoords({
+              countryZh: zh,
+              countryCode: zh === '中国' ? 'CN' : '',
+              region,
+              lat,
+              lon
+            });
+            selectCountryOnGlobe(meta, resolved.lat, resolved.lon, true, { region, ip });
           });
         });
 
@@ -1736,7 +2224,7 @@ html.st-embed a[href="/studio/"] { display: none !important; }
       // =========================================================================
       // 7. 右侧 3D 动态粒子旋转地球模型（保留 3d.html + 独立纯白/浅主题色描边粒子层）
       // =========================================================================
-      function selectCountryOnGlobe(cMeta, clickLat, clickLon, rotateToCountry = false) {
+      function selectCountryOnGlobe(cMeta, clickLat, clickLon, rotateToCountry = false, visitorInfo = null) {
         const clearBtn = $('#st-globe-clear-sel');
         if (!cMeta) {
           globeState.clickedCountry = null;
@@ -1744,16 +2232,27 @@ html.st-embed a[href="/studio/"] { display: none !important; }
           renderLeftPane();
           return;
         }
-        const targetLat = clickLat !== undefined && Number.isFinite(clickLat) ? clickLat : cMeta.lat;
-        const targetLon = clickLon !== undefined && Number.isFinite(clickLon) ? clickLon : cMeta.lon;
+        const rawLat = clickLat !== undefined && Number.isFinite(clickLat) ? clickLat : cMeta.lat;
+        const rawLon = clickLon !== undefined && Number.isFinite(clickLon) ? clickLon : cMeta.lon;
+        const snapped = snapToCountryLand(rawLat, rawLon, cMeta.id);
+        const targetLat = snapped.lat;
+        const targetLon = snapped.lon;
         globeState.clickedCountry = {
           ...cMeta,
           clickLat: targetLat,
           clickLon: targetLon,
+          visitorRegion: visitorInfo?.region || '',
+          visitorIp: visitorInfo?.ip || '',
           clickedAt: globeState.time
         };
         if (clearBtn) clearBtn.hidden = false;
         if (rotateToCountry) {
+          globeState.autoRotate = false;
+          const playBtn = $('#st-globe-toggle-play');
+          if (playBtn) {
+            playBtn.setAttribute('aria-pressed', 'false');
+            playBtn.textContent = '▶ 继续自转';
+          }
           globeState.targetLon = targetLon;
           globeState.targetLat = targetLat;
         }
@@ -2161,8 +2660,8 @@ html.st-embed a[href="/studio/"] { display: none !important; }
             continue;
           }
 
-          const isClicked = p.cid === activeCid;
-          const isHovered = p.cid === hoverCid;
+          const isClicked = p.cid === activeCid || (p.type === 3 && p.borderCid === activeCid);
+          const isHovered = p.cid === hoverCid || (p.type === 3 && p.borderCid === hoverCid);
 
           // 选中或悬停国家的粒子高亮
           if (isClicked && globeState.pulseTarget) {
@@ -2227,10 +2726,13 @@ html.st-embed a[href="/studio/"] { display: none !important; }
         // 再独立叠加绘制描边粒子层（白色或浅主题色），保证大陆与国家边界清晰锐利
         flushBuckets(strokeBuckets);
 
-        // 5. 绘制活跃访客国家脉冲信标
-        if (globeState.showVisitorBeacons && dashboard && dashboard.countries.length > 0) {
-          const maxCountryUv = Math.max(1, ...dashboard.countries.map((c) => c.uv));
-          dashboard.countries.forEach((cStat, idx) => {
+        // 5. 绘制活跃访客真实位置脉冲信标（按 IP 实际解析出的省市/地区经纬度精准落点）
+        const activeBeacons = (dashboard && Array.isArray(dashboard.beacons) && dashboard.beacons.length > 0)
+          ? dashboard.beacons
+          : (dashboard ? dashboard.countries : []);
+        if (globeState.showVisitorBeacons && activeBeacons.length > 0) {
+          const maxCountryUv = Math.max(1, ...activeBeacons.map((c) => c.uv));
+          activeBeacons.forEach((cStat, idx) => {
             const latR = degToRad(cStat.lat);
             const lonR = degToRad(cStat.lon);
             const wy = Math.sin(latR);
@@ -2337,11 +2839,17 @@ html.st-embed a[href="/studio/"] { display: none !important; }
             ctx.lineTo(endX, endY);
             ctx.stroke();
 
-            const titleText = `${cc.zh} · ${cc.en}`;
+            const regionLabel = cc.visitorRegion || (cStat && cStat.latestRegion) || '';
+            const titleText = regionLabel && regionLabel !== cc.zh
+              ? `${cc.zh} · ${regionLabel}`
+              : `${cc.zh} · ${cc.en}`;
+            const coordLabel = `${Math.abs(cc.clickLat).toFixed(1)}°${cc.clickLat >= 0 ? 'N' : 'S'}, ${Math.abs(cc.clickLon).toFixed(1)}°${cc.clickLon >= 0 ? 'E' : 'W'}`;
             const subText = cStat
-              ? `访客 ${cStat.uv} UV · ${cStat.pv} PV (${cStat.share}%)`
-              : `${cc.cont} | ${Math.abs(cc.lat).toFixed(1)}°${cc.lat >= 0 ? 'N' : 'S'}, ${Math.abs(cc.lon).toFixed(1)}°${cc.lon >= 0 ? 'E' : 'W'}`;
-            const ipText = cStat ? `最新 IP: ${cStat.latestIp}` : '当前周期暂无访客记录';
+              ? `访客 ${cStat.uv} UV · ${cStat.pv} PV (${cStat.share}%) · ${coordLabel}`
+              : `${cc.cont} | ${coordLabel}`;
+            const ipText = cc.visitorIp
+              ? `定位 IP: ${cc.visitorIp}`
+              : (cStat ? `最新 IP: ${cStat.latestIp}` : '当前周期暂无访客记录');
 
             ctx.font = '700 13px "Noto Sans SC", "Microsoft YaHei", sans-serif';
             const w1 = ctx.measureText(titleText).width;

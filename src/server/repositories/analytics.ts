@@ -204,67 +204,427 @@ const COUNTRY_BY_CODE: Record<string, Omit<GeoProfile, 'region' | 'enriched'>> =
 
 /** 中国各省/直辖市/自治区及主要城市经纬度坐标表（城市优先匹配，省会兜底） */
 const CN_PROVINCE_COORDS: Array<{ match: string; lat: number; lon: number }> = [
+  // 直辖市与特别行政区（优先精确匹配）
+  { match: '香港', lat: 22.32, lon: 114.17 },
+  { match: '澳门', lat: 22.20, lon: 113.55 },
+  { match: '台北', lat: 25.03, lon: 121.56 },
+  { match: '新北', lat: 25.01, lon: 121.46 },
+  { match: '桃园', lat: 24.99, lon: 121.30 },
+  { match: '台中', lat: 24.15, lon: 120.67 },
+  { match: '台南', lat: 22.99, lon: 120.21 },
+  { match: '高雄', lat: 22.63, lon: 120.30 },
+  { match: '新竹', lat: 24.80, lon: 120.97 },
+  { match: '基隆', lat: 25.13, lon: 121.74 },
+  { match: '嘉义', lat: 23.48, lon: 120.45 },
+  { match: '花莲', lat: 23.99, lon: 121.60 },
+  // 广东省
   { match: '深圳', lat: 22.54, lon: 114.06 },
   { match: '广州', lat: 23.13, lon: 113.26 },
   { match: '东莞', lat: 23.02, lon: 113.75 },
   { match: '佛山', lat: 23.02, lon: 113.12 },
   { match: '珠海', lat: 22.27, lon: 113.58 },
+  { match: '中山', lat: 22.52, lon: 113.39 },
+  { match: '惠州', lat: 23.11, lon: 114.42 },
+  { match: '江门', lat: 22.58, lon: 113.08 },
+  { match: '汕头', lat: 23.35, lon: 116.68 },
+  { match: '湛江', lat: 21.27, lon: 110.36 },
+  { match: '肇庆', lat: 23.05, lon: 112.47 },
+  { match: '茂名', lat: 21.66, lon: 110.92 },
+  { match: '揭阳', lat: 23.55, lon: 116.37 },
+  { match: '潮州', lat: 23.66, lon: 116.62 },
+  { match: '清远', lat: 23.68, lon: 113.06 },
+  { match: '韶关', lat: 24.81, lon: 113.60 },
+  { match: '梅州', lat: 24.29, lon: 116.12 },
+  { match: '汕尾', lat: 22.79, lon: 115.37 },
+  { match: '河源', lat: 23.74, lon: 114.70 },
+  { match: '阳江', lat: 21.86, lon: 111.98 },
+  { match: '云浮', lat: 22.92, lon: 112.04 },
+  // 浙江省
   { match: '杭州', lat: 30.27, lon: 120.15 },
   { match: '宁波', lat: 29.87, lon: 121.55 },
-  { match: '温州', lat: 28.0, lon: 120.7 },
-  { match: '南京', lat: 32.06, lon: 118.8 },
-  { match: '苏州', lat: 31.3, lon: 120.58 },
+  { match: '温州', lat: 28.00, lon: 120.70 },
+  { match: '嘉兴', lat: 30.75, lon: 120.76 },
+  { match: '湖州', lat: 30.89, lon: 120.09 },
+  { match: '绍兴', lat: 30.00, lon: 120.58 },
+  { match: '金华', lat: 29.08, lon: 119.65 },
+  { match: '义乌', lat: 29.31, lon: 120.07 },
+  { match: '衢州', lat: 28.97, lon: 118.86 },
+  { match: '舟山', lat: 29.99, lon: 122.21 },
+  { match: '台州', lat: 28.66, lon: 121.42 },
+  { match: '丽水', lat: 28.47, lon: 119.92 },
+  // 江苏省
+  { match: '南京', lat: 32.06, lon: 118.80 },
+  { match: '苏州', lat: 31.30, lon: 120.58 },
+  { match: '昆山', lat: 31.38, lon: 120.98 },
   { match: '无锡', lat: 31.49, lon: 120.31 },
   { match: '常州', lat: 31.81, lon: 119.97 },
+  { match: '徐州', lat: 34.20, lon: 117.28 },
+  { match: '南通', lat: 31.98, lon: 120.89 },
+  { match: '连云港', lat: 34.60, lon: 119.22 },
+  { match: '淮安', lat: 33.61, lon: 119.02 },
+  { match: '盐城', lat: 33.35, lon: 120.16 },
+  { match: '扬州', lat: 32.39, lon: 119.41 },
+  { match: '镇江', lat: 32.19, lon: 119.43 },
+  { match: '泰州', lat: 32.46, lon: 119.92 },
+  { match: '宿迁', lat: 33.96, lon: 118.28 },
+  // 四川省
   { match: '成都', lat: 30.57, lon: 104.06 },
+  { match: '绵阳', lat: 31.47, lon: 104.68 },
+  { match: '自贡', lat: 29.34, lon: 104.78 },
+  { match: '攀枝花', lat: 26.58, lon: 101.72 },
+  { match: '泸州', lat: 28.87, lon: 105.44 },
+  { match: '德阳', lat: 31.13, lon: 104.40 },
+  { match: '广元', lat: 32.44, lon: 105.84 },
+  { match: '遂宁', lat: 30.53, lon: 105.59 },
+  { match: '内江', lat: 29.58, lon: 105.06 },
+  { match: '乐山', lat: 29.55, lon: 103.77 },
+  { match: '南充', lat: 30.84, lon: 106.11 },
+  { match: '眉山', lat: 30.08, lon: 103.85 },
+  { match: '宜宾', lat: 28.75, lon: 104.64 },
+  { match: '广安', lat: 30.46, lon: 106.63 },
+  { match: '达州', lat: 31.21, lon: 107.47 },
+  { match: '雅安', lat: 29.98, lon: 103.01 },
+  { match: '巴中', lat: 31.87, lon: 106.75 },
+  { match: '资阳', lat: 30.13, lon: 104.63 },
+  { match: '阿坝', lat: 31.90, lon: 102.22 },
+  { match: '甘孜', lat: 30.05, lon: 101.96 },
+  { match: '凉山', lat: 27.88, lon: 102.26 },
+  { match: '西昌', lat: 27.88, lon: 102.26 },
+  // 湖北省
   { match: '武汉', lat: 30.59, lon: 114.31 },
-  { match: '西安', lat: 34.26, lon: 108.94 },
-  { match: '青岛', lat: 36.07, lon: 120.38 },
-  { match: '济南', lat: 36.65, lon: 117.12 },
-  { match: '厦门', lat: 24.48, lon: 118.09 },
-  { match: '福州', lat: 26.08, lon: 119.3 },
-  { match: '泉州', lat: 24.87, lon: 118.68 },
+  { match: '黄石', lat: 30.20, lon: 115.04 },
+  { match: '十堰', lat: 32.65, lon: 110.78 },
+  { match: '宜昌', lat: 30.69, lon: 111.29 },
+  { match: '襄阳', lat: 32.01, lon: 112.12 },
+  { match: '鄂州', lat: 30.39, lon: 114.89 },
+  { match: '荆门', lat: 31.04, lon: 112.20 },
+  { match: '孝感', lat: 30.92, lon: 113.92 },
+  { match: '荆州', lat: 30.34, lon: 112.24 },
+  { match: '黄冈', lat: 30.45, lon: 114.87 },
+  { match: '咸宁', lat: 29.84, lon: 114.32 },
+  { match: '随州', lat: 31.69, lon: 113.38 },
+  { match: '恩施', lat: 30.27, lon: 109.49 },
+  { match: '仙桃', lat: 30.36, lon: 113.45 },
+  { match: '潜江', lat: 30.40, lon: 112.90 },
+  { match: '天门', lat: 30.66, lon: 113.17 },
+  // 湖南省
   { match: '长沙', lat: 28.23, lon: 112.94 },
+  { match: '株洲', lat: 27.83, lon: 113.13 },
+  { match: '湘潭', lat: 27.83, lon: 112.94 },
+  { match: '衡阳', lat: 26.89, lon: 112.57 },
+  { match: '邵阳', lat: 27.24, lon: 111.47 },
+  { match: '岳阳', lat: 29.36, lon: 113.13 },
+  { match: '常德', lat: 29.03, lon: 111.70 },
+  { match: '张家界', lat: 29.12, lon: 110.48 },
+  { match: '益阳', lat: 28.55, lon: 112.36 },
+  { match: '郴州', lat: 25.77, lon: 113.01 },
+  { match: '永州', lat: 26.42, lon: 111.61 },
+  { match: '怀化', lat: 27.55, lon: 110.00 },
+  { match: '娄底', lat: 27.70, lon: 112.00 },
+  { match: '湘西', lat: 28.31, lon: 109.74 },
+  { match: '吉首', lat: 28.31, lon: 109.74 },
+  // 福建省
+  { match: '福州', lat: 26.08, lon: 119.30 },
+  { match: '厦门', lat: 24.48, lon: 118.09 },
+  { match: '泉州', lat: 24.87, lon: 118.68 },
+  { match: '漳州', lat: 24.51, lon: 117.65 },
+  { match: '莆田', lat: 25.45, lon: 119.01 },
+  { match: '三明', lat: 26.26, lon: 117.64 },
+  { match: '南平', lat: 26.64, lon: 118.18 },
+  { match: '龙岩', lat: 25.08, lon: 117.02 },
+  { match: '宁德', lat: 26.67, lon: 119.55 },
+  // 山东省
+  { match: '济南', lat: 36.65, lon: 117.12 },
+  { match: '青岛', lat: 36.07, lon: 120.38 },
+  { match: '淄博', lat: 36.81, lon: 118.05 },
+  { match: '枣庄', lat: 34.81, lon: 117.32 },
+  { match: '东营', lat: 37.43, lon: 118.67 },
+  { match: '烟台', lat: 37.46, lon: 121.45 },
+  { match: '潍坊', lat: 36.71, lon: 119.16 },
+  { match: '济宁', lat: 35.42, lon: 116.59 },
+  { match: '泰安', lat: 36.20, lon: 117.09 },
+  { match: '威海', lat: 37.51, lon: 122.12 },
+  { match: '日照', lat: 35.42, lon: 119.53 },
+  { match: '临沂', lat: 35.10, lon: 118.36 },
+  { match: '德州', lat: 37.44, lon: 116.36 },
+  { match: '聊城', lat: 36.46, lon: 115.99 },
+  { match: '滨州', lat: 37.38, lon: 117.97 },
+  { match: '菏泽', lat: 35.23, lon: 115.48 },
+  // 河南省
   { match: '郑州', lat: 34.75, lon: 113.62 },
-  { match: '合肥', lat: 31.82, lon: 117.23 },
-  { match: '南昌', lat: 28.68, lon: 115.86 },
-  { match: '沈阳', lat: 41.8, lon: 123.43 },
-  { match: '大连', lat: 38.91, lon: 121.61 },
-  { match: '长春', lat: 43.82, lon: 125.32 },
-  { match: '哈尔滨', lat: 45.8, lon: 126.53 },
+  { match: '洛阳', lat: 34.62, lon: 112.45 },
+  { match: '开封', lat: 34.80, lon: 114.31 },
+  { match: '平顶山', lat: 33.77, lon: 113.19 },
+  { match: '安阳', lat: 36.10, lon: 114.39 },
+  { match: '鹤壁', lat: 35.75, lon: 114.30 },
+  { match: '新乡', lat: 35.30, lon: 113.93 },
+  { match: '焦作', lat: 35.22, lon: 113.24 },
+  { match: '濮阳', lat: 35.76, lon: 115.03 },
+  { match: '许昌', lat: 34.04, lon: 113.85 },
+  { match: '漯河', lat: 33.58, lon: 114.02 },
+  { match: '三门峡', lat: 34.77, lon: 111.20 },
+  { match: '南阳', lat: 32.99, lon: 112.53 },
+  { match: '商丘', lat: 34.41, lon: 115.66 },
+  { match: '信阳', lat: 32.15, lon: 114.09 },
+  { match: '周口', lat: 33.63, lon: 114.70 },
+  { match: '驻马店', lat: 32.98, lon: 114.02 },
+  { match: '济源', lat: 35.07, lon: 112.60 },
+  // 河北省
   { match: '石家庄', lat: 38.04, lon: 114.51 },
-  { match: '太原', lat: 37.87, lon: 112.55 },
+  { match: '唐山', lat: 39.63, lon: 118.18 },
+  { match: '秦皇岛', lat: 39.94, lon: 119.60 },
+  { match: '邯郸', lat: 36.63, lon: 114.54 },
+  { match: '邢台', lat: 37.07, lon: 114.50 },
+  { match: '保定', lat: 38.87, lon: 115.46 },
+  { match: '张家口', lat: 40.77, lon: 114.89 },
+  { match: '承德', lat: 40.95, lon: 117.96 },
+  { match: '沧州', lat: 38.30, lon: 116.84 },
+  { match: '廊坊', lat: 39.54, lon: 116.68 },
+  { match: '衡水', lat: 37.74, lon: 115.67 },
+  { match: '雄安', lat: 39.05, lon: 115.98 },
+  // 陕西省
+  { match: '西安', lat: 34.26, lon: 108.94 },
+  { match: '铜川', lat: 34.90, lon: 108.95 },
+  { match: '宝鸡', lat: 34.36, lon: 107.24 },
+  { match: '咸阳', lat: 34.33, lon: 108.71 },
+  { match: '渭南', lat: 34.50, lon: 109.51 },
+  { match: '延安', lat: 36.59, lon: 109.49 },
+  { match: '汉中', lat: 33.07, lon: 107.02 },
+  { match: '榆林', lat: 38.29, lon: 109.73 },
+  { match: '安康', lat: 32.68, lon: 109.03 },
+  { match: '商洛', lat: 33.87, lon: 109.94 },
+  // 安徽省
+  { match: '合肥', lat: 31.82, lon: 117.23 },
+  { match: '芜湖', lat: 31.35, lon: 118.43 },
+  { match: '蚌埠', lat: 32.92, lon: 117.39 },
+  { match: '淮南', lat: 32.63, lon: 117.00 },
+  { match: '马鞍山', lat: 31.67, lon: 118.51 },
+  { match: '淮北', lat: 33.96, lon: 116.80 },
+  { match: '铜陵', lat: 30.95, lon: 117.81 },
+  { match: '安庆', lat: 30.54, lon: 117.06 },
+  { match: '黄山', lat: 29.72, lon: 118.34 },
+  { match: '滁州', lat: 32.30, lon: 118.32 },
+  { match: '阜阳', lat: 32.89, lon: 115.81 },
+  { match: '宿州', lat: 33.65, lon: 116.96 },
+  { match: '六安', lat: 31.74, lon: 116.52 },
+  { match: '亳州', lat: 33.84, lon: 115.78 },
+  { match: '池州', lat: 30.66, lon: 117.49 },
+  { match: '宣城', lat: 30.94, lon: 118.76 },
+  // 江西省
+  { match: '南昌', lat: 28.68, lon: 115.86 },
+  { match: '景德镇', lat: 29.27, lon: 117.18 },
+  { match: '萍乡', lat: 27.62, lon: 113.85 },
+  { match: '九江', lat: 29.71, lon: 116.00 },
+  { match: '新余', lat: 27.82, lon: 114.92 },
+  { match: '鹰潭', lat: 28.26, lon: 117.07 },
+  { match: '赣州', lat: 25.83, lon: 114.93 },
+  { match: '吉安', lat: 27.11, lon: 114.99 },
+  { match: '宜春', lat: 27.82, lon: 114.42 },
+  { match: '抚州', lat: 27.95, lon: 116.36 },
+  { match: '上饶', lat: 28.45, lon: 117.94 },
+  // 辽宁省
+  { match: '沈阳', lat: 41.80, lon: 123.43 },
+  { match: '大连', lat: 38.91, lon: 121.61 },
+  { match: '鞍山', lat: 41.11, lon: 122.99 },
+  { match: '抚顺', lat: 41.88, lon: 123.96 },
+  { match: '本溪', lat: 41.30, lon: 123.77 },
+  { match: '丹东', lat: 40.00, lon: 124.35 },
+  { match: '锦州', lat: 41.10, lon: 121.13 },
+  { match: '营口', lat: 40.67, lon: 122.24 },
+  { match: '阜新', lat: 42.02, lon: 121.67 },
+  { match: '辽阳', lat: 41.27, lon: 123.24 },
+  { match: '盘锦', lat: 41.12, lon: 122.07 },
+  { match: '铁岭', lat: 42.29, lon: 123.84 },
+  { match: '朝阳', lat: 41.57, lon: 120.45 },
+  { match: '葫芦岛', lat: 40.71, lon: 120.84 },
+  // 吉林省
+  { match: '长春', lat: 43.82, lon: 125.32 },
+  { match: '四平', lat: 43.17, lon: 124.35 },
+  { match: '辽源', lat: 42.89, lon: 125.14 },
+  { match: '通化', lat: 41.73, lon: 125.94 },
+  { match: '白山', lat: 41.94, lon: 126.42 },
+  { match: '松原', lat: 45.14, lon: 124.82 },
+  { match: '白城', lat: 45.62, lon: 122.84 },
+  { match: '延边', lat: 42.89, lon: 129.51 },
+  { match: '延吉', lat: 42.89, lon: 129.51 },
+  // 黑龙江省
+  { match: '哈尔滨', lat: 45.80, lon: 126.53 },
+  { match: '齐齐哈尔', lat: 47.35, lon: 123.92 },
+  { match: '鸡西', lat: 45.30, lon: 130.97 },
+  { match: '鹤岗', lat: 47.35, lon: 130.30 },
+  { match: '双鸭山', lat: 46.65, lon: 131.16 },
+  { match: '大庆', lat: 46.59, lon: 125.10 },
+  { match: '伊春', lat: 47.73, lon: 128.84 },
+  { match: '佳木斯', lat: 46.80, lon: 130.32 },
+  { match: '七台河', lat: 45.77, lon: 131.00 },
+  { match: '牡丹江', lat: 44.55, lon: 129.63 },
+  { match: '黑河', lat: 50.24, lon: 127.53 },
+  { match: '绥化', lat: 46.65, lon: 126.97 },
+  { match: '大兴安岭', lat: 50.41, lon: 124.12 },
+  // 广西壮族自治区
   { match: '南宁', lat: 22.82, lon: 108.37 },
+  { match: '柳州', lat: 24.33, lon: 109.42 },
+  { match: '桂林', lat: 25.27, lon: 110.29 },
+  { match: '梧州', lat: 23.48, lon: 111.28 },
+  { match: '北海', lat: 21.48, lon: 109.12 },
+  { match: '防城港', lat: 21.69, lon: 108.35 },
+  { match: '钦州', lat: 21.98, lon: 108.65 },
+  { match: '贵港', lat: 23.11, lon: 109.60 },
+  { match: '玉林', lat: 22.64, lon: 110.16 },
+  { match: '百色', lat: 23.90, lon: 106.62 },
+  { match: '贺州', lat: 24.40, lon: 111.57 },
+  { match: '河池', lat: 24.69, lon: 108.09 },
+  { match: '来宾', lat: 23.75, lon: 109.22 },
+  { match: '崇左', lat: 22.38, lon: 107.36 },
+  // 云南省
   { match: '昆明', lat: 25.04, lon: 102.71 },
+  { match: '曲靖', lat: 25.49, lon: 103.80 },
+  { match: '玉溪', lat: 24.35, lon: 102.55 },
+  { match: '保山', lat: 25.11, lon: 99.16 },
+  { match: '昭通', lat: 27.34, lon: 103.72 },
+  { match: '丽江', lat: 26.86, lon: 100.23 },
+  { match: '普洱', lat: 22.83, lon: 100.97 },
+  { match: '临沧', lat: 23.88, lon: 100.09 },
+  { match: '楚雄', lat: 25.05, lon: 101.53 },
+  { match: '红河', lat: 23.36, lon: 103.38 },
+  { match: '蒙自', lat: 23.36, lon: 103.38 },
+  { match: '文山', lat: 23.40, lon: 104.22 },
+  { match: '西双版纳', lat: 22.01, lon: 100.80 },
+  { match: '景洪', lat: 22.01, lon: 100.80 },
+  { match: '大理', lat: 25.61, lon: 100.27 },
+  { match: '德宏', lat: 24.43, lon: 98.58 },
+  { match: '怒江', lat: 25.82, lon: 98.86 },
+  { match: '迪庆', lat: 27.82, lon: 99.71 },
+  { match: '香格里拉', lat: 27.82, lon: 99.71 },
+  // 贵州省
   { match: '贵阳', lat: 26.65, lon: 106.63 },
-  { match: '兰州', lat: 36.06, lon: 103.83 },
-  { match: '乌鲁木齐', lat: 43.83, lon: 87.62 },
+  { match: '六盘水', lat: 26.59, lon: 104.83 },
+  { match: '遵义', lat: 27.73, lon: 106.93 },
+  { match: '安顺', lat: 26.25, lon: 105.95 },
+  { match: '毕节', lat: 27.30, lon: 105.29 },
+  { match: '铜仁', lat: 27.72, lon: 109.19 },
+  { match: '黔西南', lat: 25.09, lon: 104.91 },
+  { match: '兴义', lat: 25.09, lon: 104.91 },
+  { match: '黔东南', lat: 26.58, lon: 107.98 },
+  { match: '凯里', lat: 26.58, lon: 107.98 },
+  { match: '黔南', lat: 26.26, lon: 107.52 },
+  { match: '都匀', lat: 26.26, lon: 107.52 },
+  // 山西省
+  { match: '太原', lat: 37.87, lon: 112.55 },
+  { match: '大同', lat: 40.08, lon: 113.30 },
+  { match: '阳泉', lat: 37.86, lon: 113.58 },
+  { match: '长治', lat: 36.20, lon: 113.12 },
+  { match: '晋城', lat: 35.49, lon: 112.85 },
+  { match: '朔州', lat: 39.33, lon: 112.43 },
+  { match: '晋中', lat: 37.69, lon: 112.75 },
+  { match: '运城', lat: 35.03, lon: 111.01 },
+  { match: '忻州', lat: 38.42, lon: 112.73 },
+  { match: '临汾', lat: 36.09, lon: 111.52 },
+  { match: '吕梁', lat: 37.52, lon: 111.14 },
+  // 内蒙古自治区
   { match: '呼和浩特', lat: 40.84, lon: 111.75 },
+  { match: '包头', lat: 40.66, lon: 109.84 },
+  { match: '乌海', lat: 39.66, lon: 106.79 },
+  { match: '赤峰', lat: 42.26, lon: 118.89 },
+  { match: '通辽', lat: 43.65, lon: 122.24 },
+  { match: '鄂尔多斯', lat: 39.61, lon: 109.78 },
+  { match: '呼伦贝尔', lat: 49.21, lon: 119.77 },
+  { match: '海拉尔', lat: 49.21, lon: 119.77 },
+  { match: '巴彦淖尔', lat: 40.74, lon: 107.39 },
+  { match: '乌兰察布', lat: 41.00, lon: 113.13 },
+  { match: '兴安', lat: 46.08, lon: 122.04 },
+  { match: '乌兰浩特', lat: 46.08, lon: 122.04 },
+  { match: '锡林郭勒', lat: 43.93, lon: 116.05 },
+  { match: '锡林浩特', lat: 43.93, lon: 116.05 },
+  { match: '阿拉善', lat: 38.85, lon: 105.73 },
+  // 甘肃省
+  { match: '兰州', lat: 36.06, lon: 103.83 },
+  { match: '嘉峪关', lat: 39.77, lon: 98.29 },
+  { match: '金昌', lat: 38.52, lon: 102.19 },
+  { match: '白银', lat: 36.55, lon: 104.14 },
+  { match: '天水', lat: 34.58, lon: 105.72 },
+  { match: '武威', lat: 37.93, lon: 102.64 },
+  { match: '张掖', lat: 38.93, lon: 100.45 },
+  { match: '平凉', lat: 35.54, lon: 106.67 },
+  { match: '酒泉', lat: 39.73, lon: 98.49 },
+  { match: '庆阳', lat: 35.71, lon: 107.64 },
+  { match: '定西', lat: 35.58, lon: 104.63 },
+  { match: '陇南', lat: 33.40, lon: 104.92 },
+  { match: '临夏', lat: 35.60, lon: 103.21 },
+  { match: '甘南', lat: 34.98, lon: 102.91 },
+  // 宁夏回族自治区
   { match: '银川', lat: 38.49, lon: 106.23 },
+  { match: '石嘴山', lat: 38.98, lon: 106.38 },
+  { match: '吴忠', lat: 37.99, lon: 106.20 },
+  { match: '固原', lat: 36.02, lon: 106.24 },
+  { match: '中卫', lat: 37.50, lon: 105.20 },
+  // 青海省
   { match: '西宁', lat: 36.62, lon: 101.78 },
+  { match: '海东', lat: 36.48, lon: 102.10 },
+  { match: '海北', lat: 36.95, lon: 100.90 },
+  { match: '黄南', lat: 35.51, lon: 102.02 },
+  { match: '海南州', lat: 36.28, lon: 100.62 },
+  { match: '果洛', lat: 34.47, lon: 100.24 },
+  { match: '玉树', lat: 33.00, lon: 97.01 },
+  { match: '海西', lat: 37.38, lon: 97.37 },
+  { match: '格尔木', lat: 36.40, lon: 94.90 },
+  // 新疆维吾尔自治区
+  { match: '乌鲁木齐', lat: 43.83, lon: 87.62 },
+  { match: '克拉玛依', lat: 45.58, lon: 84.89 },
+  { match: '吐鲁番', lat: 42.95, lon: 89.19 },
+  { match: '哈密', lat: 42.82, lon: 93.52 },
+  { match: '昌吉', lat: 44.01, lon: 87.31 },
+  { match: '博尔塔拉', lat: 44.91, lon: 82.07 },
+  { match: '博乐', lat: 44.91, lon: 82.07 },
+  { match: '巴音郭楞', lat: 41.76, lon: 86.15 },
+  { match: '库尔勒', lat: 41.76, lon: 86.15 },
+  { match: '阿克苏', lat: 41.17, lon: 80.26 },
+  { match: '克孜勒苏', lat: 39.72, lon: 76.17 },
+  { match: '喀什', lat: 39.47, lon: 75.99 },
+  { match: '和田', lat: 37.11, lon: 79.92 },
+  { match: '伊犁', lat: 43.92, lon: 81.32 },
+  { match: '伊宁', lat: 43.92, lon: 81.32 },
+  { match: '塔城', lat: 46.75, lon: 82.99 },
+  { match: '阿勒泰', lat: 47.84, lon: 88.14 },
+  { match: '石河子', lat: 44.30, lon: 86.08 },
+  // 西藏自治区
   { match: '拉萨', lat: 29.65, lon: 91.11 },
-  { match: '海口', lat: 20.04, lon: 110.2 },
+  { match: '日喀则', lat: 29.27, lon: 88.88 },
+  { match: '昌都', lat: 31.14, lon: 97.17 },
+  { match: '林芝', lat: 29.65, lon: 94.36 },
+  { match: '山南', lat: 29.24, lon: 91.77 },
+  { match: '那曲', lat: 31.48, lon: 92.05 },
+  { match: '阿里', lat: 32.50, lon: 80.11 },
+  // 海南省
+  { match: '海口', lat: 20.04, lon: 110.20 },
   { match: '三亚', lat: 18.25, lon: 109.51 },
-  { match: '北京', lat: 39.9, lon: 116.4 },
+  { match: '三沙', lat: 16.83, lon: 112.33 },
+  { match: '儋州', lat: 19.52, lon: 109.58 },
+  { match: '琼海', lat: 19.26, lon: 110.47 },
+  { match: '文昌', lat: 19.54, lon: 110.80 },
+  { match: '万宁', lat: 18.80, lon: 110.39 },
+  { match: '陵水', lat: 18.51, lon: 110.04 },
+  // 直辖市与省级兜底（置于末尾，当未命中地级市时回退到省会/首府真实坐标）
+  { match: '北京', lat: 39.90, lon: 116.40 },
   { match: '上海', lat: 31.23, lon: 121.47 },
-  { match: '天津', lat: 39.08, lon: 117.2 },
+  { match: '天津', lat: 39.08, lon: 117.20 },
   { match: '重庆', lat: 29.56, lon: 106.55 },
   { match: '广东', lat: 23.13, lon: 113.26 },
   { match: '浙江', lat: 30.27, lon: 120.15 },
-  { match: '江苏', lat: 32.06, lon: 118.8 },
+  { match: '江苏', lat: 32.06, lon: 118.80 },
   { match: '四川', lat: 30.57, lon: 104.06 },
   { match: '湖北', lat: 30.59, lon: 114.31 },
   { match: '湖南', lat: 28.23, lon: 112.94 },
-  { match: '福建', lat: 26.08, lon: 119.3 },
+  { match: '福建', lat: 26.08, lon: 119.30 },
   { match: '山东', lat: 36.65, lon: 117.12 },
   { match: '河南', lat: 34.75, lon: 113.62 },
   { match: '河北', lat: 38.04, lon: 114.51 },
   { match: '陕西', lat: 34.26, lon: 108.94 },
   { match: '安徽', lat: 31.82, lon: 117.23 },
   { match: '江西', lat: 28.68, lon: 115.86 },
-  { match: '辽宁', lat: 41.8, lon: 123.43 },
+  { match: '辽宁', lat: 41.80, lon: 123.43 },
   { match: '吉林', lat: 43.82, lon: 125.32 },
-  { match: '黑龙江', lat: 45.8, lon: 126.53 },
+  { match: '黑龙江', lat: 45.80, lon: 126.53 },
   { match: '广西', lat: 22.82, lon: 108.37 },
   { match: '云南', lat: 25.04, lon: 102.71 },
   { match: '贵州', lat: 26.65, lon: 106.63 },
@@ -275,9 +635,7 @@ const CN_PROVINCE_COORDS: Array<{ match: string; lat: number; lon: number }> = [
   { match: '甘肃', lat: 36.06, lon: 103.83 },
   { match: '宁夏', lat: 38.49, lon: 106.23 },
   { match: '青海', lat: 36.62, lon: 101.78 },
-  { match: '海南', lat: 20.04, lon: 110.2 },
-  { match: '香港', lat: 22.32, lon: 114.17 },
-  { match: '澳门', lat: 22.2, lon: 113.54 },
+  { match: '海南', lat: 20.04, lon: 110.20 },
   { match: '台湾', lat: 25.03, lon: 121.56 },
 ];
 
@@ -581,12 +939,12 @@ const failedGeoIps = new Map<string, number>();
 let geoWorkerRunning = false;
 
 export async function fetchAccurateIpGeo(ip: string): Promise<GeoProfile | null> {
+  let pconlineRespondedNoProvince = false;
   // 方案 A：优先调用国内极速太平洋 IP 库（国内服务器响应约 20~40ms，精准到省、市、三大运营商）
   try {
     const res = await fetch(
       `https://whois.pconline.com.cn/ipJson.jsp?ip=${encodeURIComponent(ip)}&json=true`,
-      // 生产环境到太平洋的 RTT 可能达到 ~3s；后台异步补全可以接受更长等待，避免误判超时
-      { signal: AbortSignal.timeout(6000) }
+      { signal: AbortSignal.timeout(2500) }
     );
     if (res.ok) {
       const buf = await res.arrayBuffer();
@@ -595,6 +953,7 @@ export async function fetchAccurateIpGeo(ip: string): Promise<GeoProfile | null>
         pro?: string;
         city?: string;
         addr?: string;
+        err?: string;
       };
       const pro = (data.pro || '').trim();
       const city = (data.city || '').trim();
@@ -615,14 +974,28 @@ export async function fetchAccurateIpGeo(ip: string): Promise<GeoProfile | null>
           enriched: true,
         };
       }
+      if (addr && (addr.includes('香港') || addr.includes('澳门') || addr.includes('台湾'))) {
+        const coords = inferCoordsFromText(addr, 22.32, 114.17);
+        return {
+          code: 'CN',
+          zh: '中国',
+          en: 'China',
+          region: addr.slice(0, 64),
+          lat: coords.lat,
+          lon: coords.lon,
+          enriched: true,
+        };
+      }
+      // 太平洋库成功返回但 pro 为空（如海外 APNIC 节点或 IPv6），允许继续走全球库精准定位
+      pconlineRespondedNoProvince = true;
     }
   } catch {
     /* fallback to global provider */
   }
 
-  // 中国 IP 不允许回退到 ip-api：该库对国内移动 IP 的省级数据经常错误（如贵州 IP 返回广东）。
-  // 失败时返回 null，由 enqueueGeoEnrichment 稍后重试太平洋库，避免把错误省份写入统计。
-  if (isLikelyChinaIp(ip)) return null;
+  // 仅当太平洋库因网络抖动超时未响应、且为疑似中国大陆 IPv4 时才暂缓回退；
+  // 若太平洋库明确返回无省份（海外 APNIC / IPv6），则继续调用 ip-api 获取精确经纬度。
+  if (!pconlineRespondedNoProvince && !ip.includes(':') && isLikelyChinaIp(ip)) return null;
 
   // 方案 B：海外或 IPv6 节点调用 ip-api.com (UTF-8 JSON，自带全球国家代码、城市、ISP 与经纬度)
   try {
@@ -669,12 +1042,15 @@ export async function fetchAccurateIpGeo(ip: string): Promise<GeoProfile | null>
         else if (rawIsp && rawIsp.length <= 24) ispShort = rawIsp;
 
         const region = [locPart, ispShort].filter(Boolean).join(' · ').slice(0, 64) || zh;
-        const lat =
-          typeof data.lat === 'number' && Number.isFinite(data.lat)
+        const inferred = code === 'CN' ? inferCoordsFromText(region, NaN, NaN) : { lat: NaN, lon: NaN };
+        const lat = Number.isFinite(inferred.lat)
+          ? inferred.lat
+          : typeof data.lat === 'number' && Number.isFinite(data.lat)
             ? Number(data.lat.toFixed(2))
             : (known?.lat ?? 35.0);
-        const lon =
-          typeof data.lon === 'number' && Number.isFinite(data.lon)
+        const lon = Number.isFinite(inferred.lon)
+          ? inferred.lon
+          : typeof data.lon === 'number' && Number.isFinite(data.lon)
             ? Number(data.lon.toFixed(2))
             : (known?.lon ?? 104.0);
 
@@ -721,6 +1097,7 @@ function enqueueGeoEnrichment(ip: string): void {
               enriched.lon,
               nextIp
             );
+            bumpAnalyticsVersion();
           } catch (err) {
             console.error('[analytics] updateIpGeo failed:', err);
           }
@@ -748,6 +1125,81 @@ interface PreparedStatements {
 }
 
 let cachedStmts: PreparedStatements | null = null;
+let analyticsDataVersion = 1;
+let cachedTodaySummary: { date: string; ver: number; todayUv: number; todayPv: number } | null = null;
+let cachedRawLogs: { ver: number; limit: number; items: VisitorLogItem[] } | null = null;
+
+function bumpAnalyticsVersion(): void {
+  analyticsDataVersion += 1;
+  cachedTodaySummary = null;
+  cachedRawLogs = null;
+}
+
+function repairExistingCoordsAndWarmCache(db: Database.Database): void {
+  try {
+    const rows = db
+      .prepare(
+        `SELECT id, ip, country_code, country_zh, country_en, region, lat, lon
+           FROM visitor_logs
+          ORDER BY id DESC
+          LIMIT 5000`
+      )
+      .all() as Array<{
+      id: number;
+      ip: string;
+      country_code: string;
+      country_zh: string;
+      country_en: string;
+      region: string;
+      lat: number;
+      lon: number;
+    }>;
+
+    const updateCoordStmt = db.prepare(
+      `UPDATE visitor_logs SET lat = ?, lon = ? WHERE id = ?`
+    );
+
+    db.transaction(() => {
+      for (const r of rows) {
+        let lat = r.lat;
+        let lon = r.lon;
+        if (r.country_code === 'CN' || r.country_zh === '中国') {
+          const inferred = inferCoordsFromText(`${r.region} ${r.country_zh}`, NaN, NaN);
+          if (
+            Number.isFinite(inferred.lat) &&
+            Number.isFinite(inferred.lon) &&
+            (Math.abs(lat - inferred.lat) > 0.05 || Math.abs(lon - inferred.lon) > 0.05)
+          ) {
+            lat = inferred.lat;
+            lon = inferred.lon;
+            updateCoordStmt.run(lat, lon, r.id);
+          }
+        } else if (COUNTRY_BY_CODE[r.country_code]) {
+          const c = COUNTRY_BY_CODE[r.country_code]!;
+          if (Math.abs(lat - 35.0) < 0.05 && Math.abs(lon - 104.0) < 0.05) {
+            lat = c.lat;
+            lon = c.lon;
+            updateCoordStmt.run(lat, lon, r.id);
+          }
+        }
+
+        if (r.ip && !ipGeoCache.has(r.ip) && r.region && !r.region.endsWith('公网节点') && !r.region.includes('本地')) {
+          setGeoCache(r.ip, {
+            code: r.country_code,
+            zh: r.country_zh,
+            en: r.country_en,
+            region: r.region,
+            lat,
+            lon,
+            enriched: true,
+          });
+        }
+      }
+    })();
+  } catch (err) {
+    console.error('[analytics] repairExistingCoordsAndWarmCache error:', err);
+  }
+}
 
 function getStmts(): PreparedStatements {
   const db = getDb();
@@ -797,6 +1249,7 @@ function getStmts(): PreparedStatements {
     ),
   };
 
+  repairExistingCoordsAndWarmCache(db);
   return cachedStmts;
 }
 
@@ -877,6 +1330,7 @@ export function flushPendingVisits(): void {
       }
     })();
 
+    bumpAnalyticsVersion();
     for (const ip of newIpsToEnrich) {
       enqueueGeoEnrichment(ip);
     }
@@ -1046,15 +1500,14 @@ export async function recordVisitBeacon(
     const nowSql = formatDateTimeSql();
     const referrer = String(payload?.referrer || headers.get('referer') || '').slice(0, 240);
 
-    // 若前端已附带太平洋 IP 库或 ipwho.is 的省市/运营商数据，直接构建并缓存；否则在后台异步/即时查询
+    // 若前端已附带太平洋 IP 库或 ipwho.is 的省市/运营商数据，直接构建并缓存；否则 0ms 内存初判并交由后台异步富化
     let geo = buildGeoFromBeaconPayload(effectiveIp, payload ?? undefined);
     if (!geo) {
       const cached = ipGeoCache.get(effectiveIp);
       if (cached?.enriched) {
         geo = cached;
       } else {
-        geo = (await fetchAccurateIpGeo(effectiveIp)) ?? resolveIpGeo(effectiveIp, headers);
-        if (geo.enriched) setGeoCache(effectiveIp, geo);
+        geo = resolveIpGeo(effectiveIp, headers);
       }
     }
 
@@ -1083,6 +1536,8 @@ export async function recordVisitBeacon(
       }
       if (geo.enriched) {
         stmts.updateIpGeo.run(geo.code, geo.zh, geo.en, geo.region, geo.lat, geo.lon, effectiveIp);
+      } else {
+        enqueueGeoEnrichment(effectiveIp);
       }
     } else {
       stmts.insertVisit.run(
@@ -1109,6 +1564,7 @@ export async function recordVisitBeacon(
       }
     }
 
+    bumpAnalyticsVersion();
     return { ok: true, ip: effectiveIp };
   } catch (err) {
     console.error('[analytics] recordVisitBeacon failed:', err);
@@ -1119,17 +1575,25 @@ export async function recordVisitBeacon(
 export function clearAnalyticsLogs(): void {
   pendingVisits.clear();
   getDb().prepare('DELETE FROM visitor_logs').run();
+  bumpAnalyticsVersion();
 }
 
-/** 极速获取今日 UV 与 PV（供后台顶栏导航角标使用） */
+/** 极速获取今日 UV 与 PV（供后台顶栏导航角标使用，带内存版本号缓存） */
 export function getTodayUvSummary(): { todayUv: number; todayPv: number } {
   flushPendingVisits();
   const today = formatDateYmd();
+  if (
+    cachedTodaySummary &&
+    cachedTodaySummary.date === today &&
+    cachedTodaySummary.ver === analyticsDataVersion
+  ) {
+    return { todayUv: cachedTodaySummary.todayUv, todayPv: cachedTodaySummary.todayPv };
+  }
   const row = getStmts().todaySummary.get(today) as { uv: number; pv: number } | undefined;
-  return {
-    todayUv: row?.uv ?? 0,
-    todayPv: row?.pv ?? 0,
-  };
+  const todayUv = row?.uv ?? 0;
+  const todayPv = row?.pv ?? 0;
+  cachedTodaySummary = { date: today, ver: analyticsDataVersion, todayUv, todayPv };
+  return { todayUv, todayPv };
 }
 
 /** 计算给定日期所属自然周的起始日（周一 YYYY-MM-DD） */
@@ -1195,16 +1659,16 @@ export function getAnalyticsDashboard(opts: AnalyticsQueryOptions = {}): Analyti
   const monthRow = db
     .prepare(
       `SELECT COUNT(DISTINCT ip) AS uv, COALESCE(SUM(pv_count), 0) AS pv
-         FROM visitor_logs WHERE substr(visit_date, 1, 7) = ?`
+         FROM visitor_logs WHERE visit_date >= ? AND visit_date <= ?`
     )
-    .get(thisMonth) as { uv: number; pv: number };
+    .get(`${thisMonth}-01`, `${thisMonth}-31`) as { uv: number; pv: number };
 
   const yearRow = db
     .prepare(
       `SELECT COUNT(DISTINCT ip) AS uv, COALESCE(SUM(pv_count), 0) AS pv
-         FROM visitor_logs WHERE substr(visit_date, 1, 4) = ?`
+         FROM visitor_logs WHERE visit_date >= ? AND visit_date <= ?`
     )
-    .get(thisYear) as { uv: number; pv: number };
+    .get(`${thisYear}-01-01`, `${thisYear}-12-31`) as { uv: number; pv: number };
 
   const totalRow = db
     .prepare(
@@ -1472,6 +1936,16 @@ export function getAnalyticsDashboard(opts: AnalyticsQueryOptions = {}): Analyti
  */
 export function listVisitorLogs(limit = 5000): VisitorLogItem[] {
   flushPendingVisits();
+  getStmts(); // 确保已完成历史坐标校准与缓存预热
+  const cappedLimit = Math.min(5000, Math.max(1, Math.floor(limit)));
+  if (
+    cachedRawLogs &&
+    cachedRawLogs.ver === analyticsDataVersion &&
+    cachedRawLogs.limit === cappedLimit
+  ) {
+    return cachedRawLogs.items;
+  }
+
   const db = getDb();
   const rows = db
     .prepare(
@@ -1482,7 +1956,7 @@ export function listVisitorLogs(limit = 5000): VisitorLogItem[] {
         ORDER BY visit_date DESC, last_seen DESC, id DESC
         LIMIT ?`
     )
-    .all(Math.min(5000, Math.max(1, Math.floor(limit)))) as Array<{
+    .all(cappedLimit) as Array<{
     id: number;
     visit_date: string;
     ip: string;
@@ -1503,30 +1977,44 @@ export function listVisitorLogs(limit = 5000): VisitorLogItem[] {
     last_seen: string;
   }>;
 
+  let enqueuedCount = 0;
   for (const r of rows) {
-    if (r.region.endsWith('公网节点') && !isPrivateOrLoopbackIp(r.ip)) {
+    if (enqueuedCount < 16 && r.region.endsWith('公网节点') && !isPrivateOrLoopbackIp(r.ip)) {
       enqueueGeoEnrichment(r.ip);
+      enqueuedCount += 1;
     }
   }
 
-  return rows.map((r) => ({
-    id: r.id,
-    visitDate: r.visit_date,
-    ip: r.ip,
-    countryCode: r.country_code,
-    countryZh: r.country_zh,
-    countryEn: r.country_en,
-    region: r.region,
-    lat: r.lat,
-    lon: r.lon,
-    deviceType: r.device_type,
-    os: r.os,
-    browser: r.browser,
-    userAgent: r.user_agent,
-    path: r.path,
-    referrer: r.referrer,
-    pvCount: r.pv_count,
-    firstSeen: r.first_seen,
-    lastSeen: r.last_seen,
-  }));
+  const items: VisitorLogItem[] = rows.map((r) => {
+    let lat = r.lat;
+    let lon = r.lon;
+    if (r.country_code === 'CN' || r.country_zh === '中国') {
+      const inferred = inferCoordsFromText(`${r.region} ${r.country_zh}`, lat, lon);
+      lat = inferred.lat;
+      lon = inferred.lon;
+    }
+    return {
+      id: r.id,
+      visitDate: r.visit_date,
+      ip: r.ip,
+      countryCode: r.country_code,
+      countryZh: r.country_zh,
+      countryEn: r.country_en,
+      region: r.region,
+      lat,
+      lon,
+      deviceType: r.device_type,
+      os: r.os,
+      browser: r.browser,
+      userAgent: r.user_agent,
+      path: r.path,
+      referrer: r.referrer,
+      pvCount: r.pv_count,
+      firstSeen: r.first_seen,
+      lastSeen: r.last_seen,
+    };
+  });
+
+  cachedRawLogs = { ver: analyticsDataVersion, limit: cappedLimit, items };
+  return items;
 }
