@@ -10,7 +10,7 @@
  *
  * 这里只读 + 删除；上传仍走 `/api/fs`。
  */
-import { unlinkSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, renameSync, rmdirSync, unlinkSync } from 'node:fs';
 import path from 'node:path';
 import { getDb } from '../db';
 import { uploadRoot } from '../uploads';
@@ -189,4 +189,71 @@ export function deleteMedia(mediaPath: string): boolean {
 
   const info = getDb().prepare('DELETE FROM media WHERE path = ?').run(mediaPath);
   return fileRemoved || info.changes > 0;
+}
+
+/**
+ * 将文章 Markdown / 封面 / 伴读栏配置中引用的旧 slug 媒体路径替换为新 slug。
+ */
+export function rewritePostSlugReferences(text: string, oldSlug: string, newSlug: string): string {
+  if (!text || !oldSlug || !newSlug || oldSlug === newSlug) return text;
+  return text
+    .replaceAll(`/uploads/posts/${oldSlug}/`, `/uploads/posts/${newSlug}/`)
+    .replaceAll(`/uploads/audio/${oldSlug}/`, `/uploads/audio/${newSlug}/`)
+    .replaceAll(`src/assets/posts/${oldSlug}/`, `src/assets/posts/${newSlug}/`)
+    .replaceAll(`src/assets/audio/${oldSlug}/`, `src/assets/audio/${newSlug}/`);
+}
+
+/**
+ * 当文章修改 slug 时，同步迁移磁盘上的 `/uploads/posts/<oldSlug>/` 与 `/uploads/audio/<oldSlug>/` 目录，
+ * 并更新 SQLite `media` 表中的 `path` 字段，防止文章配图/音频断链或沦为未归档孤儿文件。
+ */
+export function migratePostSlugAssets(oldSlug: string, newSlug: string): void {
+  if (!oldSlug || !newSlug || oldSlug === newSlug) return;
+  if (!/^[a-z0-9][a-z0-9-_]*$/i.test(oldSlug) || !/^[a-z0-9][a-z0-9-_]*$/i.test(newSlug)) return;
+
+  const root = uploadRoot();
+  for (const kind of ['posts', 'audio'] as const) {
+    const base = path.resolve(root, kind);
+    const oldDir = path.resolve(base, oldSlug);
+    const newDir = path.resolve(base, newSlug);
+    if (!oldDir.startsWith(base + path.sep) || !newDir.startsWith(base + path.sep)) continue;
+    if (!existsSync(oldDir)) continue;
+
+    mkdirSync(path.dirname(newDir), { recursive: true });
+    if (!existsSync(newDir)) {
+      renameSync(oldDir, newDir);
+    } else {
+      for (const entry of readdirSync(oldDir)) {
+        const srcFile = path.join(oldDir, entry);
+        const destFile = path.join(newDir, entry);
+        try {
+          renameSync(srcFile, destFile);
+        } catch {
+          // 忽略单个文件移动冲突
+        }
+      }
+      try {
+        rmdirSync(oldDir);
+      } catch {
+        // 目录非空则保留
+      }
+    }
+  }
+
+  const db = getDb();
+  db.transaction(() => {
+    for (const kind of ['posts', 'audio'] as const) {
+      const oldPrefix = `/uploads/${kind}/${oldSlug}/`;
+      const newPrefix = `/uploads/${kind}/${newSlug}/`;
+      const rows = db
+        .prepare('SELECT id, path FROM media WHERE path LIKE ?')
+        .all(`${oldPrefix}%`) as Array<{ id: number; path: string }>;
+      for (const row of rows) {
+        const nextPath = newPrefix + row.path.slice(oldPrefix.length);
+        // 若目标路径已存在重复记录，先删旧冲突记录再更新
+        db.prepare('DELETE FROM media WHERE path = ? AND id != ?').run(nextPath, row.id);
+        db.prepare('UPDATE media SET path = ? WHERE id = ?').run(nextPath, row.id);
+      }
+    }
+  })();
 }

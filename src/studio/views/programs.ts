@@ -71,12 +71,30 @@ function defaultPrograms(): ProgramsData {
   };
 }
 
+function emptyPrograms(): ProgramsData {
+  return {
+    console: {
+      kicker: '',
+      title: '',
+      desc: '',
+      buildVersion: '',
+      terminalLines: [],
+    },
+    modules: [],
+  };
+}
+
 function programsData(): ProgramsData {
   const draft = siteDraft();
-  const raw = (draft.programs ?? {}) as Json;
-  if (!raw.console || !Array.isArray(raw.modules)) {
-    draft.programs = defaultPrograms();
-    return draft.programs as unknown as ProgramsData;
+  if (!draft.programs || typeof draft.programs !== 'object') {
+    draft.programs = emptyPrograms();
+  }
+  const raw = draft.programs as Json;
+  if (!raw.console || typeof raw.console !== 'object') {
+    raw.console = emptyPrograms().console;
+  }
+  if (!Array.isArray(raw.modules)) {
+    raw.modules = [];
   }
   const consoleRaw = raw.console as Json;
   const lines = Array.isArray(consoleRaw.terminalLines) ? consoleRaw.terminalLines : [];
@@ -176,6 +194,7 @@ export function renderProgramsView(): void {
             <h2>程序工坊与交互实验模块</h2>
           </div>
           <div class="st-head-btns">
+            <button type="button" class="st-btn" id="st-prog-template">填入示例模板</button>
             <button type="button" class="st-btn st-btn--primary" id="st-prog-add">＋ 新增实验模块</button>
           </div>
         </div>
@@ -279,6 +298,14 @@ export function renderProgramsView(): void {
       wirePreview();
     })
   );
+
+  $('#st-prog-template')?.addEventListener('click', () => {
+    const tpl = defaultPrograms();
+    draft.console = tpl.console;
+    draft.modules = tpl.modules;
+    commit();
+    rerender();
+  });
 
   $('#st-prog-add')?.addEventListener('click', () => {
     const n = draft.modules.length + 1;

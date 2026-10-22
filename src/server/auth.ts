@@ -238,11 +238,15 @@ const WINDOW_MS = 10 * 60 * 1000;
 const MAX_ATTEMPTS = 5;
 const MAX_TRACKED_KEYS = 5000;
 
+export function cleanupExpiredRateLimits(now = Date.now()): void {
+  for (const [k, v] of attempts) {
+    if (v.resetAt <= now) attempts.delete(k);
+  }
+}
+
 function pruneAttempts(now: number): void {
   if (attempts.size < MAX_TRACKED_KEYS) return;
-  for (const [k, v] of attempts) {
-    if (v.resetAt < now) attempts.delete(k);
-  }
+  cleanupExpiredRateLimits(now);
   if (attempts.size >= MAX_TRACKED_KEYS) {
     const oldestKey = attempts.keys().next().value;
     if (oldestKey !== undefined) attempts.delete(oldestKey);
@@ -252,11 +256,11 @@ function pruneAttempts(now: number): void {
 export function isRateLimited(
   key: string,
   maxAttempts = MAX_ATTEMPTS,
-  _windowMs = WINDOW_MS
+  windowMs = WINDOW_MS
 ): boolean {
   const now = Date.now();
   const a = attempts.get(key);
-  if (!a || a.resetAt < now) {
+  if (!a || a.resetAt <= now || a.resetAt - now > windowMs) {
     attempts.delete(key);
     return false;
   }

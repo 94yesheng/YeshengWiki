@@ -6,15 +6,6 @@
  */
 import { Github, type DirEntry, type RemoteFile } from './github';
 
-function bytesToBase64(bytes: Uint8Array): string {
-  let bin = '';
-  const chunk = 0x8000;
-  for (let i = 0; i < bytes.length; i += chunk) {
-    bin += String.fromCharCode(...bytes.subarray(i, i + chunk));
-  }
-  return btoa(bin);
-}
-
 async function errorOf(res: Response): Promise<string> {
   try {
     const data = (await res.json()) as { error?: string };
@@ -86,13 +77,20 @@ export class ApiGithub extends Github {
     path: string,
     text: string,
     commitMessage: string,
-    sha?: string
+    sha?: string,
+    fromPath?: string
   ): Promise<void> {
     this.prefetchCache.delete(path);
+    if (fromPath) this.prefetchCache.delete(fromPath);
     const res = await fetch(this.fsUrl(path), {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': this.csrf },
-      body: JSON.stringify({ text, message: commitMessage, sha }),
+      body: JSON.stringify({
+        text,
+        message: commitMessage,
+        sha,
+        ...(fromPath ? { fromPath } : {}),
+      }),
     });
     if (!res.ok) throw new Error(await errorOf(res));
   }
@@ -100,13 +98,18 @@ export class ApiGithub extends Github {
   async putBinary(
     path: string,
     bytes: Uint8Array,
-    commitMessage: string,
+    _commitMessage: string,
     sha?: string
   ): Promise<void> {
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/octet-stream',
+      'X-CSRF-Token': this.csrf,
+    };
+    if (sha) headers['X-File-Sha'] = sha;
     const res = await fetch(this.fsUrl(path, '&binary=1'), {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': this.csrf },
-      body: JSON.stringify({ base64: bytesToBase64(bytes), message: commitMessage, sha }),
+      headers,
+      body: bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer,
     });
     if (!res.ok) throw new Error(await errorOf(res));
   }

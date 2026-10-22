@@ -13,7 +13,7 @@ param(
 #   $env:BLOG_APP_DIR  = "<APP_DIR>"        # 代码目录（默认 /srv/blog-app）
 # 也可以用 -Server / -Key / -AppDir 参数显式传入覆盖。
 #
-# 部署“代码”到服务器：上传源码 → npm ci → build:dynamic → 重启 systemd。
+# 部署“代码”到服务器：上传源码 → 在临时目录 staging 构建 → 原子切换 dist-dynamic 与静态资源 → 重启 systemd。
 # 不碰 SQLite 与 uploads（内容在数据库里）。
 #   staging:    powershell -File scripts\deploy-server.ps1 -Service blog-staging
 #   production: powershell -File scripts\deploy-server.ps1
@@ -41,14 +41,27 @@ try {
     scp -i $Key -o BatchMode=yes $tar "${User}@${Server}:/tmp/blog-src.tar.gz"
     if ($LASTEXITCODE -ne 0) { throw "scp failed" }
 
-    Write-Host "==> install, build, restart $Service" -ForegroundColor Cyan
+    Write-Host "==> staging build, atomic swap, restart $Service" -ForegroundColor Cyan
+    $StageDir = "${AppDir}.staging"
     $remote = @(
         "set -e",
-        "rm -rf $AppDir/src $AppDir/public $AppDir/scripts $AppDir/db $AppDir/docs $AppDir/dist-dynamic",
-        "tar -xzf /tmp/blog-src.tar.gz -C $AppDir",
-        "cd $AppDir",
+        "rm -rf $StageDir",
+        "mkdir -p $StageDir",
+        "if [ -d $AppDir/node_modules ]; then cp -al $AppDir/node_modules $StageDir/node_modules 2>/dev/null || true; fi",
+        "tar -xzf /tmp/blog-src.tar.gz -C $StageDir",
+        "cd $StageDir",
         "npm ci --registry=https://registry.npmmirror.com --no-audit --no-fund",
         "npm run build:dynamic",
+        "mkdir -p $AppDir",
+        "for item in src public scripts db docs package.json package-lock.json astro.config.mjs tsconfig.json; do",
+        "  if [ -e $StageDir/`$item ]; then rm -rf $AppDir/`$item && mv $StageDir/`$item $AppDir/`$item; fi",
+        "done",
+        "rm -rf $AppDir/node_modules.old $AppDir/dist-dynamic.old",
+        "if [ -d $AppDir/node_modules ]; then mv $AppDir/node_modules $AppDir/node_modules.old; fi",
+        "mv $StageDir/node_modules $AppDir/node_modules",
+        "if [ -d $AppDir/dist-dynamic ]; then mv $AppDir/dist-dynamic $AppDir/dist-dynamic.old; fi",
+        "mv $StageDir/dist-dynamic $AppDir/dist-dynamic",
+        "rm -rf $AppDir/node_modules.old $AppDir/dist-dynamic.old $StageDir /tmp/blog-src.tar.gz",
         "chown -R blog:blog $AppDir",
         "systemctl restart $Service",
         "systemctl is-active $Service"

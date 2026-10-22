@@ -48,25 +48,33 @@ interface Props {
   decimals?: number;
   /** 只在夜间模式出现（宿主用 `<html data-theme="dark">` 定调） */
   onlyInDark?: boolean;
+  /** 后台配置的基准世界线（形如 1.048596）；留空则随机定格 */
+  worldline?: string;
 }
 
-const { size = 'clamp(8px, 2.5vw, 12px)', decimals = 6, onlyInDark = true } = Astro.props;
+const { size = 'clamp(8px, 2.5vw, 12px)', decimals = 6, onlyInDark = true, worldline = '' } = Astro.props;
+const cleanWorldline = worldline.trim();
+const wlMatch = /^(\d)\.(\d+)$/.exec(cleanWorldline);
+const initInt = wlMatch ? Number(wlMatch[1]) : 1;
+const initDecimals = Array.from({ length: decimals }, (_, i) =>
+  wlMatch && wlMatch[2]?.[i] !== undefined ? Number(wlMatch[2][i]) : 0
+);
 
 /**
  * 一根管一个条目：`dot` 是小数点那根（它点的是个圆，没有数字位），
- * `init` 是**还没滚到页脚时**点亮的那一位 —— 整数位写 1（世界线变动率都是 1 开头），
- * 这样"没通电"的状态读出来就是 1.000000 而不是一串零。
+ * `init` 是**还没滚到页脚时**点亮的那一位 —— 若配置了基准世界线则按世界线初始化，否则默认 1.000000。
  */
 const TUBES: Array<{ dot: boolean; init: number }> = [
-  { dot: false, init: 1 },
+  { dot: false, init: initInt },
   { dot: true, init: 0 },
-  ...Array.from({ length: decimals }, () => ({ dot: false, init: 0 })),
+  ...initDecimals.map((d) => ({ dot: false, init: d })),
 ];
 ---
 
 <div
   class:list={['dm', onlyInDark && 'dm--dark-only']}
   data-dm
+  data-worldline={cleanWorldline || undefined}
   aria-hidden="true"
   style={`--dm-size: ${size}`}
 >

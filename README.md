@@ -3,7 +3,7 @@
 > 仓库：`94yesheng/YeshengWiki`（公开仓库；**内容数据不在仓库里**）
 > 本地路径：`D:\blog`
 > 线上：<https://www.yesheng.wiki/>（动态版，已启用 HTTPS）。
-> 文档更新：2026-10-21
+> 文档更新：2026-10-22
 
 > **当前状态**
 >
@@ -44,7 +44,7 @@
 | 渲染 | `markdown-it` + `turndown` + `js-yaml` | 正文渲染 / 后台富文本互转 / frontmatter 解析 |
 | 上传 | 本地 `uploads/` + 浏览器端 Sharp 压缩 + 音频标签解析 | 图片压缩转 WebP；音频读 ID3v2/v1、FLAC、M4A 标签 |
 | 样式 | 手写 CSS，无框架 | 没有 Tailwind、没有预处理器 |
-| 部署 | systemd + Nginx 反代 | 代码由部署脚本推送；静态回滚保留旧配置与文件 |
+| 部署 | systemd + Nginx 反代 | 部署脚本在 `${APP_DIR}.staging` 构建，成功后原子切换 `dist-dynamic` / `node_modules` 并重启；构建失败不影响线上 |
 | CI | GitHub Actions（仅校验） | `npm run check` + `npm run build:dynamic`，**不做部署** |
 
 ---
@@ -94,7 +94,7 @@ D:\blog\
 │   ├── nginx-dynamic.conf       # 线上 Nginx 反代配置示例（路径按实际部署目录替换）
 │   └── studio-typography.md     # 后台 UI 字号与字体清单（改后台排版前先看）
 ├── scripts/
-│   ├── deploy-server.ps1        # 部署：打包源码 → scp → npm ci + build:dynamic + 重启
+│   ├── deploy-server.ps1        # 部署：上传源码 → staging 构建 → 原子切换 dist/node_modules → 重启
 │   ├── migrate-to-db.mjs        # src/content + src/assets → SQLite + uploads
 │   ├── import-wordpress.mjs     # WordPress 导出 → SQLite（slug 表与 301 映射共用一份）
 │   ├── migrate-pages-settings.mjs # 旧设置 → site_settings.pages（幂等，可重复跑）
@@ -359,6 +359,12 @@ Schema 唯一来源是 [db/schema.sql](db/schema.sql)（`src/server/schema.ts` �
   照片墙事务；HUD 资源外链缓存、列表查询瘦身、上传流式响应、Studio 预取、音频 Range、
   Canvas 可见性暂停；抽离 loader / friend-links / audio-meta / theme 桥接；
   编辑器监听器清理与粘贴截图。Schema 升到 v2（新增 `link_applications`）。
+- 2026-10-22：合入 Bug 修复版（1.1–1.7 / 2.1–2.6）：
+  锁定登出补 CSRF、辉光管开关 / 世界线、EXIF 乱码开关、程序空态不再注入示例数据、
+  友链蜜罐字段、全局 loader / friend-links 桥接签名、Studio v2 保存文案；
+  文章改 slug 原子更新并迁移配图 / 音频与 `media` 记录、二进制直传 + 体积 / 魔数校验、
+  SVG 实体编码与 SMIL 绕过防护、右栏 / 友链 / 程序链接协议白名单、会话与限流定时清理；
+  部署脚本改为 `${APP_DIR}.staging` 构建成功后原子切换，消除部署期间的 404/502 窗口。
 
 **待办**
 
@@ -385,6 +391,8 @@ Schema 唯一来源是 [db/schema.sql](db/schema.sql)（`src/server/schema.ts` �
   要加映射只改 `src/server/legacy-redirects.json`，别再复制到 Nginx。
 - **文档不写真实基础设施**：服务器地址 / 目录用 `<SERVER_IP>`、`<APP_DIR>`、`<DATA_DIR>` 占位，
   真实值只放在部署环境变量和服务器上的受保护文件里。
+- **部署脚本是原子切换**：先在 `${APP_DIR}.staging` 完整构建，成功后才替换 `dist-dynamic` 与
+  `node_modules`；构建失败时线上保持旧版本，不需要手工回滚。
 - `.work/` 是本地验证脚手架与截图（`mock-github.mjs`、`page-shot.mjs`、`artifact-check.mjs`、
   `kai-audit.mjs`、`account-test.mjs`、`1panel-login-check.mjs` 等），不进仓库。
 - 构建后 HUD 页的 CSS/JS 已外链到 `/artifact/`，HTML 不再内联 ~300 KB；本地 middleware 对

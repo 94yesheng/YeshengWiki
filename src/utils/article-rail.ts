@@ -106,16 +106,31 @@ const esc = (s: unknown): string =>
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;');
 
+/**
+ * 过滤危险 URL 协议（javascript: / vbscript: / data:），仅允许 http(s)、mailto、站内相对路径与锚点。
+ */
+export function safeRailUrl(raw: unknown, fallback = '#'): string {
+  const s = String(raw ?? '').trim();
+  if (!s) return fallback;
+  if (/^(?:https?:\/\/|mailto:)/i.test(s)) return s;
+  if ((s.startsWith('/') && !s.startsWith('//')) || s.startsWith('#')) return s;
+  return fallback;
+}
+
 export function normalizeMediaAssetUrl(raw: string): string {
   const s = String(raw ?? '').trim();
   if (!s) return '';
-  return s
+  const rewritten = s
     .replace(/^\.\.\/\.\.\/assets\/posts\//, '/uploads/posts/')
     .replace(/^\.\.\/\.\.\/assets\/photos\//, '/uploads/photos/')
     .replace(/^\.\.\/\.\.\/assets\/audio\//, '/uploads/audio/')
     .replace(/^\/?src\/assets\/posts\//, '/uploads/posts/')
     .replace(/^\/?src\/assets\/photos\//, '/uploads/photos/')
     .replace(/^\/?src\/assets\/audio\//, '/uploads/audio/');
+  if (/^https?:\/\//i.test(rewritten) || (rewritten.startsWith('/') && !rewritten.startsWith('//'))) {
+    return rewritten;
+  }
+  return '';
 }
 
 /**
@@ -388,7 +403,7 @@ export function renderWidgetCardHtml(
       <ul class="rail-related-list">
         ${links
           .map((lk, idx) => {
-            const url = lk.url?.trim() || '#';
+            const url = safeRailUrl(lk.url, '#');
             const external = /^https?:\/\//i.test(url);
             const sub = lk.note?.trim() || url.replace(/^https?:\/\//i, '');
             if (isStudioDockPreview) {

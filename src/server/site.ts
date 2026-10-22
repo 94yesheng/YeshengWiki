@@ -113,5 +113,19 @@ export function applyArtifactSite(html: string, site: SiteConfig, current?: stri
     );
   }
 
+  const dmEnabled = site.divergenceMeter?.enabled !== false;
+  const dmWorldline = (site.divergenceMeter?.worldline ?? '').trim();
+  const studioCfg = getSetting<{ exifCipherEffect?: boolean }>('studio', {});
+  const exifCipherEnabled = studioCfg.exifCipherEffect !== false;
+
+  out = out.replace(
+    /<div class="dm dm--dark-only" id="footer-dm" data-dm aria-hidden="true">/,
+    `<div class="dm dm--dark-only" id="footer-dm" data-dm data-dm-enabled="${
+      dmEnabled ? 'true' : 'false'
+    }" data-worldline="${esc(dmWorldline)}" data-exif-cipher="${
+      exifCipherEnabled ? 'true' : 'false'
+    }"${dmEnabled ? '' : ' hidden style="display:none"'} aria-hidden="true">`
+  );
+
   return out;
 }

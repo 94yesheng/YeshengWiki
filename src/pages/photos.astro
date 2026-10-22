@@ -9,11 +9,14 @@ import ArtifactLayout from '../layouts/ArtifactLayout.astro';
 import photosTpl from '../artifact/photos.html?raw';
 import { listWalls, type Photo } from '../server/repositories/photos';
 import { copy, getPageValues } from '../server/pages';
+import { getSetting } from '../server/repositories/settings';
 import { applyArtifactSite, getSiteConfig } from '../server/site';
 
 const walls = listWalls();
 const photos = walls.flatMap((wall) => wall.photos);
 const site = getSiteConfig();
+const studioCfg = getSetting<{ exifCipherEffect?: boolean }>('studio', {});
+const exifCipherEffect = studioCfg.exifCipherEffect !== false;
 const pages = getPageValues();
 const c = (key: string, vars?: Record<string, string | number>) => copy(pages, key, vars);
 
@@ -196,5 +199,5 @@ const photoJson = JSON.stringify(db).replace(/</g, '\\u003c');
   description={c('photos.description')}
 >
   <Fragment set:html={html} />
-  <script is:inline set:html={`window.__PHOTO_DB = ${photoJson};`}></script>
+  <script is:inline set:html={`window.__PHOTO_DB = ${photoJson}; window.__EXIF_CIPHER_EFFECT = ${JSON.stringify(exifCipherEffect)};`}></script>
 </ArtifactLayout>

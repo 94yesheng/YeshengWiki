@@ -503,6 +503,9 @@ function renderWallPreview(): void {
     ? p.hist
     : [28, 42, 64, 82, 90, 74, 58, 46, 62, 78, 88, 70, 52, 36, 24, 16];
   const seed = p.file || `frame-${selIdx}`;
+  const siteRoot = (state.draft.site ?? state.site?.data ?? {}) as Record<string, unknown>;
+  const studioCfg = (siteRoot.studio ?? {}) as Record<string, unknown>;
+  const cipherEnabled = studioCfg.exifCipherEffect !== false;
 
   box.innerHTML = `
     <div class="st-col-inner">
@@ -531,42 +534,42 @@ function renderWallPreview(): void {
         <div class="photo-exif-spec-grid st-preview-exif-grid">
           <div class="exif-cell">
             <span>DATE // 拍摄日期</span>
-            ${renderExifValueOrCipherHtml('date', p.date, seed)}
+            ${renderExifValueOrCipherHtml('date', p.date, seed, cipherEnabled)}
           </div>
           <div class="exif-cell">
             <span>LOCATION // 拍摄地点</span>
-            ${renderExifValueOrCipherHtml('location', p.location, seed)}
+            ${renderExifValueOrCipherHtml('location', p.location, seed, cipherEnabled)}
           </div>
           <div class="exif-cell">
             <span>ASPECT // 原生画幅</span>
-            ${renderExifValueOrCipherHtml('aspect', p.aspect, seed)}
+            ${renderExifValueOrCipherHtml('aspect', p.aspect, seed, cipherEnabled)}
           </div>
           <div class="exif-cell">
             <span>CAMERA // 器材机身</span>
-            ${renderExifValueOrCipherHtml('camera', p.camera, seed)}
+            ${renderExifValueOrCipherHtml('camera', p.camera, seed, cipherEnabled)}
           </div>
           <div class="exif-cell">
             <span>LENS // 镜头焦段</span>
-            ${renderExifValueOrCipherHtml('lens', p.lens, seed)}
+            ${renderExifValueOrCipherHtml('lens', p.lens, seed, cipherEnabled)}
           </div>
           <div class="exif-cell">
             <span>EXPOSURE // 曝光参数</span>
-            ${renderExifValueOrCipherHtml('exposure', p.exposure, seed)}
+            ${renderExifValueOrCipherHtml('exposure', p.exposure, seed, cipherEnabled)}
           </div>
           <div class="exif-cell">
             <span>COLOR // 色彩科学</span>
-            ${renderExifValueOrCipherHtml('color', p.color, seed)}
+            ${renderExifValueOrCipherHtml('color', p.color, seed, cipherEnabled)}
           </div>
           <div class="exif-cell">
             <span>COORDINATES // 经纬</span>
-            ${renderExifValueOrCipherHtml('gps', p.gps, seed)}
+            ${renderExifValueOrCipherHtml('gps', p.gps, seed, cipherEnabled)}
           </div>
         </div>
 
         <div class="photo-histogram-box" style="margin-top:0.55rem;">
           <div class="histogram-head">
             <span>LUMINANCE &amp; SPECTRUM // 影调直方分布</span>
-            <span class="telemetry-accent">${renderExifValueOrCipherHtml('ev', p.ev, seed)}</span>
+            <span class="telemetry-accent">${renderExifValueOrCipherHtml('ev', p.ev, seed, cipherEnabled)}</span>
           </div>
           <div class="histogram-bars" aria-hidden="true">
             ${hist.map((h) => `<span style="height:${Math.max(8, Math.min(100, h))}%"></span>`).join('')}

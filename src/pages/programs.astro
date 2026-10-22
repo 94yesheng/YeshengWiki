@@ -116,8 +116,8 @@ const c = (key: string, vars?: Record<string, string | number>) => copy(pages, k
             <h2>{m.title ?? '未命名模块'}</h2>
             <p>{m.desc ?? ''}</p>
             <div class="prog-foot">
-              {m.href && !m.href.startsWith('#') ? (
-                <a href={m.href}>{m.status || c('programs.viewCta')}</a>
+              {m.href && !m.href.startsWith('#') && (/^https?:\/\//i.test(m.href.trim()) || (m.href.trim().startsWith('/') && !m.href.trim().startsWith('//'))) ? (
+                <a href={m.href.trim()}>{m.status || c('programs.viewCta')}</a>
               ) : (
                 <span>{(m.status || c('programs.statusFallback')).replace(/\s*->\s*$/, '')}</span>
               )}

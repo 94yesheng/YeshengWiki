@@ -39,9 +39,14 @@ import {
   updatePost,
 } from '../repositories/posts';
 import { listLinks, replaceLinks } from '../repositories/links';
+import { migratePostSlugAssets, rewritePostSlugReferences } from '../repositories/media';
 import { getSettings, SETTING_KEYS, setSetting } from '../repositories/settings';
 import { uploadRoot } from '../uploads';
 import { fail, json, readJson } from './http';
+
+const MAX_IMAGE_UPLOAD_BYTES = 20 * 1024 * 1024; // 单张图片服务端硬上限 20MB
+const MAX_AUDIO_UPLOAD_BYTES = 30 * 1024 * 1024; // 单个音频服务端硬上限 30MB
+const MAX_BASE64_JSON_BYTES = 42 * 1024 * 1024;  // 兼容旧版 Base64 JSON 传输上限
 
 const sha1 = (text: string) => createHash('sha1').update(text).digest('hex');
 
@@ -82,13 +87,34 @@ export async function handleFs(context: APIContext): Promise<Response> {
 
   if (method === 'PUT') {
     if (binary) {
-      const body = await readJson<{ base64?: string; message?: string; sha?: string }>(context.request);
-      if (!body?.base64) return fail('缺少 base64', 400);
+      const contentType = (context.request.headers.get('content-type') ?? '').toLowerCase();
+      if (!contentType.includes('application/json')) {
+        const declaredLen = Number(context.request.headers.get('content-length') || 0);
+        if (Number.isFinite(declaredLen) && declaredLen > MAX_AUDIO_UPLOAD_BYTES) {
+          return fail('上传文件体积超出服务端限制（最大 30MB）', 413);
+        }
+        const ab = await context.request.arrayBuffer();
+        if (ab.byteLength > MAX_AUDIO_UPLOAD_BYTES) {
+          return fail('上传文件体积超出服务端限制（最大 30MB）', 413);
+        }
+        const shaHeader = context.request.headers.get('x-file-sha')?.trim() || undefined;
+        return putBinaryBuffer(filePath, Buffer.from(ab), shaHeader);
+      }
+      const body = await readJson<{ base64?: string; message?: string; sha?: string }>(
+        context.request,
+        MAX_BASE64_JSON_BYTES
+      );
+      if (!body?.base64) return fail('缺少 base64 或请求体过大', 400);
       return putBinary(filePath, body.base64, body.sha);
     }
-    const body = await readJson<{ text?: string; message?: string; sha?: string }>(context.request);
-    if (typeof body?.text !== 'string') return fail('缺少 text', 400);
-    return putText(filePath, body.text, body.sha);
+    const body = await readJson<{
+      text?: string;
+      message?: string;
+      sha?: string;
+      fromPath?: string;
+    }>(context.request);
+    if (typeof body?.text !== 'string') return fail('缺少 text 或请求体过大', 400);
+    return putText(filePath, body.text, body.sha, body.fromPath);
   }
 
   if (method === 'DELETE') {
@@ -213,9 +239,17 @@ async function getText(filePath: string): Promise<Response> {
   return fail('文件不存在', 404);
 }
 
-async function putText(filePath: string, text: string, sha?: string): Promise<Response> {
+async function putText(
+  filePath: string,
+  text: string,
+  sha?: string,
+  fromPath?: string
+): Promise<Response> {
   const postMatch = /^src\/content\/posts\/([^/]+)\.md$/.exec(filePath);
-  if (postMatch) return putPost(postMatch[1]!, text, sha);
+  if (postMatch) {
+    const fromPostMatch = fromPath ? /^src\/content\/posts\/([^/]+)\.md$/.exec(fromPath) : null;
+    return putPost(postMatch[1]!, text, sha, fromPostMatch?.[1]);
+  }
 
   const wallMatch = /^src\/content\/photos\/([^/]+)\.json$/.exec(filePath);
   if (wallMatch) return putWall(wallMatch[1]!, text, sha);
@@ -252,22 +286,36 @@ async function putText(filePath: string, text: string, sha?: string): Promise<Re
   return fail('文件不存在', 404);
 }
 
-function putPost(slug: string, text: string, sha?: string): Response {
-  const current = getPostBySlug(slug, true);
+function putPost(slug: string, text: string, sha?: string, fromSlug?: string): Response {
+  const isRename = Boolean(fromSlug && fromSlug !== slug);
+  const current = isRename ? getPostBySlug(fromSlug!, true) : getPostBySlug(slug, true);
   if (current && sha && sha !== String(current.version)) {
     return fail('文章已在别处被修改，请刷新后重试', 409);
   }
 
+  if (isRename) {
+    const conflict = getPostBySlug(slug, true);
+    if (conflict && (!current || conflict.id !== current.id)) {
+      return fail(`目标文章路由「${slug}」已存在，请换一个文件名`, 409);
+    }
+  }
+
+  const effectiveText =
+    isRename && fromSlug ? rewritePostSlugReferences(text, fromSlug, slug) : text;
+
   let parsed;
   try {
-    parsed = parsePostMarkdown(text, slug);
+    parsed = parsePostMarkdown(effectiveText, slug);
   } catch (error) {
     return fail((error as Error).message, 400);
   }
 
   try {
+    if (isRename && fromSlug) {
+      migratePostSlugAssets(fromSlug, slug);
+    }
     const saved = current
-      ? updatePost(current.id, parsed, current.version)
+      ? updatePost(current.id, { ...parsed, slug }, current.version)
       : createPost(parsed);
     if (!saved) return fail('保存冲突，请刷新后重试', 409);
     return json({ ok: true, sha: String(saved.version) });
@@ -316,7 +364,7 @@ interface AssetTarget {
   publicPath: string;
 }
 
-const UNSAFE_SEGMENT = /[\\:*?"<>|\0]/;
+const UNSAFE_SEGMENT = /[\\:*?"<>|\x00-\x1f\x7f]/;
 
 const ALLOWED_EXT_MIME: Record<string, string> = {
   '.jpg': 'image/jpeg',
@@ -337,9 +385,10 @@ const ALLOWED_EXT_MIME: Record<string, string> = {
   '.webm': 'audio/webm',
 };
 
-/** 资源路径的单个分段：拒绝 . / .. / 隐藏文件 / 盘符与反斜杠 */
+/** 资源路径的单个分段：拒绝 . / .. / 隐藏文件 / 超长文件名 / 控制字符 / 盘符与反斜杠 */
 function safeAssetSegment(segment: string): boolean {
   if (!segment || segment === '.' || segment === '..') return false;
+  if (segment.length > 180) return false;
   if (segment.startsWith('.')) return false;
   if (UNSAFE_SEGMENT.test(segment)) return false;
   return segment === path.basename(segment);
@@ -433,15 +482,69 @@ function inspectImageBuffer(
 }
 
 /**
- * 校验 SVG 文本安全性：禁止内嵌 <script>、javascript: 伪协议与 on* 事件处理器，防止存储型 XSS。
+ * 解码 HTML / XML 数值与常见命名字符实体，防止通过 &#x6a;avascript: 等编码绕过 SVG 安全检测。
+ */
+function decodeXmlEntities(input: string): string {
+  return input
+    .replace(/&#x([0-9a-f]+);?/gi, (_m, hex: string) => {
+      const code = parseInt(hex, 16);
+      return Number.isFinite(code) && code > 0 && code <= 0x10ffff ? String.fromCodePoint(code) : '';
+    })
+    .replace(/&#([0-9]+);?/g, (_m, dec: string) => {
+      const code = parseInt(dec, 10);
+      return Number.isFinite(code) && code > 0 && code <= 0x10ffff ? String.fromCodePoint(code) : '';
+    })
+    .replace(/&colon;/gi, ':')
+    .replace(/&tab;/gi, ' ')
+    .replace(/&newline;/gi, ' ')
+    .replace(/&quot;/gi, '"')
+    .replace(/&apos;/gi, "'")
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&amp;/gi, '&');
+}
+
+/**
+ * 校验 SVG 文本安全性：拦截多字节 BOM、XML 实体编码绕过、危险嵌入标签、SMIL 动画注入、
+ * on* 事件处理器与 javascript:/vbscript:/data: 伪协议，防止存储型 XSS。
  */
 function isUnsafeSvg(buf: Buffer): boolean {
-  const text = buf.toString('utf8');
-  if (!/<svg[\s>]/i.test(text)) return true;
-  if (/<script[\s>]/i.test(text)) return true;
-  if (/<foreignObject[\s>]/i.test(text)) return true;
-  if (/javascript\s*:/i.test(text)) return true;
-  if (/\bon[a-z]+\s*=/i.test(text)) return true;
+  if (buf.length < 5 || buf.includes(0x00)) return true;
+  // 拒绝 UTF-16 BOM 以防 ASCII 正则被绕过
+  if ((buf[0] === 0xff && buf[1] === 0xfe) || (buf[0] === 0xfe && buf[1] === 0xff)) {
+    return true;
+  }
+  const rawText = buf.toString('utf8');
+  if (/^\+\/v[89+/]/i.test(rawText.trimStart())) return true; // 拒绝 UTF-7
+
+  const decoded = decodeXmlEntities(rawText).replace(/<!--[\s\S]*?-->/g, ' ');
+  const compact = decoded.replace(/[\x00-\x20]+/g, '');
+
+  if (!/<svg[\s>/]/i.test(decoded)) return true;
+  if (/<!(?:ENTITY|DOCTYPE)/i.test(decoded)) return true;
+  if (
+    /<\/?(?:script|foreignObject|iframe|frame|object|embed|applet|meta|link|base|audio|video)\b/i.test(
+      decoded
+    )
+  ) {
+    return true;
+  }
+  // 拦截 SMIL 动画修改 href / xlink:href / on* 属性
+  if (
+    /<(?:animate|set|animateTransform|animateMotion)\b[^>]*\battributeName\s*=\s*["']?\s*(?:xlink:)?(?:href|on[a-z]+)/i.test(
+      decoded
+    )
+  ) {
+    return true;
+  }
+  if (/\bon[a-z0-9_]+\s*=/i.test(decoded)) return true;
+  if (/(?:javascript|vbscript|livescript)\s*:/i.test(compact)) return true;
+  // 拦截 href / xlink:href / src / url(...) 中的 data: 协议
+  if (/(?:xlink:href|href|src|action|formaction)\s*=\s*["']?\s*data:/i.test(compact)) {
+    return true;
+  }
+  if (/url\(\s*["']?\s*(?:javascript|vbscript|data):/i.test(compact)) return true;
+  if (/@import\b/i.test(decoded)) return true;
   return false;
 }
 
@@ -493,6 +596,16 @@ async function getBinary(filePath: string): Promise<Response> {
 }
 
 async function putBinary(filePath: string, base64: string, sha?: string): Promise<Response> {
+  let bytes: Buffer;
+  try {
+    bytes = Buffer.from(base64, 'base64');
+  } catch {
+    return fail('base64 解码失败', 400);
+  }
+  return putBinaryBuffer(filePath, bytes, sha);
+}
+
+async function putBinaryBuffer(filePath: string, bytes: Buffer, sha?: string): Promise<Response> {
   const target = assetTarget(filePath);
   if (!target) return fail('非法资源路径', 400);
 
@@ -502,19 +615,24 @@ async function putBinary(filePath: string, base64: string, sha?: string): Promis
     return fail(`不支持的文件格式：${ext || '未知后缀'}`, 400);
   }
 
-  let bytes: Buffer;
-  try {
-    bytes = Buffer.from(base64, 'base64');
-  } catch {
-    return fail('base64 解码失败', 400);
-  }
   if (!bytes.length) return fail('空文件', 400);
+
+  const isAudio = extMime.startsWith('audio/');
+  const maxBytes = isAudio ? MAX_AUDIO_UPLOAD_BYTES : MAX_IMAGE_UPLOAD_BYTES;
+  if (bytes.length > maxBytes) {
+    const limitMb = Math.round(maxBytes / (1024 * 1024));
+    return fail(`文件体积超过服务端上限（最大 ${limitMb}MB）`, 413);
+  }
 
   if (ext === '.svg' && isUnsafeSvg(bytes)) {
     return fail('SVG 文件包含不安全的脚本或事件属性，已拒绝上传', 400);
   }
 
   const inspected = inspectImageBuffer(bytes, ext);
+  const STRICT_MAGIC_EXTS = new Set(['.jpg', '.jpeg', '.png', '.gif', '.webp']);
+  if (STRICT_MAGIC_EXTS.has(ext) && inspected.mime !== extMime) {
+    return fail('文件内容与扩展名不匹配（魔数校验未通过）', 400);
+  }
   const dir = path.dirname(target.file);
   await mkdir(dir, { recursive: true });
 

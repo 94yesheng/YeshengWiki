@@ -63,6 +63,17 @@ export function listLinks(): Link[] {
   }));
 }
 
+function sanitizeLinkUrl(raw: unknown): string {
+  const s = String(raw ?? '').trim();
+  if (/^https?:\/\//i.test(s) || (s.startsWith('/') && !s.startsWith('//'))) {
+    return s;
+  }
+  if (s && !/^[a-z][a-z0-9+.-]*:/i.test(s)) {
+    return `https://${s}`;
+  }
+  return '#';
+}
+
 export function replaceLinks(links: Array<Omit<Link, 'sortOrder'>>): Link[] {
   const db = getDb();
   db.transaction(() => {
@@ -74,8 +85,8 @@ export function replaceLinks(links: Array<Omit<Link, 'sortOrder'>>): Link[] {
     links.forEach((link, i) => {
       stmt.run({
         id: link.id || `peer-${Date.now().toString(36)}-${i}`,
-        name: link.name,
-        url: link.url,
+        name: String(link.name ?? '').trim(),
+        url: sanitizeLinkUrl(link.url),
         description: link.description ?? '',
         avatar: link.avatar ?? null,
         tag: link.tag ?? null,

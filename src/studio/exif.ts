@@ -92,10 +92,14 @@ export function generateArtisticCipherText(fieldKey: string, seed = 'frame'): st
 export function renderExifValueOrCipherHtml(
   fieldKey: ExifFieldKey,
   value: unknown,
-  seed = 'frame'
+  seed = 'frame',
+  cipherEnabled = true
 ): string {
   const clean = String(value ?? '').trim();
   if (clean) return `<strong>${esc(clean)}</strong>`;
+  if (!cipherEnabled) {
+    return `<strong class="exif-val-normal" style="color:var(--faint);">—</strong>`;
+  }
   const cipher = generateArtisticCipherText(fieldKey, seed);
   const ghost = generateArtisticCipherText(fieldKey, `${seed}:ghost`);
   return `<strong class="exif-val-cipher" data-cipher-ghost="${esc(ghost)}" title="未读取到原始摄影信息且未手动填写 · 已启用模糊化乱码艺术处理"><span class="exif-cipher-blur" aria-hidden="true">${esc(cipher)}</span><span class="exif-cipher-mask">UNREAD // 乱码隐去</span></strong>`;

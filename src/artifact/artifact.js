@@ -98,9 +98,15 @@
   var loaderActive = false;
 
   function runInfinityLoader(durationMs) {
-    if (window.__YeshengLoader && typeof window.__YeshengLoader.runInfinityLoader === "function") {
-      window.__YeshengLoader.runInfinityLoader({ durationMs: durationMs || 1050, replay: true });
-      return;
+    if (window.__YeshengLoader) {
+      if (typeof window.__YeshengLoader.runInfinityLoader === "function") {
+        window.__YeshengLoader.runInfinityLoader({ durationMs: durationMs || 1050, replay: true });
+        return;
+      }
+      if (typeof window.__YeshengLoader.run === "function") {
+        window.__YeshengLoader.run(durationMs || 1050);
+        return;
+      }
     }
     if (!loaderEl) return;
     cancelAnimationFrame(loaderAnimId);
@@ -846,7 +852,18 @@
       var s = String(val == null ? '' : val).trim();
       if (s && s !== 'undefined' && s !== 'null') {
         el.className = 'exif-val-normal';
+        el.removeAttribute('title');
         el.textContent = s;
+        return;
+      }
+      var dmFooterEl = document.getElementById('footer-dm');
+      var cipherEnabled = typeof window.__EXIF_CIPHER_EFFECT === 'boolean'
+        ? window.__EXIF_CIPHER_EFFECT
+        : (!dmFooterEl || dmFooterEl.dataset.exifCipher !== 'false');
+      if (!cipherEnabled) {
+        el.className = 'exif-val-normal';
+        el.removeAttribute('title');
+        el.textContent = '—';
         return;
       }
       var glyphs = '█▓▒░▀▄▌▐┼╬╫╪※∷∆∇0123456789ABCDEF';
@@ -1506,10 +1523,30 @@
     9: { g: 'M10 29A20 23 0 1 0 50 29A20 23 0 1 0 10 29ZM50 31L30 94', c: 'M30 6V52M10 29H50' }
   };
 
+  var footerDmEl = document.getElementById('footer-dm');
+  var dmEnabled = !footerDmEl || footerDmEl.dataset.dmEnabled !== 'false';
+  var dmConfiguredWl = (footerDmEl && footerDmEl.dataset.worldline) ? footerDmEl.dataset.worldline.trim() : '';
+  var dmWlDigits = /^\d\.\d{6}$/.test(dmConfiguredWl)
+    ? dmConfiguredWl.replace('.', '').split('').map(function (ch) { return Number(ch); })
+    : null;
+  if (footerDmEl && !dmEnabled) {
+    footerDmEl.hidden = true;
+    footerDmEl.style.display = 'none';
+  }
   var dmHost = document.getElementById('dm-tubes-host');
   var dmDigitNodes = [];
-  if (dmHost) {
-    var tubeSpecs = [{ dot: false, init: 1 }, { dot: true, init: 0 }, { dot: false, init: 0 }, { dot: false, init: 4 }, { dot: false, init: 8 }, { dot: false, init: 5 }, { dot: false, init: 9 }, { dot: false, init: 6 }];
+  if (dmHost && dmEnabled) {
+    var initDigits = dmWlDigits || [1, 0, 4, 8, 5, 9, 6];
+    var tubeSpecs = [
+      { dot: false, init: initDigits[0] },
+      { dot: true, init: 0 },
+      { dot: false, init: initDigits[1] },
+      { dot: false, init: initDigits[2] },
+      { dot: false, init: initDigits[3] },
+      { dot: false, init: initDigits[4] },
+      { dot: false, init: initDigits[5] },
+      { dot: false, init: initDigits[6] }
+    ];
     tubeSpecs.forEach(function (spec) {
       var span = document.createElement('span');
       span.className = 'dm-tube';
@@ -1544,9 +1581,12 @@
 
   var dmSpinTimer = 0;
   function playDivergenceMeter() {
-    if (!dmDigitNodes.length) return;
+    if (!dmDigitNodes.length || !dmEnabled) return;
     clearInterval(dmSpinTimer);
     var target = dmDigitNodes.map(function (_, idx) {
+      if (dmWlDigits && typeof dmWlDigits[idx] === 'number' && !isNaN(dmWlDigits[idx])) {
+        return dmWlDigits[idx];
+      }
       return idx === 0 ? 1 : Math.floor(Math.random() * 10);
     });
     var ticks = 0;
@@ -3365,6 +3405,10 @@
             '<span class="link-apply-label"><span>05 // 自我介绍 / 站点简介</span><em>必填</em></span>' +
             '<textarea name="description" rows="3" required maxlength="320" placeholder="一句话介绍你的站点特色、记录方向或自我介绍…"></textarea>' +
           '</label>' +
+          '<div style="position:absolute;left:-9999px;top:-9999px;width:1px;height:1px;overflow:hidden;opacity:0;pointer-events:none;" aria-hidden="true">' +
+            '<input type="text" name="website" tabindex="-1" autocomplete="off" />' +
+            '<input type="text" name="honeypot" tabindex="-1" autocomplete="off" />' +
+          '</div>' +
           '<div class="link-apply-status" id="link-apply-status" role="status" aria-live="polite"></div>' +
           '<div class="link-apply-foot">' +
             '<button type="button" class="stage-mini-btn" data-close-link-apply>取消</button>' +
@@ -3405,7 +3449,9 @@
           name: String(fd.get('name') || '').trim(),
           url: String(fd.get('url') || '').trim(),
           tag: String(fd.get('tag') || '').trim(),
-          description: String(fd.get('description') || '').trim()
+          description: String(fd.get('description') || '').trim(),
+          website: String(fd.get('website') || '').trim(),
+          honeypot: String(fd.get('honeypot') || '').trim()
         };
         if (!payload.owner || !payload.name || !payload.url || !payload.description) {
           if (statusEl) {

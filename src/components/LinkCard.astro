@@ -9,16 +9,19 @@ interface Props {
 }
 
 const { name, url, description, avatar, tag, owner } = Astro.props;
+const safeUrl = /^https?:\/\//i.test(url.trim()) || (url.trim().startsWith('/') && !url.trim().startsWith('//'))
+  ? url.trim()
+  : '#';
 
 let host = '';
 try {
-  host = new URL(url).hostname.replace(/^www\./, '');
+  host = new URL(safeUrl).hostname.replace(/^www\./, '');
 } catch {
   host = url;
 }
 ---
 
-<a class="link-card" href={url} target="_blank" rel="noopener noreferrer">
+<a class="link-card" href={safeUrl} target="_blank" rel="noopener noreferrer">
   <span class="link-head">
     {avatar && <span class="link-avatar" aria-hidden="true">{avatar}</span>}
     <span class="link-head-meta">

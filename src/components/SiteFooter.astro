@@ -9,6 +9,8 @@ interface Props {
 
 const { site } = Astro.props;
 const year = chineseYear(new Date().getFullYear());
+const dmEnabled = site.divergenceMeter?.enabled !== false;
+const dmWorldline = site.divergenceMeter?.worldline?.trim() || '';
 ---
 
 <footer class="site-foot">
@@ -71,7 +73,7 @@ const year = chineseYear(new Date().getFullYear());
         </div>
       </div>
 
-    <!-- 彩蛋：滚到页脚时数字乱跳一阵，然后定格在一个随机变动率上 -->
-    <DivergenceMeter />
+    <!-- 彩蛋：滚到页脚时数字乱跳一阵，然后定格在基准世界线或随机变动率上 -->
+    {dmEnabled && <DivergenceMeter worldline={dmWorldline} />}
   </div>
 </footer>

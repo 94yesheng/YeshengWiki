@@ -96,8 +96,14 @@ export function initDivergenceMeters(scope: ParentNode = document): void {
       });
     };
 
-    // 整数位固定 1（世界线变动率都是 1.xxxxxx），小数点后几位**每次刷新重新随机**
-    const target = tubes.map((_, i) => (i === 0 ? 1 : rnd()));
+    // 若宿主配置了合法基准世界线（如 1.048596），定格在该世界线上；未配置时整数位固定 1、小数位随机
+    const rawWl = (meter.dataset.worldline ?? '').trim();
+    const wlDigits = /^\d\.\d+$/.test(rawWl)
+      ? rawWl.replace('.', '').split('').map((c) => Number(c))
+      : null;
+    const target = tubes.map((_, i) =>
+      wlDigits && Number.isInteger(wlDigits[i]) ? wlDigits[i]! : i === 0 ? 1 : rnd()
+    );
 
     // 时间到 → 七位**同时**定格，不是一位一位来
     const play = () => {

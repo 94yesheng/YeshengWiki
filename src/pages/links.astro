@@ -219,6 +219,11 @@ const cardInfoText = `站名：${site.title} | 网址：${siteBase} | 简介：$
           <textarea name="description" rows="3" required maxlength="320" placeholder="一句话介绍你的站点特色、记录方向或自我介绍…"></textarea>
         </label>
 
+        <div style="position:absolute;left:-9999px;top:-9999px;width:1px;height:1px;overflow:hidden;opacity:0;pointer-events:none;" aria-hidden="true">
+          <label>Website <input type="text" name="website" tabindex="-1" autocomplete="off" /></label>
+          <label>Honeypot <input type="text" name="honeypot" tabindex="-1" autocomplete="off" /></label>
+        </div>
+
         <div class="link-apply-status" id="link-apply-status" role="status" aria-live="polite"></div>
 
         <div class="link-apply-foot">

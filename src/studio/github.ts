@@ -140,8 +140,14 @@ export class Github {
     return data.map((d) => ({ name: d.name, path: d.path, sha: d.sha, type: d.type }));
   }
 
-  /** 写文本文件。传 sha 表示"更新已有文件"，不传表示新建 */
-  async putText(path: string, text: string, commitMessage: string, sha?: string): Promise<void> {
+  /** 写文本文件。传 sha 表示"更新已有文件"，不传表示新建；可选传 fromPath 表示重命名 */
+  async putText(
+    path: string,
+    text: string,
+    commitMessage: string,
+    sha?: string,
+    fromPath?: string
+  ): Promise<void> {
     const body = {
       message: commitMessage,
       content: bytesToBase64(new TextEncoder().encode(text)),
@@ -155,6 +161,9 @@ export class Github {
     if (!res.ok) {
       const detail = await res.text().catch(() => '');
       throw this.fail(res.status, detail.slice(0, 300));
+    }
+    if (fromPath && fromPath !== path && sha) {
+      await this.deleteFile(fromPath, sha, `${commitMessage} (cleanup ${fromPath})`);
     }
   }
 

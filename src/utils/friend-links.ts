@@ -120,7 +120,9 @@ export function initFriendLinksPage(): void {
     }
   });
 
+  const ensureFriendLinkApplyModal = () => document.getElementById('link-apply-modal');
   (window as unknown as { __YeshengFriendLinks?: unknown }).__YeshengFriendLinks = {
     init: initFriendLinksPage,
+    ensureFriendLinkApplyModal,
   };
 }

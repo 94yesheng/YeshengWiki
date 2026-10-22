@@ -311,9 +311,18 @@ const consoleCardHtml = progConsole
               </div>
             </div>`;
 
+const safeHref = (raw: string | undefined, fallback = ''): string => {
+  const s = (raw ?? '').trim();
+  if (!s) return fallback;
+  if (/^https?:\/\//i.test(s) || (s.startsWith('/') && !s.startsWith('//')) || s.startsWith('#')) {
+    return s;
+  }
+  return fallback;
+};
+
 let dmTriggerTaken = false;
 const rackItemHtml = (m: ProgModule): string => {
-  const href = m.href?.trim() ?? '';
+  const href = safeHref(m.href);
   const status = esc(m.status?.trim() || (href ? c('programs.viewCta') : c('programs.statusFallback')));
   const progress = Math.max(0, Math.min(100, Number(m.progress) || 0));
   let triggerAttr = '';
@@ -411,13 +420,19 @@ const siteSpecHtml = [
 const peerCardsHtml = links.length
   ? links
       .map((link) => {
+        const peerHref = safeHref(link.url, '#');
         const monogram = (link.name || link.url || '友').trim().slice(0, 1);
-        const avatarHtml = link.avatar?.trim()
-          ? /^(\/|https?:\/\/|data:)/i.test(link.avatar.trim())
+        const rawAvatar = link.avatar?.trim() ?? '';
+        const isSafeAvatarImg =
+          (rawAvatar.startsWith('/') && !rawAvatar.startsWith('//')) ||
+          /^https?:\/\//i.test(rawAvatar) ||
+          /^data:image\/(?:png|jpe?g|gif|webp);base64,[a-z0-9+/=]+$/i.test(rawAvatar);
+        const avatarHtml = rawAvatar
+          ? isSafeAvatarImg
             ? `<span class="peer-avatar"><img src="${esc(
-                link.avatar
+                rawAvatar
               )}" alt="" style="width:100%;height:100%;border-radius:50%;object-fit:cover;" /></span>`
-            : `<span class="peer-avatar">${esc(link.avatar.trim().slice(0, 1))}</span>`
+            : `<span class="peer-avatar">${esc(rawAvatar.slice(0, 1))}</span>`
           : `<span class="peer-avatar">${esc(monogram)}</span>`;
         return `<article class="peer-card">
                   <div>
@@ -436,7 +451,7 @@ const peerCardsHtml = links.length
                   <div class="peer-foot">
                     <span>${esc(link.owner?.trim().startsWith('站长') ? link.owner.trim() : `站长：${link.owner?.trim() || '—'}`)}</span>
                     <a class="peer-link-action" href="${esc(
-                      link.url
+                      peerHref
                     )}" target="_blank" rel="noopener noreferrer">访问站点 -&gt;</a>
                   </div>
                 </article>`;

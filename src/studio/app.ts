@@ -223,7 +223,11 @@ function renderBar(): void {
   $('#st-lock')?.addEventListener('click', () => {
     if (!settleLeaving()) return;
     if (state.collection === 'pages') pagesDiscard();
-    void fetch('/api/auth/logout', { method: 'POST' }).catch(() => {});
+    const csrf = state.csrf;
+    void fetch('/api/auth/logout', {
+      method: 'POST',
+      headers: csrf ? { 'X-CSRF-Token': csrf } : undefined,
+    }).catch(() => {});
     forgetSession();
     renderUnlock('已锁定会话');
   });
@@ -242,7 +246,7 @@ const NAV: Array<{ key: Collection; label: string; count: () => number }> = [
     label: '项目',
     count: () => {
       const p = ((state.draft.site ?? state.site?.data ?? {}) as Record<string, unknown>).programs as Record<string, unknown> | undefined;
-      return Array.isArray(p?.modules) ? p.modules.length : 3;
+      return Array.isArray(p?.modules) ? p.modules.length : 0;
     },
   },
   { key: 'links', label: '友链', count: () => state.links?.links.length ?? 0 },

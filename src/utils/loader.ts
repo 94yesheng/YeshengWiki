@@ -19,12 +19,19 @@ let loaderAnimId = 0;
 let loaderStartTs = 0;
 let loaderActive = false;
 
-export function runInfinityLoader(durationMs = 1050): void {
-  const el = loaderEl;
-  const canvas = loaderCanvas;
-  const fill = loaderFill;
-  const status = loaderStatus;
-  const pct = loaderPct;
+export function runInfinityLoader(
+  optionsOrDuration: number | (InfinityLoaderOptions & { replay?: boolean }) = 1050
+): void {
+  const durationMs =
+    typeof optionsOrDuration === 'number'
+      ? optionsOrDuration
+      : (optionsOrDuration?.durationMs ?? 1050);
+  const el = loaderEl ?? (document.getElementById('infinity-loader') as HTMLElement | null);
+  const canvas =
+    loaderCanvas ?? (document.getElementById('loader-infinity-canvas') as HTMLCanvasElement | null);
+  const fill = loaderFill ?? document.getElementById('loader-bar-fill');
+  const status = loaderStatus ?? document.getElementById('loader-status-text');
+  const pct = loaderPct ?? document.getElementById('loader-pct-readout');
   if (!el) return;
 
   cancelAnimationFrame(loaderAnimId);
@@ -219,5 +226,6 @@ export function initInfinityLoader(options: InfinityLoaderOptions = {}): void {
   (window as unknown as { __YeshengLoader?: unknown }).__YeshengLoader = {
     init: initInfinityLoader,
     run: runInfinityLoader,
+    runInfinityLoader,
   };
 }

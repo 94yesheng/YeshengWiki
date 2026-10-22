@@ -32,7 +32,12 @@ import {
   type PostInput,
 } from '../repositories/posts';
 import { listWalls } from '../repositories/photos';
-import { deleteMedia, listMedia } from '../repositories/media';
+import {
+  deleteMedia,
+  listMedia,
+  migratePostSlugAssets,
+  rewritePostSlugReferences,
+} from '../repositories/media';
 import {
   approveLinkApplication,
   createLinkApplication,
@@ -476,8 +481,30 @@ async function posts(context: APIContext, rest: string[], method: string): Promi
     if (!body) return fail('请求体不是合法 JSON', 400);
     const error = validatePostInput(body, false);
     if (error) return fail(error, 400);
-    if (body.slug && body.slug !== current.slug && getPostBySlug(body.slug, true)) {
-      return fail('slug 已存在', 409);
+    if (body.slug && body.slug !== current.slug) {
+      if (getPostBySlug(body.slug, true)) {
+        return fail('slug 已存在', 409);
+      }
+      migratePostSlugAssets(current.slug, body.slug);
+      body.bodyMarkdown = rewritePostSlugReferences(
+        body.bodyMarkdown ?? current.bodyMarkdown,
+        current.slug,
+        body.slug
+      );
+      if (body.rawMarkdown ?? current.rawMarkdown) {
+        body.rawMarkdown = rewritePostSlugReferences(
+          body.rawMarkdown ?? current.rawMarkdown,
+          current.slug,
+          body.slug
+        );
+      }
+      if (body.cover ?? current.cover) {
+        body.cover = rewritePostSlugReferences(
+          (body.cover ?? current.cover) || '',
+          current.slug,
+          body.slug
+        );
+      }
     }
     const updated = updatePost(current.id, body, body.version);
     if (!updated) return fail('文章已在别处被修改，请刷新后重试', 409);
