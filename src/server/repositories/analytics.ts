@@ -680,23 +680,159 @@ function setGeoCache(ip: string, profile: GeoProfile): void {
   ipGeoCache.set(ip, profile);
 }
 
-/** 解析 User-Agent，提取设备类型、操作系统、浏览器，并过滤爬虫与监控探针 */
+/**
+ * 1. 全量扫描器、网络空间测绘、AI 爬虫、SEO 爬虫、无头浏览器及命令行 HTTP 客户端特征正则
+ */
+const BOT_OR_SCANNER_UA_RE = new RegExp(
+  [
+    // 搜索引擎与社交媒体爬虫
+    'bot', 'spider', 'crawl', 'slurp', 'mediapartners', 'apis-google', 'adsbot',
+    'googleother', 'google-inspectiontool', 'google-extended', 'bingpreview',
+    'baiduspider', 'bytespider', 'petalbot', 'sogou', 'yisouspider', '360spider',
+    'ToutiaoSpider', 'yandex', 'duckduckbot', 'facebookexternalhit', 'facebot',
+    'twitterbot', 'linkedinbot', 'telegrambot', 'discordbot', 'slackbot', 'whatsapp',
+    'applebot', 'amazonbot', 'pinterestbot', 'redditbot',
+    // AI 训练与检索爬虫
+    'gptbot', 'chatgpt-user', 'oai-searchbot', 'claudebot', 'claude-web', 'anthropic-ai',
+    'perplexitybot', 'ccbot', 'cohere-ai', 'meta-externalagent', 'meta-externalfetcher',
+    'diffbot', 'omgili', 'youbot', 'timpibot', ' Kangaroo ',
+    // 漏洞扫描器、安全探针、网络空间测绘引擎
+    'masscan', 'zgrab', 'nuclei', 'nmap', 'nikto', 'sqlmap', 'wpscan', 'acunetix',
+    'nessus', 'openvas', 'qualys', 'burpsuite', 'dirbuster', 'gobuster', 'ffuf',
+    'feroxbuster', 'wfuzz', 'httpx', ' xray', 'afrog', 'goby', 'awvs', 'appscan',
+    'censys', 'shodan', 'fofa', 'zoomeye', 'quake', 'binaryedge', 'netcraft',
+    'leakix', 'shadowserver', 'internetmeasurement', ' stretchoid', 'paloaltonetworks',
+    'expanse', 'onyphe', 'criminalip', 'ivre', 'rapid7', 'projectdiscovery',
+    'cybergreen', 'ipip\\.net', 'dnspod-monitor', 'aliyun-sec', 'tencent-sec',
+    // 监控探针与测速工具
+    'uptimerobot', 'statuscake', 'pingdom', 'hetrixtools', 'betteruptime', 'freshping',
+    'site24x7', 'datadog', 'newrelic', 'prometheus', 'blackbox.exporter', 'zabbix',
+    'nagios', 'gtmetrix', 'pagespeed', 'lighthouse', 'chrome-lighthouse', 'ptst/',
+    // SEO 采集与商业数据抓取器
+    'semrush', 'ahrefs', 'mj12bot', 'dotbot', 'rogerbot', 'blexbot', 'dataforseo',
+    'screaming frog', 'seokicks', 'sistrix', 'megaindex', 'serpstatbot', 'zoominfobot',
+    // 无头浏览器与自动化框架
+    'headless', 'headlesschrome', 'phantomjs', 'slimerjs', 'playwright', 'puppeteer',
+    'selenium', 'webdriver', 'cypress', 'electron/', ' splash', 'htmlunit',
+    // 编程语言 HTTP 客户端与命令行工具
+    'curl/', 'wget/', 'python-requests', 'python-urllib', 'python-httpx', 'aiohttp',
+    'scrapy', 'go-http-client', 'fasthttp', 'java/', 'apache-httpclient', 'okhttp',
+    'jersey/', 'axios/', 'node-fetch', 'undici', 'got/', 'superagent', 'ky/',
+    'libwww-perl', 'lwp-trivial', 'mechanize', 'php/', 'guzzlehttp', 'symfony',
+    'ruby', 'faraday', 'rest-client', 'typhoeus', 'rust-reqwest', 'hyper/', 'dart:io',
+    'postmanruntime', 'insomnia', 'apifox', 'apipost', 'httpie', 'aria2',
+  ].join('|'),
+  'i'
+);
+
+/**
+ * 2. 漏洞扫描器高频探测的路径与恶意 Query 参数特征（即使访问 `/?s=thinkphp` 返回 200 也会被拦截）
+ */
+const SCANNER_PATH_OR_QUERY_RE = new RegExp(
+  [
+    // 常见后台/CMS 扫描路径
+    '(?:^|/)(?:wp-admin|wp-login|wp-content|wp-includes|wp-json|xmlrpc\\.php)',
+    '(?:^|/)(?:phpmyadmin|pma|adminer|mysql|dbadmin)',
+    '(?:^|/)(?:\\.env|\\.git|\\.svn|\\.hg|\\.DS_Store|\\.vscode|\\.idea|\\.aws|\\.ssh)',
+    '(?:^|/)(?:actuator|jolokia|swagger|v2/api-docs|druid|nacos|eureka|console)',
+    '(?:^|/)(?:vendor/phpunit|phpunit|thinkphp|laravel|telescope|ignition)',
+    '(?:^|/)(?:cgi-bin|boaform|HNAP1|GponForm|sdk|evox|weaver|seeyon|tongda)',
+    '(?:^|/)(?:shell|cmd|eval|backdoor|webshell|tz\\.php|phpinfo|info\\.php|test\\.php)',
+    // 针对根路径 `/` 的典型漏洞扫描 Query 参数
+    '(?:^|[?&])(?:s=/index/|s=index/|invokefunction|call_user_func)',
+    '(?:^|[?&])(?:XDEBUG_SESSION_START|xdebug)',
+    '(?:^|[?&])(?:rest_route=|wp_scrape|author=\\d+)',
+    '(?:\\$\\{jndi:|\\.\\./\\.\\./|<script|union\\s+select|base64_decode)',
+  ].join('|'),
+  'i'
+);
+
+/**
+ * 3. 内存级「同 IP + 同路径 5 秒防抖」与「单 IP 高频突发扫描限流器」
+ */
+const RECENT_HIT_COOLDOWN_MS = 5000;
+const recentVisitCooldown = new Map<string, number>();
+
+const BURST_WINDOW_MS = 10_000;
+const BURST_MAX_HITS = 12;
+const BURST_BAN_MS = 30 * 60 * 1000;
+const ipBurstCounters = new Map<string, { count: number; windowStart: number; bannedUntil: number }>();
+
+/**
+ * 检查某 IP 是否触发高频扫描限流，或同一页面 5 秒内重复刷新/304 重验。
+ * 返回 true 表示应丢弃本次记录。
+ */
+function shouldDropByRateOrDedup(ip: string, cleanPath: string): boolean {
+  if (!ip) return true;
+  const now = Date.now();
+
+  // (a) 突发扫描检测：10 秒内连续请求超过 12 个页面，判定为伪装 UA 的扫描器
+  let burst = ipBurstCounters.get(ip);
+  if (!burst) {
+    if (ipBurstCounters.size > 4000) {
+      const oldestKey = ipBurstCounters.keys().next().value;
+      if (oldestKey !== undefined) ipBurstCounters.delete(oldestKey);
+    }
+    burst = { count: 1, windowStart: now, bannedUntil: 0 };
+    ipBurstCounters.set(ip, burst);
+  } else {
+    if (burst.bannedUntil > now) {
+      return true;
+    }
+    if (now - burst.windowStart > BURST_WINDOW_MS) {
+      burst.count = 1;
+      burst.windowStart = now;
+    } else {
+      burst.count += 1;
+      if (burst.count > BURST_MAX_HITS) {
+        burst.bannedUntil = now + BURST_BAN_MS;
+        // 清理该扫描 IP 尚未落盘的缓冲记录
+        for (const [k, v] of pendingVisits.entries()) {
+          if (v.ip === ip) pendingVisits.delete(k);
+        }
+        return true;
+      }
+    }
+  }
+
+  // (b) 同一 IP + 同一路径 5 秒内防抖（防止双击、F5 连按、浏览器 304 重验或预渲染导致重复 +1）
+  const dedupKey = `${ip}|${cleanPath}`;
+  const lastHit = recentVisitCooldown.get(dedupKey);
+  if (lastHit && now - lastHit < RECENT_HIT_COOLDOWN_MS) {
+    return true;
+  }
+  if (recentVisitCooldown.size > 6000) {
+    const oldestKey = recentVisitCooldown.keys().next().value;
+    if (oldestKey !== undefined) recentVisitCooldown.delete(oldestKey);
+  }
+  recentVisitCooldown.set(dedupKey, now);
+  return false;
+}
+
+/**
+ * 解析 User-Agent，提取设备类型、操作系统、浏览器，并严格过滤扫描机器人与异常客户端。
+ * 关键加固：
+ *   - 空 UA、长度 < 24 的极短 UA、不包含 `Mozilla/5.0` 的非标准客户端一律识别为 `Bot`；
+ *   - 无法识别出任何主流浏览器内核（Chrome/Safari/Firefox/Edge/Opera/WeChat/UC/Quark）的伪造 UA 一律识别为 `Bot`。
+ */
 export function parseUserAgent(uaRaw: string): {
   deviceType: 'Desktop' | 'Mobile' | 'Tablet' | 'Bot';
   os: string;
   browser: string;
 } {
   const ua = (uaRaw || '').trim();
-  if (!ua) {
-    return { deviceType: 'Desktop', os: 'Unknown OS', browser: 'Direct' };
+  // 关键修复：空 UA 或过短 UA 绝不能当作 Desktop 正常访客，99.9% 是扫描器或脚本探针
+  if (!ua || ua.length < 24 || ua.length > 600) {
+    return { deviceType: 'Bot', os: 'Scanner', browser: 'Bot' };
   }
 
-  if (
-    /(bot|spider|crawl|slurp|mediapartners|headless|curl|wget|python-requests|go-http-client|axios|node-fetch|uptimerobot|statuscake|petalbot|bytespider|baiduspider|bingpreview|facebookexternalhit|semrush|ahrefs|mj12bot)/i.test(
-      ua
-    )
-  ) {
+  if (BOT_OR_SCANNER_UA_RE.test(ua)) {
     return { deviceType: 'Bot', os: 'Crawler', browser: 'Bot' };
+  }
+
+  // 现代真实桌面/移动浏览器（含微信/夸克/UC 内置 WebView）均以 Mozilla/5.0 开头
+  if (!/^Mozilla\/5\.0\s*\(/i.test(ua)) {
+    return { deviceType: 'Bot', os: 'Scanner', browser: 'Bot' };
   }
 
   let deviceType: 'Desktop' | 'Mobile' | 'Tablet' = 'Desktop';
@@ -706,7 +842,7 @@ export function parseUserAgent(uaRaw: string): {
     deviceType = 'Mobile';
   }
 
-  let os = 'Linux';
+  let os = 'Unknown';
   if (/windows nt 10\.0/i.test(ua)) os = 'Windows 11/10';
   else if (/windows nt/i.test(ua)) os = 'Windows';
   else if (/harmonyos/i.test(ua)) os = 'HarmonyOS';
@@ -715,18 +851,81 @@ export function parseUserAgent(uaRaw: string): {
   else if (/mac os x|macintosh/i.test(ua)) os = 'macOS';
   else if (/android/i.test(ua)) os = 'Android';
   else if (/cros/i.test(ua)) os = 'ChromeOS';
+  else if (/linux|x11|ubuntu|debian|fedora/i.test(ua)) os = 'Linux';
 
-  let browser = 'Browser';
+  let browser = 'Unknown';
   if (/micromessenger/i.test(ua)) browser = 'WeChat';
   else if (/quark/i.test(ua)) browser = 'Quark';
   else if (/ucbrowser/i.test(ua)) browser = 'UC';
-  else if (/edg\//i.test(ua)) browser = 'Edge';
-  else if (/opr\/|opera/i.test(ua)) browser = 'Opera';
+  else if (/edg\/|edgios\/|edga\//i.test(ua)) browser = 'Edge';
+  else if (/opr\/|opera|opios/i.test(ua)) browser = 'Opera';
   else if (/firefox\/|fxios\//i.test(ua)) browser = 'Firefox';
   else if (/chrome\/|crios\//i.test(ua)) browser = 'Chrome';
-  else if (/safari\//i.test(ua)) browser = 'Safari';
+  else if (/safari\//i.test(ua) && /version\//i.test(ua)) browser = 'Safari';
+
+  // 若既无法识别主流操作系统，或无法识别出真实浏览器渲染内核（例如仅写 `Mozilla/5.0 (compatible)` 的扫描器），直接归为 Bot
+  if (os === 'Unknown' || browser === 'Unknown') {
+    return { deviceType: 'Bot', os: 'Scanner', browser: 'Bot' };
+  }
 
   return { deviceType, os, browser };
+}
+
+/**
+ * 综合请求头、URL 路径与 Query 参数，判断是否为扫描器、预加载探针或非人类页面浏览请求。
+ */
+export function isScannerOrNonHumanPageRequest(context: APIContext): boolean {
+  const { pathname, search } = context.url;
+  const fullUrlTarget = `${pathname}${search || ''}`;
+
+  // 1. 拦截带漏洞扫描载荷的路径或 Query 参数
+  if (SCANNER_PATH_OR_QUERY_RE.test(fullUrlTarget)) {
+    return true;
+  }
+
+  const headers = context.request.headers;
+
+  // 2. 拦截浏览器预取/预渲染（Prefetch / Prerender / Preview），避免用户还没点进去就被误计入访问
+  const purpose = (
+    headers.get('sec-purpose') ||
+    headers.get('purpose') ||
+    headers.get('x-purpose') ||
+    headers.get('x-moz') ||
+    ''
+  ).toLowerCase();
+  if (purpose.includes('prefetch') || purpose.includes('preview') || purpose.includes('prerender')) {
+    return true;
+  }
+
+  // 3. 校验 Sec-Fetch-Mode / Sec-Fetch-Dest（现代浏览器访问页面时必为 navigate / document 或 iframe）
+  const secFetchMode = (headers.get('sec-fetch-mode') || '').toLowerCase();
+  if (secFetchMode && secFetchMode !== 'navigate' && secFetchMode !== 'nested-navigate') {
+    return true;
+  }
+  const secFetchDest = (headers.get('sec-fetch-dest') || '').toLowerCase();
+  if (
+    secFetchDest &&
+    secFetchDest !== 'document' &&
+    secFetchDest !== 'iframe' &&
+    secFetchDest !== 'empty'
+  ) {
+    return true;
+  }
+
+  // 4. 校验 Accept 请求头：真实浏览器访问 HTML 页面必然声明接受 text/html 或 application/xhtml+xml，
+  //    而绝大部分批量端口/HTTP 扫描器只发 `Accept: */*` 或无 Accept 头
+  const accept = (headers.get('accept') || '').toLowerCase();
+  if (!accept.includes('text/html') && !accept.includes('application/xhtml+xml')) {
+    return true;
+  }
+
+  // 5. 校验 Accept-Language：真实用户浏览器均带有语言偏好头，裸扫描脚本通常缺失
+  const acceptLang = (headers.get('accept-language') || '').trim();
+  if (!acceptLang) {
+    return true;
+  }
+
+  return false;
 }
 
 export function inferCoordsFromText(
@@ -1272,6 +1471,126 @@ const pendingVisits = new Map<string, PendingVisitItem>();
 let flushTimer: ReturnType<typeof setTimeout> | null = null;
 const FLUSH_DELAY_MS = 1200;
 
+/* --------------------------------------------------------------------------
+   IP 信誉补充过滤：hosting / proxy / VPN / 云机房
+   在访问写入后异步批量查询，命中就删除该 IP 的统计记录并缓存为 bot，
+   不阻塞页面响应，也不影响后续真实访客。
+   -------------------------------------------------------------------------- */
+type IpReputation = 'human' | 'bot';
+const ipReputationCache = new Map<string, IpReputation>();
+const ipReputationQueue = new Set<string>();
+const failedIpReputation = new Map<string, number>();
+const MAX_REPUTATION_CACHE = 4000;
+const REPUTATION_BATCH_SIZE = 100;
+const REPUTATION_BATCH_DELAY_MS = 1200;
+const REPUTATION_FAIL_TTL_MS = 30 * 60 * 1000;
+let reputationTimer: ReturnType<typeof setTimeout> | null = null;
+let reputationRunning = false;
+
+function cacheIpReputation(ip: string, reputation: IpReputation): void {
+  if (!ip) return;
+  if (ipReputationCache.has(ip)) ipReputationCache.delete(ip);
+  else if (ipReputationCache.size >= MAX_REPUTATION_CACHE) {
+    const oldest = ipReputationCache.keys().next().value;
+    if (oldest !== undefined) ipReputationCache.delete(oldest);
+  }
+  ipReputationCache.set(ip, reputation);
+}
+
+function purgeBotIp(ip: string): void {
+  for (const [key, item] of pendingVisits.entries()) {
+    if (item.ip === ip) pendingVisits.delete(key);
+  }
+  try {
+    getDb().prepare('DELETE FROM visitor_logs WHERE ip = ?').run(ip);
+  } catch (err) {
+    console.error('[analytics] purge bot IP failed:', err);
+  }
+}
+
+function enqueueIpReputation(ipRaw: string): void {
+  const ip = normalizeIp(ipRaw);
+  if (!ip || isPrivateOrLoopbackIp(ip)) return;
+  if (ipReputationCache.has(ip)) return;
+  if (ipReputationQueue.has(ip)) return;
+  const failedUntil = failedIpReputation.get(ip);
+  if (failedUntil && failedUntil > Date.now()) return;
+
+  ipReputationQueue.add(ip);
+  if (ipReputationQueue.size >= REPUTATION_BATCH_SIZE) {
+    void flushIpReputation();
+    return;
+  }
+  if (!reputationTimer) {
+    reputationTimer = setTimeout(() => {
+      reputationTimer = null;
+      void flushIpReputation();
+    }, REPUTATION_BATCH_DELAY_MS);
+  }
+}
+
+async function flushIpReputation(): Promise<void> {
+  if (reputationRunning || ipReputationQueue.size === 0) return;
+  if (reputationTimer) {
+    clearTimeout(reputationTimer);
+    reputationTimer = null;
+  }
+
+  reputationRunning = true;
+  const ips = Array.from(ipReputationQueue).slice(0, REPUTATION_BATCH_SIZE);
+  for (const ip of ips) ipReputationQueue.delete(ip);
+
+  try {
+    const res = await fetch(
+      'http://ip-api.com/batch?fields=status,query,hosting,proxy,mobile,as,isp,org',
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(ips),
+        signal: AbortSignal.timeout(5000),
+      }
+    );
+    if (!res.ok) throw new Error(`ip-api ${res.status}`);
+    const rows = (await res.json()) as Array<{
+      status?: string;
+      query?: string;
+      hosting?: boolean;
+      proxy?: boolean;
+    }>;
+    const seen = new Set<string>();
+    for (const row of rows) {
+      const ip = normalizeIp(row.query);
+      if (!ip) continue;
+      seen.add(ip);
+      if (row.status !== 'success') {
+        failedIpReputation.set(ip, Date.now() + REPUTATION_FAIL_TTL_MS);
+        continue;
+      }
+      if (row.hosting || row.proxy) {
+        cacheIpReputation(ip, 'bot');
+        purgeBotIp(ip);
+      } else {
+        cacheIpReputation(ip, 'human');
+      }
+    }
+    for (const ip of ips) {
+      if (!seen.has(ip)) failedIpReputation.set(ip, Date.now() + REPUTATION_FAIL_TTL_MS);
+    }
+  } catch {
+    // 查询失败时保留当前记录，30 分钟后由下一次访问重试
+    for (const ip of ips) failedIpReputation.set(ip, Date.now() + REPUTATION_FAIL_TTL_MS);
+  } finally {
+    reputationRunning = false;
+    if (ipReputationQueue.size > 0) {
+      reputationTimer = setTimeout(() => {
+        reputationTimer = null;
+        void flushIpReputation();
+      }, REPUTATION_BATCH_DELAY_MS);
+    }
+  }
+}
+
+
 /** 立即将内存中的待写入访客记录批量事务写入 SQLite */
 export function flushPendingVisits(): void {
   if (flushTimer) {
@@ -1371,12 +1690,12 @@ function formatDateTimeSql(date = new Date()): string {
 }
 
 const STATIC_EXT_RE =
-  /\.(?:xml|js|mjs|css|png|jpe?g|webp|avif|gif|svg|ico|woff2?|ttf|otf|eot|mp3|wav|ogg|m4a|flac|aac|opus|webm|json|txt|map|webmanifest)$/i;
+  /\.(?:xml|js|mjs|css|png|jpe?g|webp|avif|gif|svg|ico|woff2?|ttf|otf|eot|mp3|wav|ogg|m4a|flac|aac|opus|webm|json|txt|map|webmanifest|php|asp|aspx|jsp|cgi|env|git|sql|bak|zip|tar|gz|rar)$/i;
 
 /**
  * 在 middleware 响应生成后调用：
- * 若服务端连接层仅拿到 127.0.0.1 / 内网 IP（如反代未透传或走本地隧道），则跳过本地 IP 写入，
- * 交由浏览器端加载完成后的 `/api/analytics/collect` 真实公网 IP 信标写入，杜绝 `127.0.0.1` 污染。
+ * 经过静态后缀过滤、扫描器路径/请求头校验、UA 指纹过滤和防抖/限流后，
+ * 仅将真实公网访客写入内存缓冲队列。
  */
 export function recordVisit(context: APIContext): void {
   try {
@@ -1395,31 +1714,35 @@ export function recordVisit(context: APIContext): void {
       return;
     }
 
-    const headers = context.request.headers;
-    const purpose = (
-      headers.get('sec-purpose') ||
-      headers.get('purpose') ||
-      headers.get('x-moz') ||
-      ''
-    ).toLowerCase();
-    if (purpose.includes('prefetch') || purpose.includes('preview')) {
+    // 拦截漏洞扫描路径、预加载/预渲染、非 HTML 导航探测
+    if (isScannerOrNonHumanPageRequest(context)) {
       return;
     }
 
+    const headers = context.request.headers;
     const ua = headers.get('user-agent') ?? '';
     const parsedUa = parseUserAgent(ua);
     if (parsedUa.deviceType === 'Bot') return;
 
     const ip = getClientIp(context);
-    // 关键防护：如果服务端连接只能看到 127.0.0.1 或局域网私网 IP，绝不把本地 IP 写入统计表，
-    // 由前端页面内嵌的真实公网 IP 遥测信标（/api/analytics/collect）上报真实公网 IP。
+    // 服务端只能看到 127.0.0.1 / 内网 IP 时不写入统计，避免本地地址污染。
     if (isPrivateOrLoopbackIp(ip)) {
+      return;
+    }
+
+    // 已知的云机房 / 代理 / VPN IP：不再写入，后续访问直接跳过
+    if (ipReputationCache.get(ip) === 'bot') {
+      return;
+    }
+
+    const cleanPath = (pathname || '/').slice(0, 160);
+    // 同 IP + 同路径 5 秒防抖，以及单 IP 10 秒突发扫描限流
+    if (shouldDropByRateOrDedup(ip, cleanPath)) {
       return;
     }
 
     const today = formatDateYmd();
     const nowSql = formatDateTimeSql();
-    const cleanPath = (pathname || '/').slice(0, 160);
     const referrer = (headers.get('referer') ?? '').slice(0, 240);
     const countryHeader = (
       headers.get('cf-ipcountry') ||
@@ -1452,6 +1775,8 @@ export function recordVisit(context: APIContext): void {
       });
     }
 
+    // 后台异步查询 IP 信誉；若命中 hosting/proxy/VPN，会删除该 IP 的统计行
+    enqueueIpReputation(ip);
     scheduleVisitFlush();
   } catch (err) {
     console.error('[analytics] recordVisit failed:', err);

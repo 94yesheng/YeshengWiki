@@ -17,7 +17,7 @@ import { recordVisit } from './server/repositories/analytics';
 bootstrap();
 
 const STATIC_EXT_RE =
-  /\.(?:xml|js|mjs|css|png|jpe?g|webp|avif|gif|svg|ico|woff2?|ttf|otf|eot|mp3|wav|ogg|m4a|flac|aac|opus|webm|json|txt|map|webmanifest)$/i;
+  /\.(?:xml|js|mjs|css|png|jpe?g|webp|avif|gif|svg|ico|woff2?|ttf|otf|eot|mp3|wav|ogg|m4a|flac|aac|opus|webm|json|txt|map|webmanifest|php|asp|aspx|jsp|cgi|env|git|sql|bak|zip|tar|gz|rar)$/i;
 
 function isCacheablePublicRoute(pathname: string): boolean {
   if (
