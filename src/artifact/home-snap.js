@@ -7,11 +7,9 @@
  *   · 阈值 0.2 屏 —— 离某一屏不到五分之一屏才吸过去；离得远就自由滚，不硬拽
  *   · 用户在动画期间一动滚轮 / 触摸 / 键盘，立刻让位
  *
- * 【为什么不用 CSS scroll-snap-type】它的对齐动作速度和缓动完全由浏览器定，
- * 没有任何属性可以调；要「快一点 + 先快后慢」就只能自己 scrollTo。
- *
- * 【为什么单独一个文件】artifact 的 1500 行脚本原样保留，这个吸附是站点的行为，
- * 不写回生成物里 —— 以后重跑 import-artifact 也不会丢。
+ * 【移动端适配】
+ * 窄屏（<= 900px）与触屏设备下，各分屏高度自适应内容（height: auto），可能超过一屏；
+ * 若继续触发整屏吸附，会在向下滑动阅读分屏下半部分时被强行拉回分屏顶部，因此移动端自动停用吸附。
  */
 (function () {
   // 只在主页跑（布局在 body 上写了 data-page）
@@ -27,8 +25,12 @@
   // 尊重系统的「减少动态效果」
   if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
 
+  const isMobileOrTouch = () =>
+    window.innerWidth <= 900 ||
+    matchMedia('(max-width: 56.25rem), (pointer: coarse)').matches;
+
   const nav = document.querySelector('.site-nav-bar');
-  const navH = nav ? nav.offsetHeight : 0;
+  const getNavH = () => (nav ? nav.offsetHeight : 0);
 
   const DURATION = 300;
   const THRESHOLD = 0.2;
@@ -38,7 +40,7 @@
   let animating = false;
 
   /** 某一屏对齐之后，页面应该停在的滚动位置 */
-  const targetOf = (el) => el.getBoundingClientRect().top + window.scrollY - navH;
+  const targetOf = (el) => el.getBoundingClientRect().top + window.scrollY - getNavH();
 
   const animateTo = (target) => {
     const start = window.scrollY;
@@ -62,9 +64,9 @@
 
   /** 滚停之后看一眼：离哪一屏最近？够近就吸过去 */
   const settle = () => {
-    if (animating) return;
+    if (animating || isMobileOrTouch()) return;
     const y = window.scrollY;
-    const range = window.innerHeight - navH;
+    const range = window.innerHeight - getNavH();
 
     let target = null;
     let dist = Infinity;

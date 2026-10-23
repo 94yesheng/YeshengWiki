@@ -670,11 +670,34 @@ const cardInfoText = `站名：${site.title} | 网址：${siteBase} | 简介：$
     border-top: 1px dashed var(--rule);
   }
 
-  @media (max-width: 44rem) {
+  @media (max-width: 48rem) {
     .site-spec-dl,
     .colophon-grid,
-    .link-apply-grid {
+    .link-apply-grid,
+    .link-grid {
       grid-template-columns: minmax(0, 1fr);
+    }
+    .site-card-box,
+    .colophon-card {
+      padding: 1rem;
+    }
+    .site-card-actions {
+      flex-direction: column;
+    }
+    .site-card-actions .action-btn {
+      width: 100%;
+      text-align: center;
+    }
+    .link-apply-backdrop {
+      padding: 0.65rem;
+      align-items: flex-end;
+    }
+    .link-apply-dialog {
+      max-height: calc(100dvh - 1.3rem);
+      overflow-y: auto;
+    }
+    .link-apply-form {
+      padding: 1rem;
     }
   }
 </style>

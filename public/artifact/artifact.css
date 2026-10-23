@@ -5528,3 +5528,1001 @@ html[data-theme-switching="true"] *::after {
 :root[data-inf-logo="v3"] .inf-logo-v3 {
   display: inline;
 }
+
+
+/* ==========================================================================
+   2026-10-23 前台移动端（Mobile UI）自适应与流畅交互专版
+   遵循 PC 主页「纸墨 + 航天器象限蓝图 HUD」设计语言与楷体 ≥ 20px 硬规则
+   ========================================================================== */
+
+.mobile-post-preview-btn,
+.mobile-toc-toggle-chip,
+.fab-item--mobile-only {
+  display: none;
+}
+
+/* 确保全站楷体元素严格 ≥ 20px (1.25rem) */
+.article-telemetry-item strong,
+.rail-related-list .r-tit,
+.wf-item-title,
+.archive-entry-pill,
+.photo-detail-date {
+  font-size: 1.25rem;
+}
+
+@media (max-width: 48rem) {
+  :root {
+    --pad-x: 0.75rem;
+    --nav-h: 5.15rem;
+  }
+
+  html,
+  body {
+    overflow-x: hidden;
+  }
+
+  .wrap {
+    max-width: 100%;
+    padding: 0 var(--pad-x);
+  }
+
+  .screen {
+    height: auto !important;
+    max-height: none !important;
+    min-height: 0 !important;
+    padding: 0.6rem 0 !important;
+    overflow: visible !important;
+  }
+
+  .screen > .wrap,
+  .q-frame {
+    height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
+  }
+
+  .planar-watermark {
+    width: 8rem;
+    right: 0.65rem;
+    bottom: 1.4rem;
+    opacity: 0.055;
+  }
+
+  /* ---------- 1. 移动端双层蓝图顶栏（品牌行 + 五象限等宽直达栏） ---------- */
+  .site-nav-bar {
+    height: auto;
+    min-height: var(--nav-h);
+  }
+
+  .site-nav-bar .wrap {
+    flex-direction: column;
+    align-items: stretch;
+    justify-content: flex-start;
+    gap: 0;
+    padding: 0;
+    max-width: 100%;
+  }
+
+  .nav-left-cluster {
+    width: 100%;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0;
+  }
+
+  .nav-brand {
+    width: 100%;
+    justify-content: flex-start;
+    border: 0;
+    border-bottom: 1px solid color-mix(in srgb, var(--rule) 85%, var(--accent) 15%);
+    border-radius: 0;
+    padding: 0.44rem 0.85rem;
+    background: color-mix(in srgb, var(--paper) 84%, transparent);
+  }
+
+  .nav-brand-text {
+    font-size: 1.25rem; /* 严格 20px 楷体 */
+  }
+
+  .nav-brand-coord {
+    margin-left: auto;
+    font-size: 0.62rem;
+    letter-spacing: 0.06em;
+    padding-left: 0.5rem;
+  }
+
+  .site-nav {
+    width: 100%;
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 0;
+    background: color-mix(in srgb, var(--paper) 94%, var(--canvas));
+  }
+
+  .site-nav-link {
+    justify-content: center;
+    align-items: baseline;
+    gap: 0.16rem;
+    padding: 0.42rem 0.1rem;
+    border-radius: 0;
+    border-right: 1px solid color-mix(in srgb, var(--rule) 65%, transparent);
+    font-family: var(--kai);
+    font-size: 1.25rem; /* 严格 20px 楷体 */
+    letter-spacing: 0.04em;
+    text-align: center;
+    white-space: nowrap;
+  }
+
+  .site-nav-link:last-child {
+    border-right: 0;
+  }
+
+  .site-nav-link .nav-idx {
+    font-size: 0.58rem;
+    letter-spacing: 0.02em;
+  }
+
+  .site-nav-link[aria-current="page"]::after {
+    left: 0.25rem;
+    right: 0.25rem;
+    bottom: 0;
+    height: 2px;
+  }
+
+  /* ---------- 2. 象限框顶栏与底栏精简（消除移动端横向挤压） ---------- */
+  .q-topbar {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .q-topbar-cell {
+    padding: 0.44rem 0.85rem;
+    flex-wrap: wrap;
+    gap: 0.42rem;
+  }
+
+  .q-topbar-cell + .q-topbar-cell {
+    border-left: 0;
+    border-top: 1px dashed var(--rule);
+  }
+
+  .q-topbar-cell--center {
+    font-size: 0.92rem;
+    white-space: normal;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    line-height: 1.45;
+  }
+
+  .q-topbar-cell--right {
+    display: none !important;
+  }
+
+  .q-sec-title {
+    font-size: 1.375rem; /* 22px 楷体 */
+  }
+
+  .q-footbar {
+    padding: 0.42rem 0.85rem;
+    gap: 0.3rem 0.65rem;
+    font-size: 0.66rem;
+  }
+
+  .q-footbar > span:nth-child(2):not(:last-child) {
+    display: none;
+  }
+
+  /* ---------- 3. 主页 00 / HERO 移动端布局 ---------- */
+  .hero-q-prose {
+    padding: 1.05rem 0.95rem 0.95rem;
+  }
+
+  .hero-coord {
+    font-size: 0.7rem;
+    margin-bottom: 0.4rem;
+    flex-wrap: wrap;
+  }
+
+  .hero-title {
+    font-size: 1.75rem; /* 28px 楷体 */
+    letter-spacing: 0.12em;
+  }
+
+  .hero-tagline {
+    font-size: 1.25rem;
+    margin-top: 0.35rem;
+  }
+
+  .hero-intro {
+    margin-top: 0.75rem;
+    padding-top: 0.65rem;
+  }
+
+  .hero-intro p {
+    font-size: 1.05rem;
+    line-height: 1.82;
+    margin-bottom: 0.45rem;
+  }
+
+  .hero-planar-motif {
+    margin-top: 0.85rem;
+    gap: 0.65rem;
+  }
+
+  .hero-motif-infinity {
+    width: 4.2rem;
+    height: 2.1rem;
+  }
+
+  .hero-motif-blackhole {
+    width: 2.1rem;
+    height: 2.1rem;
+  }
+
+  .hero-motif-rule {
+    height: 1.65rem;
+  }
+
+  .hero-q-index {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .hero-q-index-cell {
+    padding: 0.62rem 0.85rem;
+    border-bottom: 1px solid var(--rule);
+  }
+
+  .hero-q-index-cell:nth-child(2n) {
+    border-right: 0;
+  }
+
+  .hero-q-index-cell:nth-child(n+3) {
+    border-bottom: 0;
+  }
+
+  /* 1. 移动端不渲染主页下方的构成公式 L3 : x = a·cos(t)... */
+  .stage-subbar,
+  #telemetry-equation {
+    display: none !important;
+  }
+
+  .hero-canvas-holder {
+    min-height: 13.5rem !important;
+    height: 13.5rem !important;
+    touch-action: pan-y;
+  }
+
+  /* ---------- 4. 主页 01 / POSTS 移动端布局（焦点文章置顶 + 近期序列在下） ---------- */
+  .posts-q-body {
+    display: flex !important;
+    flex-direction: column !important;
+  }
+
+  .posts-q-right {
+    order: 1;
+    border-bottom: 1px solid var(--rule);
+  }
+
+  .posts-q-left {
+    order: 2;
+    border-right: 0;
+    border-bottom: 0;
+  }
+
+  .posts-q-spot-head {
+    padding: 0.8rem 0.95rem;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.35rem;
+  }
+
+  .posts-spot-title {
+    font-size: 1.4rem; /* 22.4px 楷体 */
+    line-height: 1.3;
+  }
+
+  .posts-spot-meta {
+    font-size: 1.25rem; /* 20px 楷体 */
+    flex-wrap: wrap;
+    white-space: normal;
+  }
+
+  .posts-q-cover-cell {
+    padding: 0.75rem 0.95rem !important;
+  }
+
+  .cover-locked-stage {
+    min-height: 9rem;
+    padding: 0.85rem 1rem;
+  }
+
+  .posts-q-excerpt-cell {
+    padding: 0.85rem 0.95rem !important;
+  }
+
+  .posts-spot-text {
+    font-size: 1.04rem;
+    line-height: 1.78;
+    -webkit-line-clamp: 4;
+    line-clamp: 4;
+  }
+
+  .spot-telemetry-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0.35rem !important;
+  }
+
+  .spot-telemetry-item {
+    padding: 0.36rem 0.45rem !important;
+  }
+
+  .spot-telemetry-item span {
+    font-size: 0.62rem !important;
+  }
+
+  .spot-telemetry-item strong {
+    font-size: 0.84rem !important;
+  }
+
+  .posts-spot-action-row {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.45rem;
+  }
+
+  .spot-action-status {
+    font-size: 0.64rem;
+  }
+
+  .posts-spot-action-row .q-read-btn {
+    width: 100%;
+    justify-content: center;
+    padding: 0.42rem 0.85rem;
+  }
+
+  .posts-q-left-head {
+    padding: 0.48rem 0.95rem;
+    background: color-mix(in srgb, var(--paper) 90%, var(--canvas));
+  }
+
+  .posts-recent-q {
+    flex-direction: column !important;
+  }
+
+  .posts-recent-q li {
+    border-bottom: 1px solid var(--rule) !important;
+  }
+
+  .posts-recent-q li:last-child {
+    border-bottom: 0 !important;
+  }
+
+  .posts-recent-q a {
+    padding: 0.68rem 0.95rem !important;
+  }
+
+  .mobile-post-preview-btn {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.06rem 0.42rem;
+    border: 1px solid color-mix(in srgb, var(--accent) 48%, var(--rule));
+    border-radius: 2px;
+    background: color-mix(in srgb, var(--accent) 10%, var(--paper));
+    color: var(--accent);
+    font-family: var(--mono);
+    font-size: 0.62rem;
+    margin-left: 0.4rem;
+  }
+
+  /* ---------- 5. 主页 02 / PHOTOS 移动端双列蓝图网格 ---------- */
+  .photos-q-wall-title-cell,
+  .photos-q-wall-note-cell {
+    padding: 0.58rem 0.95rem;
+  }
+
+  .wall-note {
+    font-size: 0.96rem;
+    line-height: 1.55;
+  }
+
+  .photos-q-stage {
+    padding: 0.68rem 0.75rem !important;
+    overflow: visible !important;
+  }
+
+  .wall-photos-strip {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 0.6rem !important;
+    height: auto !important;
+    overflow: visible !important;
+    align-items: stretch !important;
+  }
+
+  .wall-photos-strip .wf-item {
+    width: 100% !important;
+    padding: 0.28rem !important;
+    justify-content: space-between;
+  }
+
+  .wall-photos-strip img {
+    width: 100% !important;
+    height: auto !important;
+    aspect-ratio: 4 / 3 !important;
+    object-fit: cover !important;
+    max-height: 10.5rem;
+  }
+
+  .wf-item-bar {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.15rem;
+    padding: 0.15rem 0.15rem 0.05rem;
+  }
+
+  .wf-item-title {
+    font-size: 1.25rem; /* 严格 20px 楷体 */
+  }
+
+  /* ---------- 6. 主页 03 / PROGRAMS 移动端三段式模块卡 ---------- */
+  .prog-featured-console {
+    padding: 0.9rem 0.95rem;
+  }
+
+  .console-title {
+    font-size: 1.38rem; /* 22px 楷体 */
+  }
+
+  .console-desc {
+    font-size: 0.98rem;
+  }
+
+  .prog-rack-list {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .prog-rack-item {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0.48rem;
+    padding: 0.8rem 0.95rem;
+    align-items: stretch;
+  }
+
+  .rack-id-col {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    border-right: 0;
+    border-bottom: 1px dashed var(--rule);
+    padding-right: 0;
+    padding-bottom: 0.32rem;
+  }
+
+  .rack-main-col h3 {
+    font-size: 1.32rem; /* 21px 楷体 */
+  }
+
+  .rack-main-col p {
+    font-size: 0.96rem;
+  }
+
+  .rack-metric-col {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.35rem;
+  }
+
+  .rack-bar {
+    width: 100%;
+    order: -1;
+  }
+
+  /* ---------- 7. 主页 04 / LINKS 移动端单列排布（友链列表排前面，自我介绍排后面） ---------- */
+  .links-topology-layout {
+    display: flex !important;
+    flex-direction: column !important;
+  }
+
+  .links-peers-panel {
+    order: 1;
+    border-bottom: 1px solid var(--rule);
+  }
+
+  .links-protocol-panel {
+    order: 2;
+    padding: 0.8rem 0.95rem;
+    border-right: 0 !important;
+    border-bottom: 0 !important;
+  }
+
+  .site-identity-card {
+    padding: 0.75rem 0.85rem;
+  }
+
+  .site-card-actions {
+    flex-direction: column;
+    gap: 0.42rem;
+  }
+
+  .site-card-actions .stage-mini-btn {
+    width: 100%;
+    padding: 0.44rem 0.75rem;
+    font-size: 0.8rem;
+    text-align: center;
+  }
+
+  .links-peers-head {
+    padding: 0.52rem 0.95rem;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+  }
+
+  .links-directory-grid {
+    grid-template-columns: minmax(0, 1fr) !important;
+    grid-template-rows: auto !important;
+  }
+
+  .links-directory-grid .peer-card {
+    padding: 0.85rem 0.95rem;
+    border-right: 0 !important;
+    border-bottom: 1px solid var(--rule) !important;
+  }
+
+  .links-directory-grid .peer-card:last-child {
+    border-bottom: 0 !important;
+  }
+
+  /* ---------- 8. 文章归档子页（/posts/）时间轴移动端适配 ---------- */
+  .posts-subpage-view {
+    padding: 0.65rem 0 2.5rem;
+  }
+
+  .posts-subpage-hero-left {
+    padding: 0.95rem;
+  }
+
+  .posts-subpage-title {
+    font-size: 1.55rem; /* 24.8px 楷体 */
+  }
+
+  .posts-subpage-lead {
+    font-size: 0.98rem;
+  }
+
+  .posts-stat-card {
+    padding: 0.65rem 0.85rem;
+  }
+
+  .posts-stat-card strong {
+    font-size: 1.25rem; /* 严格 20px 楷体 */
+  }
+
+  .detail-archive-bar {
+    padding: 0.58rem 0.85rem;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.5rem;
+  }
+
+  .detail-archive-tags {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    padding-bottom: 0.18rem;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+
+  .detail-archive-tags::-webkit-scrollbar {
+    display: none;
+  }
+
+  .archive-tag-chip {
+    flex-shrink: 0;
+    padding: 0.24rem 0.65rem;
+    font-size: 0.76rem;
+  }
+
+  .posts-tl-controls {
+    width: 100%;
+    display: flex;
+    gap: 0.35rem;
+  }
+
+  .tl-search-input {
+    flex: 1;
+    min-width: 0;
+    width: auto;
+    padding: 0.32rem 0.6rem;
+    font-size: 0.82rem;
+  }
+
+  .posts-timeline-main {
+    padding: 0.95rem 0.75rem 1.35rem;
+  }
+
+  .tl {
+    margin-left: 0.25rem;
+    padding-left: 1.15rem;
+  }
+
+  .tl-now-dot {
+    left: calc(-1.15rem - 4.5px);
+  }
+
+  .tl-year-head::before {
+    left: calc(-1.15rem - 5.5px);
+  }
+
+  .tl-month-head::before {
+    left: calc(-1.15rem - 3.5px);
+  }
+
+  .tl-start::before {
+    left: calc(-1.15rem - 6px);
+  }
+
+  .tl-start::after {
+    left: calc(-1.15rem - 2px);
+  }
+
+  .tl-body {
+    padding-left: calc(1.15rem + 8px);
+    margin-left: calc(-1.15rem - 8px);
+  }
+
+  .tl-post-card,
+  .tl-post-card.tl-post-card--no-cover,
+  .tl-post-card:not(:has(.tl-card-thumb)) {
+    grid-template-columns: minmax(0, 1fr) !important;
+    gap: 0.58rem;
+    padding: 0.8rem 0.85rem;
+  }
+
+  .tl-post-card::before {
+    left: -1.15rem;
+    width: 1.15rem;
+    top: 1.45rem;
+  }
+
+  .tl-item-date-col {
+    flex-direction: row;
+    align-items: baseline;
+    justify-content: space-between;
+    border-right: 0;
+    border-bottom: 1px dashed var(--rule);
+    padding-right: 0;
+    padding-bottom: 0.32rem;
+  }
+
+  .tl-day-kai {
+    font-size: 1.25rem; /* 严格 20px 楷体 */
+  }
+
+  .tl-card-title {
+    font-size: 1.3rem; /* 20.8px 楷体 */
+  }
+
+  .tl-card-thumb {
+    max-width: 100% !important;
+    order: -1;
+  }
+
+  .tl-word-meta {
+    margin-left: 0;
+    width: 100%;
+  }
+
+  .tl-slug-code {
+    max-width: 55%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* ---------- 9. 文章详情页（/posts/[...slug]/）移动端深度阅读与目录折叠 ---------- */
+  .article-detail-view {
+    padding: 0.65rem 0 2.5rem;
+  }
+
+  .article-hero-meta-cell {
+    padding: 0.95rem;
+  }
+
+  .article-main-title {
+    font-size: 1.55rem; /* 24.8px 楷体 */
+  }
+
+  .article-lead-summary {
+    font-size: 0.98rem;
+  }
+
+  .article-telemetry-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.48rem 0.7rem;
+  }
+
+  .article-telemetry-item strong {
+    font-size: 1.25rem; /* 严格 20px 楷体 */
+  }
+
+  .article-hero-kinetic-cell {
+    padding: 0.65rem 0.85rem;
+  }
+
+  .article-kinetic-canvas-wrap {
+    min-height: 8.2rem;
+    max-height: 9.8rem;
+    touch-action: pan-y;
+  }
+
+  .article-sidebar-sticky {
+    position: static;
+    max-height: none;
+    padding: 0.75rem 0.95rem;
+    gap: 0.65rem;
+  }
+
+  .toc-box-title {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 0.45rem;
+    cursor: pointer;
+    user-select: none;
+  }
+
+  .mobile-toc-toggle-chip {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.1rem 0.48rem;
+    border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--rule));
+    border-radius: 2px;
+    background: color-mix(in srgb, var(--accent) 10%, var(--paper));
+    color: var(--accent);
+    font-family: var(--mono);
+    font-size: 0.66rem;
+  }
+
+  .article-sidebar-q[data-mobile-toc-collapsed="true"] #article-toc-list,
+  .article-sidebar-q[data-mobile-toc-collapsed="true"] .toc-empty {
+    display: none !important;
+  }
+
+  .article-sidebar-q[data-mobile-toc-collapsed="true"] .toc-box-title {
+    margin-bottom: 0;
+    padding-bottom: 0;
+    border-bottom: 0;
+  }
+
+  .article-prose-q {
+    padding: 1.15rem 0.95rem;
+  }
+
+  .article-prose-q p {
+    font-size: 1.125rem;
+    line-height: 1.9;
+  }
+
+  .article-prose-q h2 {
+    font-size: 1.45rem; /* 23.2px 楷体 */
+    margin: 1.65rem 0 0.75rem;
+  }
+
+  .article-prose-q h3 {
+    font-size: 1.32rem; /* 21.1px 楷体 */
+  }
+
+  .article-prose-q h4 {
+    font-size: 1.25rem; /* 20px 楷体 */
+  }
+
+  .article-prose-q pre {
+    padding: 0.75rem 0.85rem;
+    font-size: 0.82rem;
+  }
+
+  .article-prose-q table,
+  .q-spec-table {
+    display: block;
+    width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    font-size: 0.92rem;
+  }
+
+  .article-pager-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .article-pager-cell {
+    padding: 0.85rem 0.95rem;
+  }
+
+  .article-pager-cell + .article-pager-cell {
+    border-left: 0;
+    border-top: 1px solid var(--rule);
+    text-align: left;
+  }
+
+  .pager-title {
+    font-size: 1.25rem; /* 严格 20px 楷体 */
+  }
+
+  .fab-item--mobile-only {
+    display: inline-flex;
+  }
+
+  /* ---------- 10. 照片子页（/photos/）检视台与胶片条移动端适配 ---------- */
+  .photos-showcase-screen {
+    min-height: 0 !important;
+    height: auto !important;
+    max-height: none !important;
+    padding: 0.65rem 0;
+  }
+
+  .photos-inspector-stage-cell {
+    padding: 0.75rem 0.85rem;
+  }
+
+  .inspector-stage-head {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.45rem;
+  }
+
+  .inspector-nav-btns {
+    width: 100%;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.42rem;
+  }
+
+  .inspector-nav-btns .stage-mini-btn {
+    padding: 0.36rem 0.5rem;
+    text-align: center;
+    font-size: 0.78rem;
+  }
+
+  .inspector-viewport {
+    min-height: 12.5rem;
+    padding: 0.35rem;
+    touch-action: pan-y;
+  }
+
+  .photos-inspector-info-cell {
+    padding: 0.85rem 0.95rem !important;
+  }
+
+  .photos-insp-title {
+    font-size: 1.4rem !important; /* 22.4px 楷体 */
+  }
+
+  .photo-exif-spec-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 0.38rem 0.5rem !important;
+  }
+
+  .insp-filmstrip-row {
+    display: flex !important;
+    overflow-x: auto;
+    gap: 0.38rem;
+    padding-bottom: 0.15rem;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+
+  .insp-filmstrip-row::-webkit-scrollbar {
+    display: none;
+  }
+
+  .filmstrip-thumb {
+    flex: 0 0 4.5rem;
+    padding: 0.28rem 0.3rem;
+  }
+
+  .photos-detail-archive-grid {
+    padding: 0.85rem;
+    grid-template-columns: minmax(0, 1fr) !important;
+    gap: 0.85rem;
+  }
+
+  /* ---------- 11. 悬浮球、友链弹窗与全屏灯箱移动端适配 ---------- */
+  .fab {
+    right: 0.85rem;
+    bottom: 0.95rem;
+  }
+
+  .link-apply-backdrop {
+    padding: 0.65rem;
+    align-items: flex-end;
+  }
+
+  .link-apply-dialog {
+    max-height: calc(100dvh - 1.3rem);
+    overflow-y: auto;
+  }
+
+  .link-apply-form {
+    padding: 1rem;
+  }
+
+  .link-apply-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .lightbox {
+    padding: 2.8rem 0.65rem 3.5rem;
+  }
+
+  .lightbox-note {
+    width: calc(100% - 1.5rem);
+    flex-direction: column;
+    align-items: center;
+    gap: 0.2rem;
+    text-align: center;
+    font-size: 0.76rem;
+    bottom: 0.75rem;
+  }
+
+  /* ---------- 12. 移动端白天页脚彩蛋缩小并自动适配当前页面等宽 ---------- */
+  .foot-day-kinetic {
+    width: 100%;
+    max-width: 100%;
+    margin: 0.45rem 0 0.15rem;
+  }
+
+  .foot-day-stage {
+    display: flex;
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+    justify-content: space-between;
+    align-items: center;
+    gap: 0.45rem;
+    padding: 0.22rem 0.65rem;
+  }
+
+  .foot-day-tag {
+    display: inline-block;
+    font-size: 0.52rem;
+    letter-spacing: 0.04em;
+    flex-shrink: 0;
+  }
+
+  .foot-v3-wave-box {
+    flex: 1 1 auto;
+    width: auto;
+    min-width: 0;
+    height: 1.25rem;
+  }
+
+  .foot-v3-bars {
+    width: 100%;
+    justify-content: space-between;
+    gap: 2px;
+  }
+
+  .foot-v3-bars i {
+    width: 1.5px;
+    height: 4px;
+  }
+
+  @keyframes foot-v3-bar-wave {
+    0%, 100% { height: 3px; opacity: 0.38; }
+    50% { height: 12px; opacity: 0.95; }
+  }
+}
+
+@media (max-width: 24rem) {
+  .site-nav-link .nav-idx {
+    display: none;
+  }
+  .wall-photos-strip {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+}

@@ -136,3 +136,10 @@
 .fab[data-open='true'] .fab-btn--main .fab-main-Cross {
   transform: rotate(45deg);
 }
+
+@media (max-width: 48rem) {
+  .fab {
+    right: 0.85rem;
+    bottom: 0.95rem;
+  }
+}

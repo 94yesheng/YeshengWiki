@@ -596,6 +596,17 @@
       }
     });
 
+    if (window.innerWidth <= 768) {
+      if (homePhotoFitStatus) {
+        homePhotoFitStatus.innerHTML =
+          '最新一组共 <strong class="telemetry-accent">' + items.length + ' 张</strong>照片 · 移动端双列蓝图网格（轻触图片全屏浏览）';
+      }
+      if (photoBoundaryBadge) {
+        photoBoundaryBadge.textContent = 'MOBILE GRID · ' + items.length + ' PHOTOS';
+      }
+      return;
+    }
+
     var stageStyle = window.getComputedStyle(homePhotosStage);
     var padLeft = parseFloat(stageStyle.paddingLeft) || 0;
     var padRight = parseFloat(stageStyle.paddingRight) || 0;
@@ -763,14 +774,18 @@
     var vpH = vpEl.clientHeight;
     if (gridW < 40 || vpH < 40) return;
 
+    var isMobilePhone = window.innerWidth <= 768;
     var isMobileSingleCol = window.innerWidth <= 1152;
     var targetStageW = isMobileSingleCol ? gridW : (gridW * stageShare);
-    // 预留舞台内边距与安全呼吸边距，确保画框绝不超出边界且整体画面美观
-    var availW = Math.max(180, targetStageW - 62);
-    var availH = Math.max(180, vpH - 22);
-    var matPad = 14;
+    var matPad = isMobilePhone ? 10 : 14;
+    var availW = isMobilePhone
+      ? Math.max(180, (vpEl.clientWidth || gridW) - 14)
+      : Math.max(180, targetStageW - 62);
+    var availH = isMobilePhone
+      ? (isPortrait ? Math.min(360, Math.round(window.innerHeight * 0.46)) : Math.min(250, Math.round(availW / Math.max(0.6, ar) + matPad)))
+      : Math.max(180, vpH - 22);
     var maxImgW = Math.max(140, availW - matPad);
-    var maxImgH = Math.max(140, availH - matPad);
+    var maxImgH = Math.max(130, availH - matPad);
 
     var fitW = maxImgW;
     var fitH = fitW / ar;
@@ -783,6 +798,11 @@
     var finalBoxH = Math.round(fitH + matPad);
     frameBox.style.width = finalBoxW + 'px';
     frameBox.style.height = finalBoxH + 'px';
+    if (window.innerWidth <= 768) {
+      vpEl.style.minHeight = (finalBoxH + 16) + 'px';
+    } else {
+      vpEl.style.minHeight = '';
+    }
 
     var fitTelemetry = document.getElementById('insp-fit-telemetry');
     if (fitTelemetry) {
@@ -928,6 +948,11 @@
     document.querySelectorAll('[data-insp-select]').forEach(function (btn) {
       if (parseInt(btn.dataset.inspSelect, 10) === currentPhotoIdx) {
         btn.dataset.active = 'true';
+        var stripRow = document.getElementById('insp-filmstrip-row');
+        if (stripRow && window.innerWidth <= 768 && stripRow.scrollWidth > stripRow.clientWidth) {
+          var targetLeft = btn.offsetLeft - (stripRow.clientWidth - btn.offsetWidth) * 0.5;
+          stripRow.scrollTo({ left: Math.max(0, targetLeft), behavior: 'smooth' });
+        }
       } else {
         delete btn.dataset.active;
       }
@@ -1640,6 +1665,22 @@
       if (t.closest('[data-dir="next"]')) return showLightboxAt(lbIndex + 1);
       if (!t.closest('img')) closeLightbox();
     });
+    var lbTouchX = 0;
+    var lbTouchY = 0;
+    el.addEventListener('touchstart', function (e) {
+      if (!e.touches || !e.touches[0]) return;
+      lbTouchX = e.touches[0].clientX;
+      lbTouchY = e.touches[0].clientY;
+    }, { passive: true });
+    el.addEventListener('touchend', function (e) {
+      if (!e.changedTouches || !e.changedTouches[0]) return;
+      var dx = e.changedTouches[0].clientX - lbTouchX;
+      var dy = e.changedTouches[0].clientY - lbTouchY;
+      if (Math.abs(dx) > 42 && Math.abs(dx) > Math.abs(dy) * 1.3) {
+        if (dx < 0) showLightboxAt(lbIndex + 1);
+        else showLightboxAt(lbIndex - 1);
+      }
+    }, { passive: true });
     document.body.appendChild(el);
     lbBox = el;
     return el;
@@ -1903,6 +1944,11 @@
 
     var postLink = e.target.closest('a[data-post-title]');
     if (postLink) {
+      var isPreviewChip = Boolean(e.target.closest('[data-mobile-spot-preview]'));
+      if (window.innerWidth <= 768 && !isPreviewChip) {
+        // 移动端点击近期序列卡片直接进入文章详情页；点右侧「预览」角标才在焦点区切换预览
+        return;
+      }
       e.preventDefault();
       applyPostSpotlight({
         id: postLink.dataset.postId || 'latest',
@@ -1918,7 +1964,13 @@
         category: postLink.dataset.postCategory || defaultSpot.category,
         excerpt: postLink.dataset.postExcerpt || defaultSpot.excerpt
       }, postLink);
-      showToast('已在右侧预览《' + postLink.dataset.postTitle + '》，点击标题或「阅读全文」进入详细页');
+      if (window.innerWidth <= 768) {
+        var spotCard = document.querySelector('.posts-q-right');
+        if (spotCard) spotCard.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        showToast('已在上方焦点卡预览《' + postLink.dataset.postTitle + '》');
+      } else {
+        showToast('已在右侧预览《' + postLink.dataset.postTitle + '》，点击标题或「阅读全文」进入详细页');
+      }
       return;
     }
 
@@ -2322,7 +2374,7 @@
     }
     ctx.restore();
 
-    var count = Math.min(state.particleCount, MAX_PARTICLES);
+    var count = Math.min(window.innerWidth <= 768 ? Math.min(state.particleCount, 300) : state.particleCount, MAX_PARTICLES);
     var renderList = [];
 
     for (var i = 0; i < count; i++) {
@@ -2482,7 +2534,7 @@
     // 3. 计算全部黑洞纯粒子的三维投影位置，严格按前后深度分为：
     //    - backParticles（后半盘 sinP < 0 及透镜拱桥粒子，位于黑洞后方，经过黑洞视界内部时被黑洞遮挡）
     //    - frontParticles（仅前半赤道盘 sinP >= 0 的前景粒子，横跨黑洞正前方）
-    var count = Math.min(state.particleCount, MAX_PARTICLES);
+    var count = Math.min(window.innerWidth <= 768 ? Math.min(state.particleCount, 300) : state.particleCount, MAX_PARTICLES);
     var backParticles = [];
     var frontParticles = [];
 
@@ -3786,6 +3838,124 @@
   }
 
 
+  /* ========================================================================
+     移动端（<= 768px）专属交互增强：
+     1. 主页近期序列注入「预览 ▴」轻触角标（点击卡片直达阅读，点击角标切换焦点预览）
+     2. 文章详情页左侧章节目录移动端默认折叠 + 点击展开/跳段自动收起 + FAB 快捷目录按钮
+     3. 相册检视台画框支持手指左右滑动（Swipe）切换上一张/下一张照片
+     ======================================================================== */
+  function initMobileUiEnhancements() {
+    // 1. 主页近期文章列表注入移动端「预览」角标
+    document.querySelectorAll('#posts-recent-list a[data-post-title]').forEach(function (a) {
+      var coordRow = a.querySelector('.post-q-item-coord');
+      if (coordRow && !coordRow.querySelector('[data-mobile-spot-preview]')) {
+        var chip = document.createElement('span');
+        chip.className = 'mobile-post-preview-btn';
+        chip.setAttribute('data-mobile-spot-preview', 'true');
+        chip.textContent = '预览 ▴';
+        coordRow.appendChild(chip);
+      }
+    });
+
+    // 2. 文章详情页移动端章节目录折叠与 FAB 快捷呼出
+    var artSidebar = document.querySelector('#article-view .article-sidebar-q');
+    var tocTitle = artSidebar ? artSidebar.querySelector('.toc-box-title') : null;
+    if (artSidebar && tocTitle && !tocTitle.dataset.mobileWired) {
+      tocTitle.dataset.mobileWired = 'true';
+      var toggleBadge = document.createElement('span');
+      toggleBadge.className = 'mobile-toc-toggle-chip';
+      toggleBadge.textContent = '展开目录 ▾';
+      tocTitle.appendChild(toggleBadge);
+      tocTitle.setAttribute('role', 'button');
+      tocTitle.setAttribute('tabindex', '0');
+
+      function setMobileTocCollapsed(collapsed) {
+        artSidebar.dataset.mobileTocCollapsed = collapsed ? 'true' : 'false';
+        toggleBadge.textContent = collapsed ? '展开目录 ▾' : '收起目录 ▴';
+      }
+
+      if (window.innerWidth <= 768) {
+        setMobileTocCollapsed(true);
+      }
+
+      tocTitle.addEventListener('click', function () {
+        if (window.innerWidth > 768) return;
+        var isCol = artSidebar.dataset.mobileTocCollapsed !== 'false';
+        setMobileTocCollapsed(!isCol);
+      });
+
+      tocTitle.addEventListener('keydown', function (e) {
+        if (window.innerWidth > 768) return;
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          var isCol = artSidebar.dataset.mobileTocCollapsed !== 'false';
+          setMobileTocCollapsed(!isCol);
+        }
+      });
+
+      if (articleTocList) {
+        articleTocList.addEventListener('click', function (e) {
+          if (window.innerWidth <= 768 && e.target.closest('a[data-toc-link]')) {
+            setTimeout(function () {
+              setMobileTocCollapsed(true);
+            }, 180);
+          }
+        });
+      }
+
+      // 在文章页右下角 FAB 菜单注入「INDEX // 章节目录」快捷按钮
+      var fabActions = document.getElementById('fab-actions');
+      if (fabActions && state.view === 'article' && !fabActions.querySelector('[data-action="toc"]')) {
+        var tocFabItem = document.createElement('div');
+        tocFabItem.className = 'fab-item fab-item--mobile-only';
+        tocFabItem.innerHTML =
+          '<span class="fab-chip-label">INDEX // 章节目录</span>' +
+          '<button type="button" class="fab-btn" data-action="toc" aria-label="定位并展开章节目录" title="章节目录">' +
+            '<svg viewBox="0 0 20 20" aria-hidden="true">' +
+              '<line x1="4" y1="6" x2="16" y2="6"/>' +
+              '<line x1="4" y1="10" x2="13" y2="10"/>' +
+              '<line x1="4" y1="14" x2="16" y2="14"/>' +
+            '</svg>' +
+          '</button>';
+        fabActions.insertBefore(tocFabItem, fabActions.firstChild);
+        var tocBtn = tocFabItem.querySelector('[data-action="toc"]');
+        if (tocBtn) {
+          tocBtn.addEventListener('click', function () {
+            setMobileTocCollapsed(false);
+            setFabOpen(false);
+            artSidebar.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          });
+        }
+      }
+    }
+
+    // 3. 照片子页检视台画框支持移动端左右滑动切换照片
+    var inspVp = document.getElementById('insp-viewport');
+    if (inspVp && !inspVp.dataset.swipeWired) {
+      inspVp.dataset.swipeWired = 'true';
+      var sx = 0, sy = 0;
+      inspVp.addEventListener('touchstart', function (e) {
+        if (!e.touches || !e.touches[0]) return;
+        sx = e.touches[0].clientX;
+        sy = e.touches[0].clientY;
+      }, { passive: true });
+      inspVp.addEventListener('touchend', function (e) {
+        if (!e.changedTouches || !e.changedTouches[0] || !PHOTO_VISUAL_ORDER.length) return;
+        var dx = e.changedTouches[0].clientX - sx;
+        var dy = e.changedTouches[0].clientY - sy;
+        if (Math.abs(dx) > 42 && Math.abs(dx) > Math.abs(dy) * 1.35) {
+          var pos = PHOTO_VISUAL_ORDER.indexOf(currentPhotoIdx);
+          if (pos === -1) pos = 0;
+          var nextPos = dx < 0
+            ? (pos + 1) % PHOTO_VISUAL_ORDER.length
+            : (pos - 1 + PHOTO_VISUAL_ORDER.length) % PHOTO_VISUAL_ORDER.length;
+          selectPhotoInInspector(PHOTO_VISUAL_ORDER[nextPos]);
+        }
+      }, { passive: true });
+    }
+  }
+
+  initMobileUiEnhancements();
   syncSpotCoverGeometry();
   setTimeout(fitHomePhotoWallBounds, 60);
   setTimeout(layoutPhotosArchiveMasonry, 60);
