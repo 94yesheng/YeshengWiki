@@ -37,6 +37,7 @@ const modules = prog.modules ?? [];
 const consoleData: ProgConsole | null =
   prog.console && (prog.console.title || prog.console.desc) ? prog.console : null;
 const terminalLines = (consoleData?.terminalLines ?? []).filter((l) => l.cmd || l.out);
+const hasContent = Boolean(consoleData) || modules.length > 0;
 const pages = getPageValues();
 const c = (key: string, vars?: Record<string, string | number>) => copy(pages, key, vars);
 ---
@@ -86,6 +87,16 @@ const c = (key: string, vars?: Record<string, string | number>) => copy(pages, k
             <div class="prog-foot">
               <a href="/">{c('programs.hostCta')}</a>
             </div>
+          </article>
+        )
+      }
+
+      {
+        !hasContent && (
+          <article class="prog-card prog-card--empty">
+            <div class="prog-kicker">PROGRAMS // EMPTY</div>
+            <h2>{c('programs.emptyTitle')}</h2>
+            <p>{c('programs.emptyText')}</p>
           </article>
         )
       }
