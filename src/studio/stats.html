@@ -2298,6 +2298,11 @@ html.st-embed a[href="/studio/"] { display: none !important; }
         renderLeftPane();
       }
 
+      function sanitizeCsvCell(val) {
+        const s = String(val ?? '').replace(/\r?\n/g, ' ');
+        return /^[\s]*[=+\-@\t\r]/.test(s) ? `'${s}` : s;
+      }
+
       function exportCsv() {
         if (!dashboard || dashboard.logs.items.length === 0) {
           toast('当前没有可导出的访客记录', true);
@@ -2307,7 +2312,7 @@ html.st-embed a[href="/studio/"] { display: none !important; }
         const rows = dashboard.logs.items.map((r) => [
           r.visitDate, r.ip, r.countryZh, r.region, r.deviceType, r.os, r.browser, r.path, String(r.pvCount), String(r.visitCount ?? 0), r.lastSeen
         ]);
-        const csvContent = '\uFEFF' + [headers, ...rows].map((row) => row.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n');
+        const csvContent = '\uFEFF' + [headers, ...rows].map((row) => row.map((c) => `"${sanitizeCsvCell(c).replace(/"/g, '""')}"`).join(',')).join('\n');
         const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');

@@ -10,14 +10,17 @@ import {
   clearSessionCookie,
   createSession,
   destroySession,
+  destroyUserSessions,
   getAuth,
   getClientIp,
+  getRateLimitRetryAfterSec,
   hasValidCsrf,
   hashPasswordAsync,
-  isRateLimited,
   recordFailure,
   SESSION_COOKIE,
   setSessionCookie,
+  validatePasswordStrength,
+  verifyDummyPasswordAsync,
   verifyPasswordAsync,
   type AuthContext,
 } from '../auth';
@@ -64,14 +67,14 @@ import {
 } from '../pages';
 
 interface LoginBody {
-  username?: string;
-  password?: string;
+  username?: unknown;
+  password?: unknown;
 }
 
 interface AccountBody {
-  currentPassword?: string;
-  username?: string;
-  newPassword?: string;
+  currentPassword?: unknown;
+  username?: unknown;
+  newPassword?: unknown;
 }
 
 interface LinkApplyBody {
@@ -87,6 +90,10 @@ interface LinkApplyBody {
 
 const SLUG_RE = /^[a-z0-9][a-z0-9-_]*$/;
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+const LOGIN_WINDOW_MS = 10 * 60 * 1000;
+const LOGIN_MAX_PER_IP_USER = 5;
+const LOGIN_MAX_PER_IP = 15;
+const LOGIN_MAX_PER_ACCOUNT = 20;
 
 export async function handleApi(context: APIContext): Promise<Response | null> {
   const { pathname } = context.url;
@@ -106,7 +113,7 @@ export async function handleApi(context: APIContext): Promise<Response | null> {
 
   // /api/health
   if (parts.length === 1 && parts[0] === 'health' && method === 'GET') {
-    return health();
+    return health(context);
   }
 
   // /api/auth/*
@@ -201,8 +208,9 @@ export async function handleApi(context: APIContext): Promise<Response | null> {
     // 访客提交友链申请（公开接口：带 IP 速率限制、蜜罐校验与待审队列上限）
     if (parts.length === 2 && parts[1] === 'apply' && method === 'POST') {
       const ipKey = `link-apply:${getClientIp(context)}`;
-      if (isRateLimited(ipKey, 5, 10 * 60 * 1000)) {
-        return fail('提交过于频繁，请稍后再试', 429);
+      const retryAfter = getRateLimitRetryAfterSec(ipKey, 5, 10 * 60 * 1000);
+      if (retryAfter > 0) {
+        return fail('提交过于频繁，请稍后再试', 429, {}, { 'Retry-After': String(retryAfter) });
       }
 
       const body = await readJson<LinkApplyBody>(context.request);
@@ -210,17 +218,25 @@ export async function handleApi(context: APIContext): Promise<Response | null> {
         return json({ ok: true }, 201);
       }
 
-      const owner = String(body?.owner ?? '').trim();
-      const name = String(body?.name ?? '').trim();
-      const url = String(body?.url ?? '').trim();
-      const description = String(body?.description ?? '').trim();
-      const avatar = String(body?.avatar ?? '').trim();
-      const tag = String(body?.tag ?? '').trim();
+      const owner = typeof body?.owner === 'string' ? body.owner.trim() : '';
+      const name = typeof body?.name === 'string' ? body.name.trim() : '';
+      const url = typeof body?.url === 'string' ? body.url.trim() : '';
+      const description = typeof body?.description === 'string' ? body.description.trim() : '';
+      const avatar = typeof body?.avatar === 'string' ? body.avatar.trim() : '';
+      const tag = typeof body?.tag === 'string' ? body.tag.trim() : '';
 
       if (!owner) return fail('请填写站长称呼', 400);
       if (!name) return fail('请填写站点标题', 400);
       if (!url || !/^https?:\/\/[^\s/$.?#].[^\s]*$/i.test(url)) {
         return fail('请填写以 http:// 或 https:// 开头的完整站点链接', 400);
+      }
+      try {
+        const parsedUrl = new URL(url);
+        if (parsedUrl.protocol !== 'http:' && parsedUrl.protocol !== 'https:') {
+          return fail('仅支持 http:// 或 https:// 协议的站点链接', 400);
+        }
+      } catch {
+        return fail('请填写合法的完整站点链接', 400);
       }
       if (!description) return fail('请填写自我介绍或站点简介', 400);
       if (owner.length > 48 || name.length > 64 || url.length > 256 || description.length > 320) {
@@ -234,7 +250,7 @@ export async function handleApi(context: APIContext): Promise<Response | null> {
       }
 
       try {
-        recordFailure(ipKey, 10 * 60 * 1000);
+        recordFailure(ipKey, 10 * 60 * 1000, 5);
         const application = createLinkApplication({
           owner,
           name,
@@ -361,9 +377,15 @@ export async function handleApi(context: APIContext): Promise<Response | null> {
    health / auth
    -------------------------------------------------------------------------- */
 
-function health(): Response {
+function health(context: APIContext): Response {
   try {
     const db = getDb();
+    db.prepare('SELECT 1').get();
+    const auth = getAuth(context);
+    if (!auth) {
+      // 未登录探针仅返回存活状态，不对外暴露草稿总数、schema 版本号与服务器时钟
+      return json({ ok: true });
+    }
     const schema = db.prepare('SELECT MAX(version) AS version FROM schema_migrations').get() as {
       version: number | null;
     };
@@ -381,24 +403,67 @@ function health(): Response {
 
 async function login(context: APIContext): Promise<Response> {
   const body = await readJson<LoginBody>(context.request);
-  const username = body?.username?.trim() ?? '';
-  const password = body?.password ?? '';
+  if (!body || typeof body !== 'object') {
+    return fail('请输入账号和密码', 400);
+  }
+  if (typeof body.username !== 'string' || typeof body.password !== 'string') {
+    return fail('账号或密码格式不正确', 400);
+  }
+
+  const username = body.username.trim();
+  const password = body.password;
 
   if (!username || !password) return fail('请输入账号和密码', 400);
+  if (username.length > 32 || password.length > 200) {
+    return fail('账号或密码长度超出限制', 400);
+  }
 
-  const key = `${getClientIp(context)}:${username}`;
-  if (isRateLimited(key)) return fail('尝试次数过多，请 10 分钟后再试', 429);
+  const clientIp = getClientIp(context);
+  const normUser = username.toLowerCase();
+  const ipKey = `login-ip:${clientIp}`;
+  const userKey = `login-user:${clientIp}:${normUser}`;
+  const acctKey = `login-acct:${normUser}`;
+
+  const retryIp = getRateLimitRetryAfterSec(ipKey, LOGIN_MAX_PER_IP, LOGIN_WINDOW_MS);
+  const retryUser = getRateLimitRetryAfterSec(userKey, LOGIN_MAX_PER_IP_USER, LOGIN_WINDOW_MS);
+  const retryAcct = getRateLimitRetryAfterSec(acctKey, LOGIN_MAX_PER_ACCOUNT, LOGIN_WINDOW_MS);
+  const retryAfter = Math.max(retryIp, retryUser, retryAcct);
+  if (retryAfter > 0) {
+    return fail(
+      '尝试次数过多，请 10 分钟后再试',
+      429,
+      {},
+      { 'Retry-After': String(retryAfter) }
+    );
+  }
 
   const row = getDb()
     .prepare('SELECT id, username, password_hash FROM users WHERE username = ?')
     .get(username) as { id: number; username: string; password_hash: string } | undefined;
 
-  if (!row || !(await verifyPasswordAsync(password, row.password_hash))) {
-    recordFailure(key);
+  const passwordValid = row
+    ? await verifyPasswordAsync(password, row.password_hash)
+    : await verifyDummyPasswordAsync(password);
+
+  if (!row || !passwordValid) {
+    recordFailure(ipKey, LOGIN_WINDOW_MS, LOGIN_MAX_PER_IP);
+    recordFailure(userKey, LOGIN_WINDOW_MS, LOGIN_MAX_PER_IP_USER);
+    if (row) {
+      recordFailure(acctKey, LOGIN_WINDOW_MS, LOGIN_MAX_PER_ACCOUNT);
+    }
     return fail('账号或密码不对', 401);
   }
 
-  clearFailures(key);
+  clearFailures(ipKey);
+  clearFailures(userKey);
+  clearFailures(acctKey);
+
+  // 登录成功时先销毁当前浏览器可能残留的旧会话，防止会话固定
+  const oldToken = context.cookies.get(SESSION_COOKIE)?.value;
+  if (oldToken) {
+    destroySession(oldToken);
+  }
+
   const { token, csrf, expiresAt } = createSession(row.id);
   setSessionCookie(context, token, expiresAt);
   return json({ user: { id: row.id, username: row.username }, csrf });
@@ -427,20 +492,35 @@ async function changeAccount(context: APIContext): Promise<Response> {
   if (!hasValidCsrf(context, auth)) return fail('CSRF 校验失败', 403);
 
   const body = await readJson<AccountBody>(context.request);
-  const currentPassword = body?.currentPassword ?? '';
-  const username = (body?.username ?? '').trim();
-  const newPassword = body?.newPassword ?? '';
+  if (!body || typeof body !== 'object') return fail('请求体不是合法 JSON', 400);
+  if (
+    typeof body.currentPassword !== 'string' ||
+    (body.username !== undefined && typeof body.username !== 'string') ||
+    (body.newPassword !== undefined && typeof body.newPassword !== 'string')
+  ) {
+    return fail('字段格式不正确', 400);
+  }
+
+  const currentPassword = body.currentPassword;
+  const username = (body.username ?? '').trim();
+  const newPassword = body.newPassword ?? '';
 
   if (!currentPassword) return fail('请输入当前密码', 400);
+  if (currentPassword.length > 200) return fail('当前密码长度超出限制', 400);
   if (!username) return fail('账号不能为空', 400);
   if (!/^[\p{L}\p{N}._-]{3,32}$/u.test(username)) {
     return fail('账号需为 3-32 位中英文、数字或 ._-', 400);
   }
-  if (newPassword && newPassword.length < 8) return fail('新密码至少 8 位', 400);
-  if (newPassword.length > 200) return fail('新密码太长', 400);
+  if (newPassword) {
+    const strengthError = validatePasswordStrength(newPassword, username);
+    if (strengthError) return fail(strengthError, 400);
+  }
 
   const key = `account:${auth.user.id}:${getClientIp(context)}`;
-  if (isRateLimited(key)) return fail('尝试次数过多，请 10 分钟后再试', 429);
+  const retryAfter = getRateLimitRetryAfterSec(key);
+  if (retryAfter > 0) {
+    return fail('尝试次数过多，请 10 分钟后再试', 429, {}, { 'Retry-After': String(retryAfter) });
+  }
 
   const db = getDb();
   const row = db
@@ -474,23 +554,23 @@ async function changeAccount(context: APIContext): Promise<Response> {
         passwordHash,
         auth.user.id
       );
-      if (passwordChanged) {
-        db.prepare('DELETE FROM sessions WHERE user_id = ? AND id <> ?').run(
-          auth.user.id,
-          auth.sessionId
-        );
-      }
+      // 无论改密还是改账号，均彻底销毁该用户所有旧会话并在下方重新签发全新 Session + CSRF
+      destroyUserSessions(auth.user.id);
     })();
   } catch (error) {
     console.error('[api/account]', error);
     return fail('更新账号失败，请稍后重试', 500);
   }
 
+  const rotated = createSession(auth.user.id);
+  setSessionCookie(context, rotated.token, rotated.expiresAt);
+
   clearFailures(key);
   return json({
     ok: true,
     user: { id: auth.user.id, username },
     passwordChanged,
+    csrf: rotated.csrf,
   });
 }
 

@@ -10,8 +10,13 @@ export function json(data: unknown, status = 200, headers: HeadersInit = {}): Re
   });
 }
 
-export function fail(message: string, status = 400, extra: Record<string, unknown> = {}): Response {
-  return json({ error: message, ...extra }, status);
+export function fail(
+  message: string,
+  status = 400,
+  extra: Record<string, unknown> = {},
+  headers: HeadersInit = {}
+): Response {
+  return json({ error: message, ...extra }, status, headers);
 }
 
 const DEFAULT_MAX_JSON_BYTES = 2 * 1024 * 1024; // 默认 JSON 请求体上限 2MB

@@ -78,13 +78,26 @@ export function listLinks(): Link[] {
   return cachedLinks;
 }
 
-function sanitizeLinkUrl(raw: unknown): string {
+export function sanitizeLinkUrl(raw: unknown): string {
   const s = String(raw ?? '').trim();
-  if (/^https?:\/\//i.test(s) || (s.startsWith('/') && !s.startsWith('//'))) {
+  if (!s || /[\x00-\x20\x7f]/.test(s)) return '#';
+  if (s.startsWith('/') && !s.startsWith('//')) {
     return s;
   }
-  if (s && !/^[a-z][a-z0-9+.-]*:/i.test(s)) {
-    return `https://${s}`;
+  const candidate =
+    /^https?:\/\//i.test(s)
+      ? s
+      : !/^[a-z][a-z0-9+.-]*:/i.test(s)
+        ? `https://${s}`
+        : '';
+  if (!candidate) return '#';
+  try {
+    const parsed = new URL(candidate);
+    if ((parsed.protocol === 'http:' || parsed.protocol === 'https:') && parsed.hostname) {
+      return parsed.href;
+    }
+  } catch {
+    // ignore invalid URL
   }
   return '#';
 }
@@ -123,7 +136,7 @@ function mapApplication(row: LinkApplicationRow): LinkApplication {
     id: row.id,
     owner: row.owner,
     name: row.name,
-    url: row.url,
+    url: sanitizeLinkUrl(row.url),
     description: row.description,
     avatar: row.avatar,
     tag: row.tag,
@@ -153,7 +166,10 @@ export function createLinkApplication(input: {
   const db = getDb();
   const owner = input.owner.trim();
   const name = input.name.trim();
-  const url = input.url.trim();
+  const url = sanitizeLinkUrl(input.url);
+  if (url === '#') {
+    throw new Error('非法的友链 URL 协议');
+  }
   const description = input.description.trim();
   const avatar = input.avatar?.trim() || name.slice(0, 1) || '友';
   const tag = input.tag?.trim() || '独立博客';
@@ -188,17 +204,25 @@ export function approveLinkApplication(id: number): {
     .get(id) as LinkApplicationRow | undefined;
   if (!row) return { application: null, links: listLinks() };
 
+  const safeUrl = sanitizeLinkUrl(row.url);
+  if (safeUrl === '#') {
+    throw new Error('该友链申请的 URL 协议不安全，已拒绝入库');
+  }
+
   db.transaction(() => {
-    db.prepare(`UPDATE link_applications SET status = 'approved' WHERE id = ?`).run(id);
+    db.prepare(`UPDATE link_applications SET status = 'approved', url = ? WHERE id = ?`).run(
+      safeUrl,
+      id
+    );
 
     const existingByUrl = db
       .prepare('SELECT id FROM links WHERE LOWER(url) = LOWER(?)')
-      .get(row.url) as { id: number } | undefined;
+      .get(safeUrl) as { id: number } | undefined;
 
     if (!existingByUrl) {
       let hostSlug = '';
       try {
-        hostSlug = new URL(row.url).hostname
+        hostSlug = new URL(safeUrl).hostname
           .replace(/^www\./i, '')
           .replace(/[^a-z0-9]+/gi, '-')
           .replace(/^-|-$/g, '')
@@ -227,7 +251,7 @@ export function approveLinkApplication(id: number): {
       ).run({
         linkId,
         name: row.name,
-        url: row.url,
+        url: safeUrl,
         description: row.description,
         avatar: avatarChar,
         tag: row.tag?.trim() || '独立博客 · 友链',

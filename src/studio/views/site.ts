@@ -9,6 +9,7 @@
  */
 import { $, esc, toast } from '../ui';
 import { state, markDirty, rerender } from '../state';
+import { ApiGithub } from '../api';
 import { renderWidgetCardHtml, type RailWidgetCard, type RailWidgetType } from '../../utils/article-rail';
 import { uploadSiteIcon } from '../content';
 
@@ -856,7 +857,7 @@ function renderAccountSettings(host: HTMLElement, preview: HTMLElement): void {
           </div>
           <div class="st-field">
             <label>新密码（留空表示不改）</label>
-            <div><input class="st-input" id="st-acct-new" type="password" autocomplete="new-password" placeholder="至少 8 位..." /></div>
+            <div><input class="st-input" id="st-acct-new" type="password" autocomplete="new-password" placeholder="至少 12 位（含大小写/数字/符号至少两类）..." /></div>
           </div>
           <div class="st-field">
             <label>确认新密码</label>
@@ -864,7 +865,7 @@ function renderAccountSettings(host: HTMLElement, preview: HTMLElement): void {
           </div>
         </div>
         <div class="st-hint" style="margin-top:0.7rem;">
-          账号 3–32 位中英文、数字或 <code>._-</code>；密码至少 8 位。改密后其他设备/浏览器的登录会失效，当前会话保留。
+          账号 3–32 位中英文、数字或 <code>._-</code>；密码至少 12 位且包含大写字母、小写字母、数字、特殊符号中的至少两类。改密后会自动轮换当前会话并注销其他设备会话。
         </div>
       </div>
 
@@ -931,9 +932,20 @@ function renderAccountSettings(host: HTMLElement, preview: HTMLElement): void {
       setMsg('账号需为 3–32 位中英文、数字或 ._-', true);
       return;
     }
-    if (newPassword && newPassword.length < 8) {
-      setMsg('新密码至少 8 位', true);
-      return;
+    if (newPassword) {
+      if (newPassword.length < 12 || newPassword.length > 200) {
+        setMsg('新密码长度需在 12–200 位之间', true);
+        return;
+      }
+      const classes =
+        (/[a-z]/.test(newPassword) ? 1 : 0) +
+        (/[A-Z]/.test(newPassword) ? 1 : 0) +
+        (/[0-9]/.test(newPassword) ? 1 : 0) +
+        (/[^a-zA-Z0-9]/.test(newPassword) ? 1 : 0);
+      if (classes < 2) {
+        setMsg('新密码需包含大写字母、小写字母、数字、特殊符号中的至少两类', true);
+        return;
+      }
     }
     if (newPassword !== confirm) {
       setMsg('两次输入的新密码不一致', true);
@@ -962,6 +974,7 @@ function renderAccountSettings(host: HTMLElement, preview: HTMLElement): void {
       const data = (await res.json().catch(() => ({}))) as {
         error?: string;
         user?: { username: string };
+        csrf?: string;
         passwordChanged?: boolean;
       };
       if (!res.ok) {
@@ -969,7 +982,11 @@ function renderAccountSettings(host: HTMLElement, preview: HTMLElement): void {
         return;
       }
       state.user = data.user?.username ?? username;
-      toast(data.passwordChanged ? '账号与密码已更新 · 其他设备登录已失效' : '账号已更新');
+      if (typeof data.csrf === 'string' && data.csrf) {
+        state.csrf = data.csrf;
+        state.gh = new ApiGithub(data.csrf);
+      }
+      toast(data.passwordChanged ? '账号与密码已更新 · 会话已安全轮换' : '账号已更新 · 会话已安全轮换');
       rerender();
     } catch (error) {
       setMsg(error instanceof Error ? error.message : '网络错误，更新失败', true);

@@ -73,6 +73,7 @@ export async function hashPasswordAsync(password: string): Promise<string> {
 }
 
 export function verifyPassword(password: string, stored: string): boolean {
+  if (typeof password !== 'string' || typeof stored !== 'string') return false;
   const parts = stored.split('$');
   if (parts.length !== 6 || parts[0] !== 'scrypt') return false;
   const n = Number(parts[1]);
@@ -92,6 +93,7 @@ export function verifyPassword(password: string, stored: string): boolean {
 }
 
 export async function verifyPasswordAsync(password: string, stored: string): Promise<boolean> {
+  if (typeof password !== 'string' || typeof stored !== 'string') return false;
   const parts = stored.split('$');
   if (parts.length !== 6 || parts[0] !== 'scrypt') return false;
   const n = Number(parts[1]);
@@ -108,6 +110,67 @@ export async function verifyPasswordAsync(password: string, stored: string): Pro
     maxmem: 64 * 1024 * 1024,
   });
   return actual.length === expected.length && timingSafeEqual(actual, expected);
+}
+
+/**
+ * 预生成一条固定参数的伪造密码哈希：
+ * 当登录请求的用户名不存在时，同样执行一次完整的 scrypt 异步计算，
+ * 消除“账号不存在直接短路返回”带来的 CPU 时序侧信道与异常差异。
+ */
+const DUMMY_PASSWORD_HASH = hashPassword('__yesheng_dummy_password_for_constant_time_auth__');
+
+export async function verifyDummyPasswordAsync(password: string): Promise<boolean> {
+  const safeInput = typeof password === 'string' ? password.slice(0, 200) : '';
+  await verifyPasswordAsync(safeInput, DUMMY_PASSWORD_HASH);
+  return false;
+}
+
+const WEAK_PASSWORDS = new Set([
+  '123456789012',
+  '123456789abc',
+  'password1234',
+  'password12345',
+  'admin1234567',
+  'admin12345678',
+  'qwerty123456',
+  'qwertyuiop12',
+  'yesheng12345',
+  'yesheng123456',
+  'change-me-before-first-boot',
+]);
+
+/**
+ * 校验新密码强度：
+ * - 长度 12 ~ 200 位
+ * - 至少包含大写字母、小写字母、数字、特殊符号中的两类
+ * - 拒绝单一字符重复或常见弱口令
+ */
+export function validatePasswordStrength(password: string, username = ''): string | null {
+  if (typeof password !== 'string' || password.length < 12) {
+    return '新密码至少需要 12 位';
+  }
+  if (password.length > 200) {
+    return '新密码不能超过 200 位';
+  }
+  if (/^(.)\1+$/.test(password)) {
+    return '新密码不能由单一重复字符组成';
+  }
+  const lower = password.toLowerCase();
+  if (WEAK_PASSWORDS.has(lower)) {
+    return '新密码过于简单，请更换更复杂的口令';
+  }
+  if (username && lower.includes(username.trim().toLowerCase()) && username.trim().length >= 3) {
+    return '新密码不能直接包含登录账号名';
+  }
+  let classes = 0;
+  if (/[a-z]/.test(password)) classes += 1;
+  if (/[A-Z]/.test(password)) classes += 1;
+  if (/[0-9]/.test(password)) classes += 1;
+  if (/[^a-zA-Z0-9\s]/.test(password)) classes += 1;
+  if (classes < 2) {
+    return '新密码需至少包含字母、数字或特殊符号中的两种组合';
+  }
+  return null;
 }
 
 const tokenHash = (token: string) => createHash('sha256').update(token).digest('hex');
@@ -148,6 +211,10 @@ export function createSession(userId: number): { token: string; csrf: string; ex
 
 export function destroySession(token: string): void {
   getDb().prepare('DELETE FROM sessions WHERE id = ?').run(tokenHash(token));
+}
+
+export function destroyUserSessions(userId: number): void {
+  getDb().prepare('DELETE FROM sessions WHERE user_id = ?').run(userId);
 }
 
 export function getAuth(context: APIContext): AuthContext | null {
@@ -277,56 +344,51 @@ export function isPrivateOrLoopbackIp(ip: string): boolean {
 }
 
 /**
- * 解析真实客户端 IP：
- * 1. 优先读取主流 CDN / 边缘节点透传的真实客户端 IP 头（Cloudflare、阿里云 CDN/DCDN/ESA、腾讯云 EdgeOne 等）；
- * 2. 解析 X-Forwarded-For 代理链，提取第一个非私网/非环回的公网 IP（避免被末跳 Nginx $remote_addr 覆盖为代理节点 IP）；
- * 3. 依次回退读取 X-Real-IP、Forwarded 头与底层 socket 地址，并统一剥离 ::ffff: 前缀与端口号。
+ * 解析真实客户端 IP（防请求头伪造）：
+ * 1. 默认（直连 VPS + 本机 Nginx 反代）：仅信任本机 Nginx 覆写的 `X-Real-IP`（`$remote_addr`）
+ *    或 `X-Forwarded-For` 链中**最后一跳**非私网公网 IP（即本机 Nginx 追加的 `$remote_addr`），
+ *    绝不信任客户端可随意伪造的 `CF-Connecting-IP`、`X-Client-IP` 或 `X-Forwarded-For` 首段；
+ * 2. 仅当显式设置环境变量 `BLOG_TRUST_CDN_HEADERS=1`（已接入受控 CDN 且源站防火墙已限制仅允许 CDN 节点回源）时，
+ *    才额外解析主流 CDN 透传头。
  */
 export function getClientIp(context: APIContext): string {
   const headers = context.request.headers;
-
-  const cdnHeaders = [
-    'cf-connecting-ip',
-    'ali-cdn-real-ip',
-    'eo-connecting-ip',
-    'true-client-ip',
-    'x-client-ip',
-    'x-cluster-client-ip',
-    'x-original-forwarded-for',
-  ];
+  const trustCdn = process.env.BLOG_TRUST_CDN_HEADERS === '1';
 
   let firstValidFallback = '';
 
-  for (const h of cdnHeaders) {
-    const raw = headers.get(h);
-    if (!raw) continue;
-    for (const part of raw.split(',')) {
-      const candidate = normalizeIp(part);
-      if (!candidate) continue;
-      if (!isPrivateOrLoopbackIp(candidate)) return candidate;
-      if (!firstValidFallback) firstValidFallback = candidate;
+  if (trustCdn) {
+    const cdnHeaders = [
+      'cf-connecting-ip',
+      'ali-cdn-real-ip',
+      'eo-connecting-ip',
+      'true-client-ip',
+    ];
+    for (const h of cdnHeaders) {
+      const raw = headers.get(h);
+      if (!raw) continue;
+      for (const part of raw.split(',')) {
+        const candidate = normalizeIp(part);
+        if (!candidate) continue;
+        if (!isPrivateOrLoopbackIp(candidate)) return candidate;
+        if (!firstValidFallback) firstValidFallback = candidate;
+      }
     }
   }
 
-  const xff = headers.get('x-forwarded-for');
-  if (xff) {
-    for (const part of xff.split(',')) {
-      const candidate = normalizeIp(part);
-      if (!candidate) continue;
-      if (!isPrivateOrLoopbackIp(candidate)) return candidate;
-      if (!firstValidFallback) firstValidFallback = candidate;
-    }
-  }
-
+  // 优先读取本机 Nginx 用 `proxy_set_header X-Real-IP $remote_addr` 强制覆写的真实连接 IP
   const realIp = normalizeIp(headers.get('x-real-ip'));
   if (realIp) {
     if (!isPrivateOrLoopbackIp(realIp)) return realIp;
     if (!firstValidFallback) firstValidFallback = realIp;
   }
 
-  const forwarded = headers.get('forwarded');
-  if (forwarded) {
-    for (const part of forwarded.split(',')) {
+  // 解析 X-Forwarded-For：默认从右向左取最后一跳公网 IP（由本机反代追加，不可被客户端前置伪造）
+  const xff = headers.get('x-forwarded-for');
+  if (xff) {
+    const parts = xff.split(',');
+    const ordered = trustCdn ? parts : [...parts].reverse();
+    for (const part of ordered) {
       const candidate = normalizeIp(part);
       if (!candidate) continue;
       if (!isPrivateOrLoopbackIp(candidate)) return candidate;
@@ -349,11 +411,12 @@ export function getClientIp(context: APIContext): string {
 }
 
 /* --------------------------------------------------------------------------
-   内存速率限制：支持容量上限与过期自动清理，防止随机键耗尽内存
+   内存速率限制：支持容量上限、过期自动清理与锁定态保护（防止随机键挤出已锁定记录）
    -------------------------------------------------------------------------- */
 interface Attempt {
   count: number;
   resetAt: number;
+  locked: boolean;
 }
 const attempts = new Map<string, Attempt>();
 const WINDOW_MS = 10 * 60 * 1000;
@@ -369,10 +432,36 @@ export function cleanupExpiredRateLimits(now = Date.now()): void {
 function pruneAttempts(now: number): void {
   if (attempts.size < MAX_TRACKED_KEYS) return;
   cleanupExpiredRateLimits(now);
-  if (attempts.size >= MAX_TRACKED_KEYS) {
-    const oldestKey = attempts.keys().next().value;
-    if (oldestKey !== undefined) attempts.delete(oldestKey);
+  if (attempts.size < MAX_TRACKED_KEYS) return;
+
+  // 优先淘汰未锁定的低频探测键，保护已触发锁定的键不被随机字典请求挤出内存
+  for (const [k, v] of attempts) {
+    if (!v.locked) {
+      attempts.delete(k);
+      return;
+    }
   }
+
+  const oldestKey = attempts.keys().next().value;
+  if (oldestKey !== undefined) attempts.delete(oldestKey);
+}
+
+export function getRateLimitRetryAfterSec(
+  key: string,
+  maxAttempts = MAX_ATTEMPTS,
+  windowMs = WINDOW_MS
+): number {
+  const now = Date.now();
+  const a = attempts.get(key);
+  if (!a || a.resetAt <= now || a.resetAt - now > windowMs) {
+    attempts.delete(key);
+    return 0;
+  }
+  if (a.count >= maxAttempts) {
+    a.locked = true;
+    return Math.max(1, Math.ceil((a.resetAt - now) / 1000));
+  }
+  return 0;
 }
 
 export function isRateLimited(
@@ -380,23 +469,28 @@ export function isRateLimited(
   maxAttempts = MAX_ATTEMPTS,
   windowMs = WINDOW_MS
 ): boolean {
-  const now = Date.now();
-  const a = attempts.get(key);
-  if (!a || a.resetAt <= now || a.resetAt - now > windowMs) {
-    attempts.delete(key);
-    return false;
-  }
-  return a.count >= maxAttempts;
+  return getRateLimitRetryAfterSec(key, maxAttempts, windowMs) > 0;
 }
 
-export function recordFailure(key: string, windowMs = WINDOW_MS): void {
+export function recordFailure(
+  key: string,
+  windowMs = WINDOW_MS,
+  lockThreshold = MAX_ATTEMPTS
+): void {
   const now = Date.now();
   pruneAttempts(now);
   const a = attempts.get(key);
-  if (!a || a.resetAt < now) {
-    attempts.set(key, { count: 1, resetAt: now + windowMs });
+  if (!a || a.resetAt <= now) {
+    attempts.set(key, {
+      count: 1,
+      resetAt: now + windowMs,
+      locked: 1 >= lockThreshold,
+    });
   } else {
     a.count += 1;
+    if (a.count >= lockThreshold) {
+      a.locked = true;
+    }
   }
 }
 
@@ -407,7 +501,5 @@ export function clearFailures(key: string): void {
 export function cleanupExpiredSessions(): void {
   const now = Date.now();
   getDb().prepare('DELETE FROM sessions WHERE expires_at < ?').run(now);
-  for (const [k, v] of attempts) {
-    if (v.resetAt < now) attempts.delete(k);
-  }
+  cleanupExpiredRateLimits(now);
 }

@@ -1072,13 +1072,25 @@ export function resolveIpGeo(ipRaw: string, headers?: Headers): GeoProfile {
 }
 
 /**
+ * 清洗外部 IP 归属地 API 或客户端上报文本中的危险 HTML/控制字符并限制长度，
+ * 防止恶意网关/自定义 PTR 或伪造载荷向数据库写入潜在 XSS 字符。
+ */
+function cleanGeoText(raw: unknown, maxLen = 48): string {
+  if (typeof raw !== 'string') return '';
+  return raw
+    .replace(/[<>"'&\x00-\x1f\x7f]/g, '')
+    .trim()
+    .slice(0, maxLen);
+}
+
+/**
  * 将客户端遥测信标附带的归属地信息（如太平洋 IP 库 JSONP 或 ipwho.is）转换为标准 GeoProfile
  */
 function buildGeoFromBeaconPayload(ip: string, payload?: ClientBeaconPayload): GeoProfile | null {
   if (!payload) return null;
-  const pro = (payload.pro || '').trim();
-  const city = (payload.city || '').trim();
-  const addr = (payload.addr || '').trim();
+  const pro = cleanGeoText(payload.pro, 24);
+  const city = cleanGeoText(payload.city, 24);
+  const addr = cleanGeoText(payload.addr, 48);
   if (pro || city) {
     const loc = pro && city && pro !== city ? `${pro}${city}` : pro || city;
     const ispRaw = addr.replace(pro, '').replace(city, '').trim();
@@ -1097,14 +1109,15 @@ function buildGeoFromBeaconPayload(ip: string, payload?: ClientBeaconPayload): G
     return profile;
   }
 
-  const cc = (payload.countryCode || '').trim().toUpperCase();
+  const ccRaw = cleanGeoText(payload.countryCode, 4).toUpperCase();
+  const cc = /^[A-Z]{2}$/.test(ccRaw) ? ccRaw : '';
   if (cc) {
     const known = COUNTRY_BY_CODE[cc];
     const code = known ? known.code : cc;
-    const zh = known ? known.zh : (payload.countryZh || payload.countryEn || cc).trim();
-    const en = known ? known.en : (payload.countryEn || zh).trim();
-    const reg = (payload.region || '').trim();
-    const isp = (payload.isp || '').trim();
+    const zh = known ? known.zh : cleanGeoText(payload.countryZh || payload.countryEn || cc, 32) || cc;
+    const en = known ? known.en : cleanGeoText(payload.countryEn || zh, 32) || zh;
+    const reg = cleanGeoText(payload.region, 32);
+    const isp = cleanGeoText(payload.isp, 24);
     const region = [reg || zh, isp].filter(Boolean).join(' · ').slice(0, 64) || zh;
     const baseCoords = inferCoordsFromText(region, known?.lat ?? 35.0, known?.lon ?? 104.0);
     const lat =
@@ -1134,6 +1147,8 @@ function buildGeoFromBeaconPayload(ip: string, payload?: ClientBeaconPayload): G
 /* --------------------------------------------------------------------------
    第二层：服务端异步非阻塞精准 IP 归属地查询（国内优先太平洋 IP 库，海外回退 ip-api）
    -------------------------------------------------------------------------- */
+const MAX_GEO_QUEUE = 1000;
+const MAX_FAILED_GEO_CACHE = 2000;
 const pendingGeoIps = new Set<string>();
 const failedGeoIps = new Map<string, number>();
 let geoWorkerRunning = false;
@@ -1155,9 +1170,9 @@ export async function fetchAccurateIpGeo(ip: string): Promise<GeoProfile | null>
         addr?: string;
         err?: string;
       };
-      const pro = (data.pro || '').trim();
-      const city = (data.city || '').trim();
-      const addr = (data.addr || '').trim();
+      const pro = cleanGeoText(data.pro, 24);
+      const city = cleanGeoText(data.city, 24);
+      const addr = cleanGeoText(data.addr, 48);
       // 若 pro 非空，说明明确属于中国省/直辖市/特区
       if (pro) {
         const loc = pro && city && pro !== city ? `${pro}${city}` : pro || city;
@@ -1216,20 +1231,22 @@ export async function fetchAccurateIpGeo(ip: string): Promise<GeoProfile | null>
         lon?: number;
       };
       if (data.status === 'success' && data.countryCode) {
-        const cc = data.countryCode.toUpperCase();
+        const ccRaw = cleanGeoText(data.countryCode, 4).toUpperCase();
+        const cc = /^[A-Z]{2}$/.test(ccRaw) ? ccRaw : 'UN';
         const known = COUNTRY_BY_CODE[cc];
+        const cleanCountry = cleanGeoText(data.country, 32);
         const code = known ? known.code : cc;
-        const zh = known ? known.zh : data.country || cc;
-        const en = known ? known.en : data.country || cc;
+        const zh = known ? known.zh : cleanCountry || cc;
+        const en = known ? known.en : cleanCountry || cc;
 
-        const rName = (data.regionName || '').trim();
-        const cName = (data.city || '').trim();
+        const rName = cleanGeoText(data.regionName, 32);
+        const cName = cleanGeoText(data.city, 32);
         const locPart =
           rName && cName && rName !== cName
             ? `${rName}${cName}`
             : rName || cName || (cc === 'HK' ? '中国香港' : cc === 'MO' ? '中国澳门' : cc === 'TW' ? '中国台湾' : zh);
 
-        const rawIsp = (data.isp || data.org || '').trim();
+        const rawIsp = cleanGeoText(data.isp || data.org, 48);
         let ispShort = '';
         if (/chinanet|telecom|电信/i.test(rawIsp)) ispShort = '电信';
         else if (/unicom|联通/i.test(rawIsp)) ispShort = '联通';
@@ -1272,6 +1289,7 @@ function enqueueGeoEnrichment(ip: string): void {
 
   const lastFail = failedGeoIps.get(cleanIp);
   if (lastFail && Date.now() - lastFail < 30 * 60 * 1000) return;
+  if (pendingGeoIps.size >= MAX_GEO_QUEUE) return;
 
   pendingGeoIps.add(cleanIp);
   if (geoWorkerRunning) return;
@@ -1302,6 +1320,10 @@ function enqueueGeoEnrichment(ip: string): void {
             console.error('[analytics] updateIpGeo failed:', err);
           }
         } else {
+          if (failedGeoIps.size >= MAX_FAILED_GEO_CACHE) {
+            const oldestFail = failedGeoIps.keys().next().value;
+            if (oldestFail !== undefined) failedGeoIps.delete(oldestFail);
+          }
           failedGeoIps.set(nextIp, Date.now());
         }
       }
@@ -1489,6 +1511,8 @@ const ipReputationCache = new Map<string, IpReputation>();
 const ipReputationQueue = new Set<string>();
 const failedIpReputation = new Map<string, number>();
 const MAX_REPUTATION_CACHE = 4000;
+const MAX_REPUTATION_QUEUE = 1000;
+const MAX_FAILED_REPUTATION_CACHE = 2000;
 const REPUTATION_BATCH_SIZE = 100;
 const REPUTATION_BATCH_DELAY_MS = 1200;
 const REPUTATION_FAIL_TTL_MS = 30 * 60 * 1000;
@@ -1516,6 +1540,15 @@ function purgeBotIp(ip: string): void {
   }
 }
 
+function recordFailedIpReputation(ip: string, until: number): void {
+  if (!ip) return;
+  if (failedIpReputation.size >= MAX_FAILED_REPUTATION_CACHE && !failedIpReputation.has(ip)) {
+    const oldest = failedIpReputation.keys().next().value;
+    if (oldest !== undefined) failedIpReputation.delete(oldest);
+  }
+  failedIpReputation.set(ip, until);
+}
+
 function enqueueIpReputation(ipRaw: string): void {
   const ip = normalizeIp(ipRaw);
   if (!ip || isPrivateOrLoopbackIp(ip)) return;
@@ -1523,6 +1556,7 @@ function enqueueIpReputation(ipRaw: string): void {
   if (ipReputationQueue.has(ip)) return;
   const failedUntil = failedIpReputation.get(ip);
   if (failedUntil && failedUntil > Date.now()) return;
+  if (ipReputationQueue.size >= MAX_REPUTATION_QUEUE) return;
 
   ipReputationQueue.add(ip);
   if (ipReputationQueue.size >= REPUTATION_BATCH_SIZE) {
@@ -1571,7 +1605,7 @@ async function flushIpReputation(): Promise<void> {
       if (!ip) continue;
       seen.add(ip);
       if (row.status !== 'success') {
-        failedIpReputation.set(ip, Date.now() + REPUTATION_FAIL_TTL_MS);
+        recordFailedIpReputation(ip, Date.now() + REPUTATION_FAIL_TTL_MS);
         continue;
       }
       if (row.hosting || row.proxy) {
@@ -1582,11 +1616,11 @@ async function flushIpReputation(): Promise<void> {
       }
     }
     for (const ip of ips) {
-      if (!seen.has(ip)) failedIpReputation.set(ip, Date.now() + REPUTATION_FAIL_TTL_MS);
+      if (!seen.has(ip)) recordFailedIpReputation(ip, Date.now() + REPUTATION_FAIL_TTL_MS);
     }
   } catch {
     // 查询失败时保留当前记录，30 分钟后由下一次访问重试
-    for (const ip of ips) failedIpReputation.set(ip, Date.now() + REPUTATION_FAIL_TTL_MS);
+    for (const ip of ips) recordFailedIpReputation(ip, Date.now() + REPUTATION_FAIL_TTL_MS);
   } finally {
     reputationRunning = false;
     if (ipReputationQueue.size > 0) {
@@ -1828,21 +1862,30 @@ export async function recordVisitBeacon(
     const browserIp = normalizeIp(payload?.ip);
     const serverIp = getClientIp(context);
 
-    // 优先采用客户端浏览器实测到的真实公网 IP；若无则采用服务端识别的公网 IP
+    // 安全加固：当服务端已能直接获取真实公网 IP 时优先采用服务端可信 IP（防止外部脚本伪造 payload.ip 污染统计）；
+    // 仅当服务端看到回环/内网地址（127.0.0.1 等）时才回退采用浏览器探测上报的公网 IP。
     const effectiveIp =
-      browserIp && !isPrivateOrLoopbackIp(browserIp)
-        ? browserIp
-        : serverIp && !isPrivateOrLoopbackIp(serverIp)
-          ? serverIp
+      serverIp && !isPrivateOrLoopbackIp(serverIp)
+        ? serverIp
+        : browserIp && !isPrivateOrLoopbackIp(browserIp)
+          ? browserIp
           : '';
 
     if (!effectiveIp) {
       return { ok: false, ip: '' };
     }
 
+    if (ipReputationCache.get(effectiveIp) === 'bot') {
+      return { ok: true, ip: '' };
+    }
+
     const rawPath = String(payload?.path || '/').trim();
     const cleanPath = (rawPath.startsWith('/') ? rawPath : `/${rawPath}`).slice(0, 160);
     if (cleanPath.startsWith('/studio') || cleanPath.startsWith('/api/')) {
+      return { ok: true, ip: effectiveIp };
+    }
+
+    if (shouldDropByRateOrDedup(effectiveIp, `/__beacon__${cleanPath}`)) {
       return { ok: true, ip: effectiveIp };
     }
 

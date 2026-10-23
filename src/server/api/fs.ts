@@ -15,7 +15,7 @@
  *   src/assets/audio/<slug>/<file>   → uploads/audio/<slug>/<file>   （按文章归档音频）
  */
 import { createHash } from 'node:crypto';
-import { mkdir, readFile, readdir, stat, unlink, writeFile } from 'node:fs/promises';
+import { lstat, mkdir, readFile, readdir, realpath, stat, unlink, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import type { APIContext } from 'astro';
 import { getAuth, hasValidCsrf } from '../auth';
@@ -178,6 +178,7 @@ async function listAssets(kind: 'posts' | 'photos' | 'audio', dir: string): Prom
     }
     for (const item of list) {
       if (item.name.startsWith('.')) continue;
+      if (item.isSymbolicLink()) continue;
       const rel = relDir ? `${relDir}/${item.name}` : item.name;
       if (item.isDirectory()) {
         // 只展开一层：<slug>/<file>；更深的目录不进入，避免把 uploads 整棵树扫坏
@@ -361,6 +362,7 @@ interface AssetTarget {
   dir: string;
   name: string;
   file: string;
+  base: string;
   /** 写进 media.path 的公开路径，例如 /uploads/posts/<slug>/<file> 或 /uploads/audio/<slug>/<file> */
   publicPath: string;
 }
@@ -506,8 +508,8 @@ function decodeXmlEntities(input: string): string {
 }
 
 /**
- * 校验 SVG 文本安全性：拦截多字节 BOM、XML 实体编码绕过、危险嵌入标签、SMIL 动画注入、
- * on* 事件处理器与 javascript:/vbscript:/data: 伪协议，防止存储型 XSS。
+ * 校验 SVG 文本安全性：拦截多字节 BOM、XML 实体编码绕过、危险嵌入标签（含 <style>）、
+ * SMIL 动画注入、on* 事件处理器与 javascript:/vbscript:/data: 伪协议，防止存储型 XSS。
  */
 function isUnsafeSvg(buf: Buffer): boolean {
   if (buf.length < 5 || buf.includes(0x00)) return true;
@@ -524,7 +526,7 @@ function isUnsafeSvg(buf: Buffer): boolean {
   if (!/<svg[\s>/]/i.test(decoded)) return true;
   if (/<!(?:ENTITY|DOCTYPE)/i.test(decoded)) return true;
   if (
-    /<\/?(?:script|foreignObject|iframe|frame|object|embed|applet|meta|link|base|audio|video)\b/i.test(
+    /<\/?(?:script|style|foreignObject|iframe|frame|object|embed|applet|meta|link|base|audio|video)\b/i.test(
       decoded
     )
   ) {
@@ -571,13 +573,46 @@ function assetTarget(filePath: string): AssetTarget | null {
     dir,
     name,
     file,
+    base,
     publicPath: `/uploads/${kind}/${dir ? dir + '/' : ''}${name}`,
   };
+}
+
+/**
+ * 二次校验真实物理路径（realpath + lstat），禁止通过符号链接（Symlink）逃逸出 uploads 根目录。
+ */
+async function ensureWithinRealBase(target: AssetTarget, mustExist: boolean): Promise<boolean> {
+  try {
+    await mkdir(target.base, { recursive: true });
+    const realBase = await realpath(target.base);
+    const parentDir = path.dirname(target.file);
+    if (mustExist) {
+      const fileStat = await lstat(target.file);
+      if (fileStat.isSymbolicLink() || !fileStat.isFile()) return false;
+      const realFile = await realpath(target.file);
+      return realFile !== realBase && realFile.startsWith(realBase + path.sep);
+    }
+    await mkdir(parentDir, { recursive: true });
+    const dirStat = await lstat(parentDir);
+    if (dirStat.isSymbolicLink() || !dirStat.isDirectory()) return false;
+    const realParent = await realpath(parentDir);
+    if (realParent !== realBase && !realParent.startsWith(realBase + path.sep)) return false;
+    try {
+      const existingStat = await lstat(target.file);
+      if (existingStat.isSymbolicLink()) return false;
+    } catch {
+      // 目标文件尚不存在（正常新建场景）
+    }
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 async function getBinary(filePath: string): Promise<Response> {
   const target = assetTarget(filePath);
   if (!target) return fail('文件不存在', 404);
+  if (!(await ensureWithinRealBase(target, true))) return fail('文件不存在', 404);
   try {
     const bytes = await readFile(target.file);
     const info = await stat(target.file);
@@ -626,7 +661,7 @@ async function putBinaryBuffer(filePath: string, bytes: Buffer, sha?: string): P
   }
 
   if (ext === '.svg' && isUnsafeSvg(bytes)) {
-    return fail('SVG 文件包含不安全的脚本或事件属性，已拒绝上传', 400);
+    return fail('SVG 文件包含不安全的脚本、样式或事件属性，已拒绝上传', 400);
   }
 
   const inspected = inspectImageBuffer(bytes, ext);
@@ -634,8 +669,10 @@ async function putBinaryBuffer(filePath: string, bytes: Buffer, sha?: string): P
   if (STRICT_MAGIC_EXTS.has(ext) && inspected.mime !== extMime) {
     return fail('文件内容与扩展名不匹配（魔数校验未通过）', 400);
   }
-  const dir = path.dirname(target.file);
-  await mkdir(dir, { recursive: true });
+
+  if (!(await ensureWithinRealBase(target, false))) {
+    return fail('非法资源路径（符号链接校验未通过）', 403);
+  }
 
   if (sha) {
     try {
@@ -706,6 +743,9 @@ async function deleteFile(filePath: string, sha?: string): Promise<Response> {
 
   const target = assetTarget(filePath);
   if (target) {
+    if (!(await ensureWithinRealBase(target, true))) {
+      return fail('文件不存在', 404);
+    }
     try {
       await unlink(target.file);
     } catch {

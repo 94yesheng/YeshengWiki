@@ -18,6 +18,19 @@ interface LinkApplicationItem {
   createdAt: string;
 }
 
+/** 仅允许 http:// 或 https:// 协议进入后台审核卡片 href，拦截 javascript:/data: 等伪协议 */
+function safeExternalUrl(raw: unknown): string {
+  const s = String(raw ?? '').trim();
+  if (!/^https?:\/\//i.test(s)) return '#';
+  try {
+    const u = new URL(s);
+    if (u.protocol === 'http:' || u.protocol === 'https:') return u.href;
+  } catch {
+    // ignore invalid URL
+  }
+  return '#';
+}
+
 let applicationsCache: LinkApplicationItem[] = [];
 let applicationsLoaded = false;
 let applicationsLoading = false;
@@ -72,6 +85,7 @@ function renderApplicationsBox(): void {
                 .map((app) => {
                   const av = (app.avatar ?? '').trim() || app.name.trim().slice(0, 1) || '友';
                   const isPending = app.status === 'pending';
+                  const safeHref = safeExternalUrl(app.url);
                   return `
                   <article class="rail-blueprint-card st-link-app-card" style="display:flex;flex-direction:column;justify-content:space-between;gap:0.55rem;border-color:${
                     isPending ? 'color-mix(in srgb, var(--accent) 55%, var(--rule))' : 'var(--rule)'
@@ -95,7 +109,7 @@ function renderApplicationsBox(): void {
                       </div>
 
                       <div style="margin-top:0.4rem;font-family:var(--mono);font-size:0.72rem;">
-                        <a href="${esc(app.url)}" target="_blank" rel="noopener noreferrer" style="color:var(--accent);text-decoration:underline;word-break:break-all;">${esc(
+                        <a href="${esc(safeHref)}" target="_blank" rel="noopener noreferrer" style="color:var(--accent);text-decoration:underline;word-break:break-all;">${esc(
                           app.url
                         )} ↗</a>
                       </div>
@@ -169,14 +183,15 @@ function renderApplicationsBox(): void {
             owner: l.owner ?? undefined,
           }));
         } else if (state.links) {
+          const safeAppUrl = safeExternalUrl(app.url);
           const exists = state.links.links.some(
-            (l) => l.url.toLowerCase() === app.url.toLowerCase()
+            (l) => l.url.toLowerCase() === safeAppUrl.toLowerCase()
           );
-          if (!exists) {
+          if (!exists && safeAppUrl !== '#') {
             state.links.links.push({
               id: `peer-${app.id}`,
               name: app.name,
-              url: app.url,
+              url: safeAppUrl,
               description: app.description,
               avatar: (app.avatar ?? '').trim() || app.name.slice(0, 1) || '友',
               tag: app.tag || '独立博客 · 友链',

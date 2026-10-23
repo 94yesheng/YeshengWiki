@@ -10,7 +10,16 @@
  *
  * 这里只读 + 删除；上传仍走 `/api/fs`。
  */
-import { existsSync, mkdirSync, readdirSync, renameSync, rmdirSync, unlinkSync } from 'node:fs';
+import {
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  readdirSync,
+  realpathSync,
+  renameSync,
+  rmdirSync,
+  unlinkSync,
+} from 'node:fs';
 import path from 'node:path';
 import { getDb } from '../db';
 import { bumpContentVersion } from '../page-cache';
@@ -155,12 +164,14 @@ export function listMedia(): MediaItem[] {
 }
 
 /**
- * 把 `/uploads/...` 解析成 uploadRoot() 下的绝对路径。
- * 解析后不在 uploadRoot() 里（目录穿越、绝对路径、空路径）就返回 null。
+ * 把 `/uploads/...` 解析成 uploadRoot() 下的绝对路径，并做 realpath 软链接囚禁校验。
+ * 解析后不在 uploadRoot() 里（目录穿越、绝对路径、空路径、软链接逃逸）就返回 null。
  */
 function resolveUploadFile(mediaPath: string): string | null {
   const prefix = '/uploads/';
-  if (!mediaPath.startsWith(prefix) || mediaPath.includes('\0')) return null;
+  if (!mediaPath.startsWith(prefix) || mediaPath.includes('\0') || mediaPath.includes('..')) {
+    return null;
+  }
 
   const rel = mediaPath.slice(prefix.length);
   if (!rel) return null;
@@ -168,6 +179,19 @@ function resolveUploadFile(mediaPath: string): string | null {
   const root = uploadRoot();
   const file = path.resolve(root, rel);
   if (file === root || !file.startsWith(root + path.sep)) return null;
+
+  try {
+    if (existsSync(file)) {
+      const st = lstatSync(file);
+      if (st.isSymbolicLink() || !st.isFile()) return null;
+      const realRoot = realpathSync(root);
+      const realFile = realpathSync(file);
+      if (realFile === realRoot || !realFile.startsWith(realRoot + path.sep)) return null;
+    }
+  } catch {
+    return null;
+  }
+
   return file;
 }
 
