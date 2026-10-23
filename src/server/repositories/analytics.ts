@@ -28,6 +28,7 @@ export interface VisitorLogItem {
   path: string;
   referrer: string;
   pvCount: number;
+  visitCount: number;
   firstSeen: string;
   lastSeen: string;
 }
@@ -1408,13 +1409,19 @@ function getStmts(): PreparedStatements {
     db,
     findVisit: db.prepare(
       `SELECT id, pv_count, last_seen, path FROM visitor_logs
-        WHERE visit_date = ? AND ip = ? AND device_type = ? AND os = ? AND browser = ?
+        WHERE visit_date = ? AND ip = ?
         LIMIT 1`
     ),
     updateVisit: db.prepare(
       `UPDATE visitor_logs
           SET pv_count = pv_count + ?,
+              visit_count = visit_count + ?,
+              device_type = ?,
+              os = ?,
+              browser = ?,
+              user_agent = ?,
               path = ?,
+              referrer = ?,
               last_seen = ?
         WHERE id = ?`
     ),
@@ -1422,8 +1429,8 @@ function getStmts(): PreparedStatements {
       `INSERT INTO visitor_logs (
         visit_date, ip, country_code, country_zh, country_en, region,
         lat, lon, device_type, os, browser, user_agent, path, referrer,
-        pv_count, first_seen, last_seen
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        pv_count, visit_count, first_seen, last_seen
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     ),
     findIpGeo: db.prepare(
       `SELECT country_code, country_zh, country_en, region, lat, lon
@@ -1470,6 +1477,7 @@ interface PendingVisitItem {
 const pendingVisits = new Map<string, PendingVisitItem>();
 let flushTimer: ReturnType<typeof setTimeout> | null = null;
 const FLUSH_DELAY_MS = 1200;
+const VISIT_SESSION_GAP_MS = 30 * 60 * 1000;
 
 /* --------------------------------------------------------------------------
    IP 信誉补充过滤：hosting / proxy / VPN / 云机房
@@ -1610,14 +1618,25 @@ export function flushPendingVisits(): void {
       for (const item of batch) {
         const existing = stmts.findVisit.get(
           item.visitDate,
-          item.ip,
-          item.deviceType,
-          item.os,
-          item.browser
+          item.ip
         ) as { id: number; pv_count: number; last_seen: string; path: string } | undefined;
 
         if (existing) {
-          stmts.updateVisit.run(item.pvCount, item.path, item.lastSeen, existing.id);
+          const gapMs =
+            new Date(item.firstSeen).getTime() - new Date(existing.last_seen).getTime();
+          const visitInc = gapMs > VISIT_SESSION_GAP_MS ? 1 : 0;
+          stmts.updateVisit.run(
+            item.pvCount,
+            visitInc,
+            item.deviceType,
+            item.os,
+            item.browser,
+            item.userAgent,
+            item.path,
+            item.referrer,
+            item.lastSeen,
+            existing.id
+          );
         } else {
           const fakeHeaders = item.countryHeader
             ? new Headers({ 'x-country-code': item.countryHeader })
@@ -1639,6 +1658,7 @@ export function flushPendingVisits(): void {
             item.path,
             item.referrer,
             item.pvCount,
+            1,
             item.firstSeen,
             item.lastSeen
           );
@@ -1752,11 +1772,16 @@ export function recordVisit(context: APIContext): void {
       ''
     ).trim();
 
-    const key = `${today}|${ip}|${parsedUa.deviceType}|${parsedUa.os}|${parsedUa.browser}`;
+    const key = `${today}|${ip}`;
     const existing = pendingVisits.get(key);
     if (existing) {
       existing.pvCount += 1;
+      existing.deviceType = parsedUa.deviceType;
+      existing.os = parsedUa.os;
+      existing.browser = parsedUa.browser;
+      existing.userAgent = ua.slice(0, 300);
       existing.path = cleanPath;
+      existing.referrer = referrer;
       existing.lastSeen = nowSql;
     } else {
       pendingVisits.set(key, {
@@ -1837,7 +1862,7 @@ export async function recordVisitBeacon(
     }
 
     // 检查是否刚刚被 middleware 的 pendingVisits 队列记录过同一次加载（避免同一次打开页面重复 +1）
-    const pendingKey = `${today}|${effectiveIp}|${parsedUa.deviceType}|${parsedUa.os}|${parsedUa.browser}`;
+    const pendingKey = `${today}|${effectiveIp}`;
     if (pendingVisits.has(pendingKey)) {
       pendingVisits.delete(pendingKey);
     }
@@ -1845,10 +1870,7 @@ export async function recordVisitBeacon(
     const stmts = getStmts();
     const existing = stmts.findVisit.get(
       today,
-      effectiveIp,
-      parsedUa.deviceType,
-      parsedUa.os,
-      parsedUa.browser
+      effectiveIp
     ) as { id: number; pv_count: number; last_seen: string; path: string } | undefined;
 
     if (existing) {
@@ -1857,7 +1879,20 @@ export async function recordVisitBeacon(
         existing.path === cleanPath &&
         Math.abs(new Date(nowSql).getTime() - new Date(existing.last_seen).getTime()) <= 2000;
       if (!isDuplicateWithin2Sec) {
-        stmts.updateVisit.run(1, cleanPath, nowSql, existing.id);
+        const gapMs =
+          new Date(nowSql).getTime() - new Date(existing.last_seen).getTime();
+        stmts.updateVisit.run(
+          1,
+          gapMs > VISIT_SESSION_GAP_MS ? 1 : 0,
+          parsedUa.deviceType,
+          parsedUa.os,
+          parsedUa.browser,
+          ua.slice(0, 300),
+          cleanPath,
+          referrer,
+          nowSql,
+          existing.id
+        );
       }
       if (geo.enriched) {
         stmts.updateIpGeo.run(geo.code, geo.zh, geo.en, geo.region, geo.lat, geo.lon, effectiveIp);
@@ -1880,6 +1915,7 @@ export async function recordVisitBeacon(
         ua.slice(0, 300),
         cleanPath,
         referrer,
+        1,
         1,
         nowSql,
         nowSql
@@ -2172,7 +2208,7 @@ export function getAnalyticsDashboard(opts: AnalyticsQueryOptions = {}): Analyti
     .prepare(
       `SELECT id, visit_date, ip, country_code, country_zh, country_en, region,
               lat, lon, device_type, os, browser, user_agent, path, referrer,
-              pv_count, first_seen, last_seen
+              pv_count, visit_count, first_seen, last_seen
          FROM visitor_logs
         WHERE ${whereSql}
         ORDER BY visit_date DESC, last_seen DESC, id DESC
@@ -2195,6 +2231,7 @@ export function getAnalyticsDashboard(opts: AnalyticsQueryOptions = {}): Analyti
     path: string;
     referrer: string;
     pv_count: number;
+    visit_count: number;
     first_seen: string;
     last_seen: string;
   }>;
@@ -2216,6 +2253,7 @@ export function getAnalyticsDashboard(opts: AnalyticsQueryOptions = {}): Analyti
     path: r.path,
     referrer: r.referrer,
     pvCount: r.pv_count,
+    visitCount: r.visit_count,
     firstSeen: r.first_seen,
     lastSeen: r.last_seen,
   }));
@@ -2276,7 +2314,7 @@ export function listVisitorLogs(limit = 5000): VisitorLogItem[] {
     .prepare(
       `SELECT id, visit_date, ip, country_code, country_zh, country_en, region,
               lat, lon, device_type, os, browser, user_agent, path, referrer,
-              pv_count, first_seen, last_seen
+              pv_count, visit_count, first_seen, last_seen
          FROM visitor_logs
         ORDER BY visit_date DESC, last_seen DESC, id DESC
         LIMIT ?`
@@ -2298,6 +2336,7 @@ export function listVisitorLogs(limit = 5000): VisitorLogItem[] {
     path: string;
     referrer: string;
     pv_count: number;
+    visit_count: number;
     first_seen: string;
     last_seen: string;
   }>;
@@ -2335,6 +2374,7 @@ export function listVisitorLogs(limit = 5000): VisitorLogItem[] {
       path: r.path,
       referrer: r.referrer,
       pvCount: r.pv_count,
+      visitCount: r.visit_count,
       firstSeen: r.first_seen,
       lastSeen: r.last_seen,
     };

@@ -1744,7 +1744,7 @@ html.st-embed a[href="/studio/"] { display: none !important; }
           lastSeen: b.lastSeen
         }));
 
-        const filteredLogs = visitorLogs
+        const filteredRows = visitorLogs
           .filter((r) => {
             if (selBucket && getBucketKey(r.visitDate, granularity) !== selBucket) return false;
             if (selCountry && r.countryZh !== selCountry) return false;
@@ -1756,6 +1756,43 @@ html.st-embed a[href="/studio/"] { display: none !important; }
             return true;
           })
           .sort((a, b) => b.visitDate.localeCompare(a.visitDate) || b.lastSeen.localeCompare(a.lastSeen) || b.id - a.id);
+
+        // 同一 IP 在当前筛选窗口内合并为一条记录；访问次数为窗口内各天访问次数之和。
+        const groupedLogs = new Map();
+        for (const r of filteredRows) {
+          const prev = groupedLogs.get(r.ip);
+          if (!prev) {
+            groupedLogs.set(r.ip, {
+              ...r,
+              pvCount: Number(r.pvCount) || 0,
+              visitCount: Number(r.visitCount) || 1,
+            });
+            continue;
+          }
+          prev.pvCount += Number(r.pvCount) || 0;
+          prev.visitCount += Number(r.visitCount) || 1;
+          if (r.firstSeen < prev.firstSeen) prev.firstSeen = r.firstSeen;
+          if (r.lastSeen >= prev.lastSeen) {
+            prev.id = r.id;
+            prev.visitDate = r.visitDate;
+            prev.lastSeen = r.lastSeen;
+            prev.countryCode = r.countryCode;
+            prev.countryZh = r.countryZh;
+            prev.countryEn = r.countryEn;
+            prev.region = r.region;
+            prev.lat = r.lat;
+            prev.lon = r.lon;
+            prev.deviceType = r.deviceType;
+            prev.os = r.os;
+            prev.browser = r.browser;
+            prev.userAgent = r.userAgent;
+            prev.path = r.path;
+            prev.referrer = r.referrer;
+          }
+        }
+        const filteredLogs = Array.from(groupedLogs.values()).sort(
+          (a, b) => b.visitDate.localeCompare(a.visitDate) || b.lastSeen.localeCompare(a.lastSeen) || b.id - a.id
+        );
 
         const startIdx = (page - 1) * pageSize;
         const pageItems = filteredLogs.slice(startIdx, startIdx + pageSize);
@@ -2072,11 +2109,12 @@ html.st-embed a[href="/studio/"] { display: none !important; }
                     <th>国家 / 地区</th>
                     <th>使用设备 (终端 · 系统 · 浏览器)</th>
                     <th>受访页 · PV</th>
+                    <th>访问次数</th>
                   </tr>
                 </thead>
                 <tbody>
                   ${d.logs.items.length === 0 ? `
-                    <tr><td colspan="5" style="text-align:center;color:var(--muted);padding:2rem;">未找到匹配的访客记录</td></tr>
+                    <tr><td colspan="6" style="text-align:center;color:var(--muted);padding:2rem;">未找到匹配的访客记录</td></tr>
                   ` : d.logs.items.map((item) => {
                     const isCountrySelected = globeState.clickedCountry && globeState.clickedCountry.zh === item.countryZh;
                     return `
@@ -2100,6 +2138,7 @@ html.st-embed a[href="/studio/"] { display: none !important; }
                           <span style="color:var(--accent);">${esc(item.path)}</span>
                           <span style="color:var(--muted);margin-left:0.25rem;">(${item.pvCount})</span>
                         </td>
+                        <td class="st-mono" style="color:var(--accent);font-weight:700;">${Number(item.visitCount) || 0}</td>
                       </tr>
                     `;
                   }).join('')}
@@ -2264,9 +2303,9 @@ html.st-embed a[href="/studio/"] { display: none !important; }
           toast('当前没有可导出的访客记录', true);
           return;
         }
-        const headers = ['日期', 'IP地址', '国家', '地区', '设备类型', '操作系统', '浏览器', '受访路径', 'PV', '最后活跃时间'];
+        const headers = ['日期', 'IP地址', '国家', '地区', '设备类型', '操作系统', '浏览器', '受访路径', 'PV', '访问次数', '最后活跃时间'];
         const rows = dashboard.logs.items.map((r) => [
-          r.visitDate, r.ip, r.countryZh, r.region, r.deviceType, r.os, r.browser, r.path, String(r.pvCount), r.lastSeen
+          r.visitDate, r.ip, r.countryZh, r.region, r.deviceType, r.os, r.browser, r.path, String(r.pvCount), String(r.visitCount ?? 0), r.lastSeen
         ]);
         const csvContent = '\uFEFF' + [headers, ...rows].map((row) => row.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n');
         const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });

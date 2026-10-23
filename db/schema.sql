@@ -145,6 +145,7 @@ CREATE TABLE IF NOT EXISTS visitor_logs (
   path         TEXT NOT NULL DEFAULT '/',
   referrer     TEXT NOT NULL DEFAULT '',
   pv_count     INTEGER NOT NULL DEFAULT 1,
+  visit_count  INTEGER NOT NULL DEFAULT 1,
   first_seen   TEXT NOT NULL DEFAULT (datetime('now')),
   last_seen    TEXT NOT NULL DEFAULT (datetime('now'))
 );

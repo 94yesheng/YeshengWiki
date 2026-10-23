@@ -65,6 +65,7 @@ function migrate(db: Db): void {
       db.exec(SCHEMA_SQL);
       ensureColumn(db, 'posts', 'raw_markdown', "raw_markdown TEXT NOT NULL DEFAULT ''");
       ensureColumn(db, 'photo_walls', 'version', 'version INTEGER NOT NULL DEFAULT 1');
+      ensureColumn(db, 'visitor_logs', 'visit_count', 'visit_count INTEGER NOT NULL DEFAULT 1');
       if (current < 4) {
         db.exec('DELETE FROM visitor_logs;');
       } else if (current < 5) {
@@ -78,12 +79,58 @@ function migrate(db: Db): void {
               OR region LIKE '%本地%';
         `);
       }
+      if (current < 6) {
+        // v6：同一 IP 每天只保留一条记录，历史重复行合并 PV/访问次数
+        const duplicates = db
+          .prepare(
+            `SELECT visit_date, ip, MAX(id) AS keep_id, COUNT(*) AS row_count,
+                    COALESCE(SUM(pv_count), 0) AS pv_sum,
+                    COALESCE(SUM(visit_count), 0) AS visit_sum,
+                    MIN(first_seen) AS first_seen,
+                    MAX(last_seen) AS last_seen
+               FROM visitor_logs
+              GROUP BY visit_date, ip
+             HAVING COUNT(*) > 1`
+          )
+          .all() as Array<{
+          visit_date: string;
+          ip: string;
+          keep_id: number;
+          row_count: number;
+          pv_sum: number;
+          visit_sum: number;
+          first_seen: string;
+          last_seen: string;
+        }>;
+        const update = db.prepare(
+          `UPDATE visitor_logs
+              SET pv_count = ?, visit_count = ?, first_seen = ?, last_seen = ?
+            WHERE id = ?`
+        );
+        const remove = db.prepare(
+          `DELETE FROM visitor_logs WHERE visit_date = ? AND ip = ? AND id <> ?`
+        );
+        for (const row of duplicates) {
+          update.run(
+            row.pv_sum,
+            Math.max(1, row.visit_sum || row.row_count),
+            row.first_seen,
+            row.last_seen,
+            row.keep_id
+          );
+          remove.run(row.visit_date, row.ip, row.keep_id);
+        }
+        db.exec(
+          'CREATE UNIQUE INDEX IF NOT EXISTS visitor_logs_date_ip_unq ON visitor_logs(visit_date, ip)'
+        );
+      }
       db.prepare('INSERT OR IGNORE INTO schema_migrations (version) VALUES (?)').run(SCHEMA_VERSION);
     })();
   } else {
     // 兼容未升级版本号的旧本地库
     ensureColumn(db, 'posts', 'raw_markdown', "raw_markdown TEXT NOT NULL DEFAULT ''");
     ensureColumn(db, 'photo_walls', 'version', 'version INTEGER NOT NULL DEFAULT 1');
+    ensureColumn(db, 'visitor_logs', 'visit_count', 'visit_count INTEGER NOT NULL DEFAULT 1');
     db.exec(SCHEMA_SQL);
   }
 }

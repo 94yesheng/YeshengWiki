@@ -47,7 +47,7 @@ powershell -File scripts\deploy-server.ps1                          # 部署生�
   加旧链接只改这张表，**不要再复制一份到 Nginx**（部署脚本只推代码）。
 - HUD 的 `artifact.css` / `artifact.js` 同时存在 `src/artifact/` 与 `public/artifact/`；
   改完要同步两份（`import-artifact.mjs` 会自动写，但重跑前先看 `src/artifact` 的占位符警告）。
-- Schema 版本在 `src/server/schema.ts`（当前 5）；v2 新增 `link_applications`，v3 新增 `visitor_logs`，v4 清理历史演示样本并升级真实 IP 与非阻塞缓冲统计，v5 清理反代产生的本地/内网 IP 记录。
+- Schema 版本在 `src/server/schema.ts`（当前 6）；v2 新增 `link_applications`，v3 新增 `visitor_logs`，v4 清理历史演示样本并升级真实 IP 与非阻塞缓冲统计，v5 清理反代产生的本地/内网 IP 记录，v6 合并同 IP 重复记录并增加访问次数。
 - 访客统计是后台导航「06 统计」模块（工作区内嵌 `/studio/stats?embed=1` 独立 HUD）；
   `/studio/stats` 也可直达，均需登录。middleware 记录公开页访问，排除后台 / API / 静态资源。
   改统计页时同时看 `src/studio/stats.html` 与 `src/server/repositories/analytics.ts`。
