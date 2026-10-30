@@ -7,6 +7,7 @@
 import type { APIContext } from 'astro';
 import type Database from 'better-sqlite3';
 import { getClientIp, isPrivateOrLoopbackIp, normalizeIp } from '../auth';
+import { matchBotIpRule } from '../bot-ip-rules';
 import { getDb } from '../db';
 
 export type StatsGranularity = 'day' | 'week' | 'month' | 'year';
@@ -1650,6 +1651,7 @@ export function flushPendingVisits(): void {
 
     stmts.db.transaction(() => {
       for (const item of batch) {
+        if (matchBotIpRule(item.ip)) continue;
         const existing = stmts.findVisit.get(
           item.visitDate,
           item.ip
@@ -1789,6 +1791,11 @@ export function recordVisit(context: APIContext): void {
       return;
     }
 
+    // 显式 IP / CIDR 黑名单：批量爬虫即使伪装 UA 也不写入统计
+    if (matchBotIpRule(ip)) {
+      return;
+    }
+
     const cleanPath = (pathname || '/').slice(0, 160);
     // 同 IP + 同路径 5 秒防抖，以及单 IP 10 秒突发扫描限流
     if (shouldDropByRateOrDedup(ip, cleanPath)) {
@@ -1876,6 +1883,10 @@ export async function recordVisitBeacon(
     }
 
     if (ipReputationCache.get(effectiveIp) === 'bot') {
+      return { ok: true, ip: '' };
+    }
+
+    if (matchBotIpRule(effectiveIp)) {
       return { ok: true, ip: '' };
     }
 

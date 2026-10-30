@@ -69,6 +69,7 @@ node scripts/migrate-to-db.mjs --db data/blog.db --uploads data/uploads --fresh
   `astro.config.mjs` 仍支持静态构建（不带 `BLOG_DYNAMIC=1` 时输出 `dist/`），但**静态构建不再保证通过**，属于遗留路径。
 - 本地首次启动时，若库里还没有用户，会用 `.env` 里的 `BLOG_ADMIN_USER` / `BLOG_ADMIN_PASSWORD` 播种管理员。
 - 默认不信任客户端传入的 CDN IP 头；只有源站防火墙已限制仅允许 CDN 回源时，才设 `BLOG_TRUST_CDN_HEADERS=1`。
+- 访客统计支持 `BLOG_BOT_IP_RULES` 追加 IP / IPv4 CIDR 黑名单（逗号、空格或换行分隔，重启生效）；命中黑名单的 IP 不写入 `visitor_logs`。已知批量爬虫默认内置在 `src/server/bot-ip-rules.ts`。
 - 后台本地地址 `http://localhost:4321/studio/`。
 
 > 坑：`astro build` 会把 `node_modules/.vite` 写坏，之后 dev 取不到预打包依赖（504）。
