@@ -2303,26 +2303,65 @@ html.st-embed a[href="/studio/"] { display: none !important; }
         return /^[\s]*[=+\-@\t\r]/.test(s) ? `'${s}` : s;
       }
 
-      function exportCsv() {
-        if (!dashboard || dashboard.logs.items.length === 0) {
-          toast('当前没有可导出的访客记录', true);
-          return;
+      async function exportCsv() {
+        const exportBtn = $('#st-btn-export');
+        if (exportBtn) exportBtn.disabled = true;
+        try {
+          // 导出前先从后台重新拉取原始记录，避免使用打开页面时的旧快照
+          if (!(await loadServerLogs())) return;
+          refreshDashboard();
+
+          // 导出当前筛选条件下的全部记录，而不是只导出当前分页的 10 条
+          const full = computeDashboard({
+            granularity: state.granularity,
+            bucket: state.selectedBucket,
+            country: state.selectedCountryZh,
+            device: state.selectedDeviceType,
+            q: state.logSearchQuery,
+            page: 1,
+            pageSize: 1000000
+          });
+          const items = full.logs.items;
+          if (items.length === 0) {
+            toast('当前没有可导出的访客记录', true);
+            return;
+          }
+
+          const headers = [
+            '日期', 'IP地址', '国家', '地区', '设备类型', '操作系统', '浏览器',
+            '受访路径', 'PV', '访问次数', '来源页面', 'User-Agent', '最后活跃时间'
+          ];
+          const rows = items.map((r) => [
+            r.visitDate,
+            r.ip,
+            r.countryZh,
+            r.region,
+            r.deviceType,
+            r.os,
+            r.browser,
+            r.path,
+            String(r.pvCount),
+            String(r.visitCount ?? 0),
+            r.referrer ?? '',
+            r.userAgent ?? '',
+            r.lastSeen
+          ]);
+          const csvContent = '\uFEFF' + [headers, ...rows].map((row) => row.map((c) => `"${sanitizeCsvCell(c).replace(/"/g, '""')}"`).join(',')).join('\n');
+          const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = `visitor-stats-${state.granularity}-${formatYmd(new Date())}.csv`;
+          document.body.appendChild(a);
+          a.click();
+          a.remove();
+          URL.revokeObjectURL(url);
+          toast(`已导出 ${items.length} 条完整访客记录`);
+        } catch (err) {
+          toast('导出失败：' + (err?.message || err), true);
+        } finally {
+          if (exportBtn) exportBtn.disabled = false;
         }
-        const headers = ['日期', 'IP地址', '国家', '地区', '设备类型', '操作系统', '浏览器', '受访路径', 'PV', '访问次数', '最后活跃时间'];
-        const rows = dashboard.logs.items.map((r) => [
-          r.visitDate, r.ip, r.countryZh, r.region, r.deviceType, r.os, r.browser, r.path, String(r.pvCount), String(r.visitCount ?? 0), r.lastSeen
-        ]);
-        const csvContent = '\uFEFF' + [headers, ...rows].map((row) => row.map((c) => `"${sanitizeCsvCell(c).replace(/"/g, '""')}"`).join(',')).join('\n');
-        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `visitor-stats-${state.granularity}.csv`;
-        document.body.appendChild(a);
-        a.click();
-        a.remove();
-        URL.revokeObjectURL(url);
-        toast('已导出访客统计 CSV 文件');
       }
 
       function wireGlobeControls() {
