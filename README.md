@@ -3,7 +3,7 @@
 > 仓库：`94yesheng/YeshengWiki`（公开仓库；**内容数据不在仓库里**）
 > 本地路径：`D:\blog`
 > 线上：<https://www.yesheng.wiki/>（动态版，已启用 HTTPS）。
-> 文档更新：2026-10-22
+> 文档更新：2026-11-18
 
 > **当前状态**
 >
@@ -11,13 +11,20 @@
 >   自有服务器上（systemd + Nginx 反代）。
 > - **域名已切换**：`www.yesheng.wiki` 与 `yesheng.wiki` 都指向本机，HTTP 自动 301 到
 >   HTTPS（Let's Encrypt 证书，certbot 自动续期）。
-> - 生产库里目前是 **18 篇文章（5 公开 / 13 草稿）**、1 条友链、1 面照片墙（6 张照片）、
->   64 条媒体记录、7 个设置块。
+> - 生产库里目前是 **23 篇文章（7 公开 / 16 草稿）**、1 条友链、1 面照片墙、
+>   64 条媒体记录、7 个设置块、325 条访客记录。
 > - 2026-10-21 起以「星场后台 / 纸墨页脚方案三 / 无封面静态印章」这一版为正式版；
 >   内容与设置一律以服务器数据库为准，代码部署不会覆盖数据。
 > - 2026-10-21：旧 WordPress 链接（`?p=ID`、中文百分号 slug、`?page_id=ID`）改由应用层 301 到新地址；
 >   根目录误提交的 PNG 与 9 个不再引用的旧内容组件已清理。
 > - 2026-10-22：内建访问统计（`visitor_logs`，Schema v6），后台导航「06 统计」；国内 IP 优先太平洋库（6s 超时），失败不回退 ip-api。
+> - 2026-11-18：访客统计第二轮升级：改为**前端信标**（`navigator.sendBeacon` → `POST /api/analytics/collect`）确认真实浏览器；
+>   接入**离线 ip2region 库**（`data/ip2region.xdb`，全内存查询）做国内省份/城市/ISP 归因；
+>   Bot/扫描器规则扩到 100+ 条，重写 UA 解析（短 UA、无 Mozilla 前缀、Chrome 主版本 <90 判 Bot）；
+>   统计 HUD 重做（隐藏滚动条、月度按周分段、UV 配色、访客明细内嵌左栏、省份/设备降序）。
+> - 2026-11-18：文章编辑器体验升级：标题自动同步路由（草稿除外）、首屏导语自适应、分割线自动换行、
+>   删除文章二次确认、悬浮窗仅保留默认/极简模式、B 区支持「文档速查卡」「同系列文章切换」、
+>   常用标签快选（4 个 + 管理弹窗）。
 > - 设计与实现细节见 [docs/dynamic-refactor.md](docs/dynamic-refactor.md)。
 
 ---
@@ -199,7 +206,7 @@ Schema 唯一来源是 [db/schema.sql](db/schema.sql)（`src/server/schema.ts` �
 | `photos` | 单张照片 + EXIF / 直方图 |
 | `links` | 友链 |
 | `link_applications` | 友链互换申请（公开提交 → 后台审核 / 批准 / 删除） |
-| `visitor_logs` | 访客访问日志（日期 / IP / 国家 / 设备 / 路径 / PV；供 `/studio/stats` 聚合） |
+| `visitor_logs` | 访客访问日志（日期 / IP / 国家 / 省份 / 城市 / ISP / 设备 / 浏览器 / 路径 / PV / 访问次数；前端信标写入，供 `/studio/stats` 聚合） |
 | `site_settings` | 七个设置块：`site` / `home` / `authorDossier` / `articleRail` / `programs` / `studio` / `pages`（子页文案） |
 | `media` | 上传文件元数据（图片 + 音频，供媒体库与文章选图/选曲） |
 | `schema_migrations` | 迁移版本 |
@@ -230,7 +237,9 @@ Schema 唯一来源是 [db/schema.sql](db/schema.sql)（`src/server/schema.ts` �
 | 媒体库 | 「媒体库」按文章归档展示 `uploads/posts/<slug>/` 下的图片与音频（`GET /api/media`），可复制链接 / 试听 / 新窗口打开 / 删除；上传音频会自动读取标签填标题与作者 |
 | 友链申请 | 友链页公开提交到 `link_applications`（限流 + 蜜罐 + 50 条待审上限）；后台「友链」板块查看并批准 / 删除 |
 | 页面 | 「页面」板块集中调整 主页 / 文章 / 相册 / 项目 / 友链 的标题、导语、空态与统计文案，共 **74 个字段**（写 `site_settings.pages`，`GET|PUT /api/pages`），保存即时生效 |
-| 统计 | 后台导航「06 统计」在工作区直接打开统计 HUD：真实访客 UV/PV、日/周/月/年整合、IP/设备明细与 3D 粒子地球；支持实时刷新、CSV 导出与清空（需 CSRF）；国内 IP 优先太平洋库（6s 超时），失败不回退 ip-api，避免省份误判；已加入 UA/扫描路径/导航头/5s 防抖/突发限流 + hosting/proxy IP 信誉过滤；同一 IP 每天合并为一条记录并显示访问次数 |
+| 统计 | 后台导航「06 统计」在工作区直接打开统计 HUD：真实访客 UV/PV、日/周/月/年整合（月度按周分段）、省份/设备降序列表、IP/设备明细与 3D 粒子地球；访客明细在左栏内嵌展示（不再弹悬浮窗），滚动条全部隐藏。数据由前端信标 `POST /api/analytics/collect` 写入，SSR 裸 GET 默认不记数（`BLOG_SSR_RAW_VISIT=1` 可开）；IP 归属地优先读离线 `ip2region.xdb`（`BLOG_IP2REGION_XDB` 可指定路径，默认 `data/ip2region.xdb` / 数据目录），再回落到在线库；Bot/扫描器规则 100+ 条，UA 解析对短 UA / 无 Mozilla 前缀 / 旧 Chrome 判 Bot，同一 IP 每天合并为一条并记录访问次数 |
+| 文章编辑器 | 标题保存后自动同步路由（草稿除外）；首屏导语输入框随内容自适应高度；插入分割线自动换行并把光标放进下一段；首次输入即应用首行缩进/段间距；删除文章二次确认（已保存文章走「暂存删除 + 保存」）；象限标签常用快选固定 4 个，可点「＋」管理 |
+| 悬浮窗卡片 | 「信息悬浮窗」只有默认模式与极简模式（跟随全局已移除）；A 区维护文档速查项，B 区自由组合卡片并支持「文档速查卡」「同系列文章切换」「音乐播放卡」「参数表」「伴读便签」「参考链接」「核心要点」；新建文章默认带文档速查卡 + 同系列文章切换两张卡，保存时写入 frontmatter |
 | 改账号/密码 | 「设置 → 05 账户与安全」，需当前密码 + CSRF；改完其它设备会话失效 |
 
 **保存模型**：只写你动过的字段；新建/删除先暂存，点顶栏「保存」才提交；确实改了才更新 `updatedDate`；
@@ -339,6 +348,8 @@ Schema 唯一来源是 [db/schema.sql](db/schema.sql)（`src/server/schema.ts` �
 | 加友链 | `/studio/` 友链板块（生产已有 1 条：云鹿庐） |
 | 审核友链申请 | `/studio/` 友链板块查看待审列表，批准后写入 `links`，也可直接删除 |
 | 看访问统计 | 后台导航「06 统计」；可切日/周/月/年、点地球看国家、导出 CSV；直达 `/studio/stats` 也可 |
+| 配置离线 IP 归属地库 | 把 `ip2region.xdb` 放到服务器的 `<DATA_DIR>/ip2region.xdb`（或 `data/ip2region.xdb`），重启服务；日志出现 `[ip2region] 已加载离线 IP 库` 即生效。也可用 `BLOG_IP2REGION_XDB` 指定绝对路径；文件缺失时自动回落在在线库 |
+| 调整常用标签快选 | 文章编辑器「象限标签」右侧「＋」→ 勾选最多 4 个标签；新添加的标签会自动进入快选（存浏览器 localStorage） |
 | 从 WordPress 导入旧数据 | `node scripts/import-wordpress.mjs --export .work/wp-export --db <库> --uploads <上传目录>`；先加 `--dry-run` 看清单。正文图片落到 `uploads/posts/<slug>/`，草稿 / 私密统一按 `draft` 入库 |
 | 加旧链接 301 | 改 `src/server/legacy-redirects.json`（唯一映射表，导入脚本也读它），部署后生效 |
 | 改站名 / 导航 / 自我介绍 | `/studio/` → 站点设置（写 `site_settings.site`）；关于「我」的档案卡在「设置 → 03」 |
@@ -390,6 +401,31 @@ Schema 唯一来源是 [db/schema.sql](db/schema.sql)（`src/server/schema.ts` �
   中国大陆 IP 在太平洋失败时不再回退 ip-api，改为后台重试，避免贵州 IP 被解析成广东。
 - 2026-10-22：合入页面缓存 / 内容版本与主题同步优化：公开 HTML 内存缓存（5 分钟 LRU）、ETag 304、
   Markdown / 阅读时长 / 设置缓存；统计页移除独立夜间按钮，统一跟随 Studio 顶栏主题切换。
+- 2026-11-18：访客统计重构（Schema 仍为 v6）：
+  - 采集改为**前端信标**：`TELEMETRY_BEACON`（`src/utils/theme.ts`）在页面可见且非 WebDriver 时
+    `sendBeacon` 到 `/api/analytics/collect`，附带触控点数、Client Hints 平台版本、屏幕尺寸；
+    SSR 裸 GET 记数默认关闭（`BLOG_SSR_RAW_VISIT=1` 可恢复），从源头过滤不执行 JS 的机房扫描；
+  - **离线 IP 库**：新增 `src/server/ip2region.ts`（v2/v4 双格式 xdb、全内存查询、中国省市标准化、
+    IDC/云厂商 ISP 识别），默认探测 `data/ip2region.xdb`、`data/ip2region_v4.xdb`、
+    `<DATA_DIR>/ip2region.xdb`；`getAnalyticsDashboard` / `listVisitorLogs` / `recordVisitBeacon`
+    统一走离线归因；
+  - **规则与解析**：`bot-ip-rules.ts` 扩到 100+ 条 IP/CIDR（Onyphe、ServerMania、netcup、Cogent 等）；
+    `parseUserAgent` 重写（UA <24 字符、无 `Mozilla/` 前缀、`BOT_OR_SCANNER_UA_RE`、Chrome 主版本 <90
+    判 Bot）；扫描路径/查询串规则补齐；
+  - **启动修复**：`repairExistingCoordsAndWarmCache` 在服务启动时按新规则删除违规记录、修正 UA/经纬度；
+  - **统计 HUD**（`src/studio/stats.html`）：删除顶栏访客明细入口与热力图提示；柱状图去掉空数据轮廓、
+    PV/UV 改并排双柱并加大尺寸，月度按周压缩（`01-07`…，不显示「日」）；省份/设备列表按 PV 降序、
+    卡片内滚动且隐藏滚动条；访客明细改为左栏内嵌视图（非悬浮窗、无毛玻璃，右侧地球可交互）。
+- 2026-11-18：文章编辑器体验：
+  - 标题 `change` 时按标题生成路由（非草稿；中文保留、空格转连字符、重名跳过）；
+  - 「提取导语」移到首屏导语右侧；导语输入框随内容自适应高度、无滚动条；
+  - 编辑器首次输入即包 `<p>`（首行缩进/段间距立即生效），回车默认生成 `<p>`；
+    插入分割线自动补空段落并把光标放入下一段；
+  - 删除文章加二次确认（已保存文章「暂存删除」+ 保存提交，未保存草稿直接移除）；
+  - 悬浮窗移除「跟随全局」模式（只保留默认/极简）；删除 C 区，B 区支持「文档速查卡」
+    「同系列文章切换」；新建文章默认两张卡并在保存时写入 frontmatter；
+  - 右侧「信息悬浮窗」快捷区只保留状态展示；标签常用快选限 4 个 + 管理弹窗；
+  - 合并高频编辑的重计算（Markdown 同步/目录/字数/预览节流），连续插入分割线不再卡顿。
 
 **待办**
 
