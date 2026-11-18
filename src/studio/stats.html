@@ -747,15 +747,561 @@ body.st-body {
 }
   
 html.st-embed a[href="/studio/"] { display: none !important; }
+
+/* ==========================================================================
+   新增：GitHub 风格访问热力矩阵（数据统计整合）
+   ========================================================================== */
+.st-hm-card-body {
+  padding: 0.75rem 0.85rem 0.65rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.st-hm-scroll {
+  width: 100%;
+  overflow-x: auto;
+  padding-bottom: 0.2rem;
+  scrollbar-width: thin;
+}
+
+.st-hm-matrix-wrap {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 0.28rem;
+  min-width: 100%;
+}
+
+.st-hm-months {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 13px;
+  gap: 3px;
+  padding-left: 1.85rem;
+  font-family: var(--mono);
+  font-size: 0.64rem;
+  color: var(--muted);
+  line-height: 1;
+  height: 0.85rem;
+}
+
+.st-hm-months span {
+  white-space: nowrap;
+  overflow: visible;
+}
+
+.st-hm-main-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.35rem;
+}
+
+.st-hm-weekdays {
+  display: grid;
+  grid-template-rows: repeat(7, 13px);
+  gap: 3px;
+  font-family: var(--mono);
+  font-size: 0.62rem;
+  color: var(--muted);
+  line-height: 13px;
+  width: 1.5rem;
+  flex-shrink: 0;
+  text-align: right;
+  padding-right: 0.15rem;
+}
+
+.st-hm-grid {
+  display: grid;
+  grid-template-rows: repeat(7, 13px);
+  grid-auto-flow: column;
+  grid-auto-columns: 13px;
+  gap: 3px;
+}
+
+.st-hm-cell {
+  width: 13px;
+  height: 13px;
+  border-radius: 2px;
+  border: 1px solid color-mix(in srgb, var(--rule) 85%, transparent);
+  background: color-mix(in srgb, var(--canvas) 78%, var(--paper));
+  cursor: pointer;
+  transition: transform 120ms ease, border-color 120ms ease, box-shadow 120ms ease;
+  padding: 0;
+}
+
+.st-hm-cell.is-future {
+  opacity: 0.25;
+  pointer-events: none;
+}
+
+.st-hm-cell[data-lv="1"] {
+  background: color-mix(in srgb, var(--accent) 24%, var(--paper));
+  border-color: color-mix(in srgb, var(--accent) 42%, var(--rule));
+}
+.st-hm-cell[data-lv="2"] {
+  background: color-mix(in srgb, var(--accent) 46%, var(--paper));
+  border-color: color-mix(in srgb, var(--accent) 62%, var(--rule));
+}
+.st-hm-cell[data-lv="3"] {
+  background: color-mix(in srgb, var(--accent) 72%, var(--paper));
+  border-color: color-mix(in srgb, var(--accent) 85%, var(--rule));
+}
+.st-hm-cell[data-lv="4"] {
+  background: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 88%, #000);
+  box-shadow: 0 0 5px color-mix(in srgb, var(--accent) 38%, transparent);
+}
+
+.st-hm-cell:hover {
+  transform: scale(1.22);
+  z-index: 4;
+  border-color: var(--ink);
+}
+
+.st-hm-cell.is-selected {
+  outline: 2px solid var(--ink);
+  outline-offset: 1px;
+  z-index: 3;
+}
+
+.st-hm-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  font-family: var(--mono);
+  font-size: 0.68rem;
+  color: var(--muted);
+  padding-top: 0.15rem;
+}
+
+.st-hm-legend {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.st-hm-legend-box {
+  width: 11px;
+  height: 11px;
+  border-radius: 2px;
+  display: inline-block;
+  border: 1px solid color-mix(in srgb, var(--rule) 85%, transparent);
+  background: color-mix(in srgb, var(--canvas) 78%, var(--paper));
+}
+.st-hm-legend-box[data-lv="1"] { background: color-mix(in srgb, var(--accent) 24%, var(--paper)); border-color: color-mix(in srgb, var(--accent) 42%, var(--rule)); }
+.st-hm-legend-box[data-lv="2"] { background: color-mix(in srgb, var(--accent) 46%, var(--paper)); border-color: color-mix(in srgb, var(--accent) 62%, var(--rule)); }
+.st-hm-legend-box[data-lv="3"] { background: color-mix(in srgb, var(--accent) 72%, var(--paper)); border-color: color-mix(in srgb, var(--accent) 85%, var(--rule)); }
+.st-hm-legend-box[data-lv="4"] { background: var(--accent); border-color: color-mix(in srgb, var(--accent) 88%, #000); }
+
+/* 悬浮 Tooltip（热力图格子与柱状图共用，纸墨/蓝图 HUD 风格） */
+.st-hud-tooltip {
+  position: fixed;
+  z-index: 320;
+  pointer-events: none;
+  background: color-mix(in srgb, var(--ink) 94%, var(--paper));
+  color: var(--paper);
+  border: 1px solid var(--accent);
+  border-radius: 4px;
+  padding: 0.48rem 0.68rem;
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  line-height: 1.45;
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.32);
+  max-width: 19rem;
+  opacity: 0;
+  transform: translate(-50%, -100%) translateY(-8px);
+  transition: opacity 110ms ease;
+}
+.st-hud-tooltip.is-visible {
+  opacity: 1;
+}
+.st-hud-tooltip-title {
+  font-family: var(--sans);
+  font-weight: 700;
+  font-size: 0.76rem;
+  color: var(--accent-light);
+  margin-bottom: 0.16rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+}
+.st-hud-tooltip-sub {
+  color: color-mix(in srgb, var(--paper) 80%, transparent);
+  font-size: 0.68rem;
+}
+
+/* ==========================================================================
+   新增：当前时间段柱状统计图（替代原左侧访客明细位置）
+   ========================================================================== */
+.st-chart-body {
+  padding: 0.85rem 0.9rem 0.75rem;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  gap: 0.55rem;
+  min-height: 0;
+}
+
+.st-chart-summary-strip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  padding: 0.42rem 0.65rem;
+  background: color-mix(in srgb, var(--canvas) 55%, var(--paper));
+  border: 1px solid var(--rule);
+  border-radius: 3px;
+  font-family: var(--mono);
+  font-size: 0.72rem;
+}
+
+.st-chart-metrics {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.85rem;
+  flex-wrap: wrap;
+}
+
+.st-chart-metric-item strong {
+  color: var(--accent);
+  font-weight: 700;
+}
+
+.st-bars-stage {
+  display: flex;
+  align-items: flex-end;
+  gap: 0.32rem;
+  min-height: 0;
+  padding: 0.45rem 0.25rem 0.2rem;
+  border-bottom: 1px solid var(--rule);
+  position: relative;
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+
+.st-bars-stage::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  border-top: 1px dashed color-mix(in srgb, var(--rule) 75%, transparent);
+  pointer-events: none;
+}
+
+.st-bar-pair {
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 2px;
+  width: 100%;
+  height: clamp(4.8rem, 11vh, 7rem);
+  flex: 0 0 auto;
+}
+
+.st-bar-pair .st-bar-track-v {
+  max-width: 9px;
+  height: 100%;
+}
+
+.st-bar-col {
+  flex: 1 1 0;
+  min-width: 16px;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.28rem;
+  cursor: pointer;
+  position: relative;
+}
+
+.st-bar-val-top {
+  font-family: var(--mono);
+  font-size: 0.62rem;
+  color: var(--muted);
+  line-height: 1;
+  min-height: 0.7rem;
+}
+
+.st-bar-col:hover .st-bar-val-top,
+.st-bar-col.is-highlight .st-bar-val-top {
+  color: var(--accent);
+  font-weight: 700;
+}
+
+.st-bar-track-v {
+  width: 100%;
+  max-width: 24px;
+  height: clamp(4.8rem, 11vh, 7rem);
+  background: transparent;
+  border: 0;
+  border-radius: 2px 2px 0 0;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  overflow: hidden;
+  position: relative;
+  transition: border-color 140ms ease;
+}
+
+.st-bar-col:hover .st-bar-track-v,
+.st-bar-col.is-highlight .st-bar-track-v {
+  border-color: transparent;
+}
+
+.st-bar-fill-pv {
+  width: 100%;
+  background: linear-gradient(
+    180deg,
+    var(--accent) 0%,
+    color-mix(in srgb, var(--accent) 68%, var(--paper)) 100%
+  );
+  border-radius: 2px 2px 0 0;
+  position: relative;
+  transition: height 220ms var(--ease);
+  display: flex;
+  align-items: flex-end;
+}
+
+.st-bar-fill-uv {
+  width: 100%;
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--ink) 55%, #b98a6a) 0%,
+    color-mix(in srgb, var(--ink) 88%, #6d5344) 100%
+  );
+  border-radius: 2px 2px 0 0;
+  opacity: 0.95;
+  transition: height 220ms var(--ease);
+}
+
+.st-bar-x-label {
+  font-family: var(--mono);
+  font-size: 0.62rem;
+  color: var(--muted);
+  white-space: nowrap;
+  line-height: 1.1;
+}
+
+.st-bar-col:hover .st-bar-x-label,
+.st-bar-col.is-highlight .st-bar-x-label {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+/* 省份/设备横向对比柱状图（子维度切换） */
+.st-hbars-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.46rem;
+  padding: 0.25rem 0;
+  max-height: none;
+  overflow: visible;
+}
+
+.st-hbar-row {
+  display: grid;
+  grid-template-columns: minmax(9rem, 15rem) minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.55rem;
+  font-size: 0.76rem;
+  padding: 0.22rem 0.35rem;
+  border-radius: 3px;
+  cursor: pointer;
+}
+.st-hbar-row:hover {
+  background: color-mix(in srgb, var(--accent) 7%, var(--paper));
+}
+.st-hbar-name {
+  font-weight: 500;
+  color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.st-hbar-track {
+  min-width: 0;
+  height: 0.56rem;
+  background: color-mix(in srgb, var(--canvas) 78%, var(--rule));
+  border-radius: 2px;
+  overflow: hidden;
+}
+.st-hbar-fill {
+  height: 100%;
+  background: var(--accent);
+  border-radius: 2px;
+}
+.st-hbar-meta {
+  font-family: var(--mono);
+  font-size: 0.68rem;
+  color: var(--muted);
+  text-align: right;
+  white-space: nowrap;
+}
+
+/* ==========================================================================
+   新增：二级菜单「访客记录明细」抽屉弹窗（仅展示当前时间窗口记录）
+   ========================================================================== */
+/* 访客记录明细：内嵌左侧面板（非悬浮窗、无毛玻璃、右侧地球保持可交互） */
+.st-logs-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  height: 100%;
+  min-height: 0;
+}
+
+.st-logs-wrap .st-drawer-head {
+  padding: 0.55rem 0.7rem;
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--paper) 92%, var(--canvas));
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+
+.st-drawer-title-group {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.st-drawer-title {
+  margin: 0;
+  font-family: var(--kai);
+  font-size: 1.15rem;
+  font-weight: 400;
+  color: var(--ink);
+}
+
+.st-logs-wrap .st-table-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+}
+
+.st-logs-wrap .st-table {
+  table-layout: fixed;
+  font-size: 0.72rem;
+}
+
+.st-logs-wrap .st-table th,
+.st-logs-wrap .st-table td {
+  white-space: normal;
+  word-break: break-word;
+  padding: 0.4rem 0.45rem;
+}
+
+.st-logs-wrap .st-table th:nth-child(1) { width: 15%; }
+.st-logs-wrap .st-table th:nth-child(2) { width: 15%; }
+.st-logs-wrap .st-table th:nth-child(3) { width: 26%; }
+.st-logs-wrap .st-table th:nth-child(4) { width: 22%; }
+.st-logs-wrap .st-table th:nth-child(5) { width: 14%; }
+.st-logs-wrap .st-table th:nth-child(6) { width: 8%; }
+
+.st-logs-wrap .st-table td:nth-child(2) .st-ip-badge {
+  white-space: nowrap;
+  font-size: 0.66rem;
+  display: inline-block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  vertical-align: bottom;
+}
+
+.st-logs-wrap .st-table-scroll {
+  overflow-x: hidden;
+}
+
+.st-logs-wrap .st-card-foot {
+  padding-top: 0.45rem;
+  background: transparent;
+}
+
+
+/* --------------------------------------------------------------------------
+   滚动条隐藏与柱状图尺寸（第三轮调整）
+   -------------------------------------------------------------------------- */
+html,
+body {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+html::-webkit-scrollbar,
+body::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+}
+
+.st-left-pane {
+  scrollbar-width: none;
+}
+.st-left-pane::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+}
+
+.st-hbars-list {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-width: none;
+}
+.st-hbars-list::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+}
+
+.st-logs-wrap .st-table-scroll {
+  scrollbar-width: none;
+}
+.st-logs-wrap .st-table-scroll::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+}
+
+.st-bar-pair {
+  height: clamp(7rem, 22vh, 11rem);
+}
+.st-bar-pair .st-bar-track-v {
+  flex: 1 1 0;
+  min-width: 4px;
+  max-width: 18px;
+}
+.st-bars-stage {
+  min-height: 9rem;
+}
+.st-bars-stage[data-count='5'] .st-bar-pair .st-bar-track-v {
+  max-width: 34px;
+}
+.st-bars-stage[data-count='7'] .st-bar-pair .st-bar-track-v {
+  max-width: 26px;
+}
+.st-bars-stage[data-count='12'] .st-bar-pair .st-bar-track-v {
+  max-width: 20px;
+}
 </style>
 </head>
 <body class="st-body">
-  <!-- 顶部极简导航与功能按钮栏 -->
+  <!-- 顶部极简导航与功能按钮栏（含二级菜单「访客记录明细」入口） -->
   <header class="st-topbar" id="st-bar"></header>
 
-  <!-- 左右分栏主工作区：左侧数据与统计整合，右侧 3D 粒子地球模型 -->
+  <!-- 左右分栏主工作区：左侧热力图与时段柱状图，右侧 3D 粒子地球模型 -->
   <main class="st-split-workspace" id="st-main">
-    <!-- 左侧：访客数据、周/月/年统计整合、每日访客 IP 与设备明细 -->
+    <!-- 左侧：四维 KPI、GitHub 风格数据统计整合热力图、当前时间段柱状统计图 -->
     <section class="st-left-pane" id="st-left-pane" aria-label="访客数据与统计整合"></section>
 
     <!-- 右侧：3D 动态粒子旋转地球模型 -->
@@ -810,7 +1356,7 @@ html.st-embed a[href="/studio/"] { display: none !important; }
       <!-- 左下角：鼠标指向坐标与国家即时反馈 -->
       <div class="st-globe-overlay st-globe-overlay--bl">
         <div class="st-globe-pill" id="st-globe-hover-readout">
-          拖拽旋转 · 滚轮缩放 · 点击球面国家或左侧访客记录动态显示国家标注
+          拖拽旋转 · 滚轮缩放 · 点击球面国家或二级菜单访客记录动态显示省市/国家标注
         </div>
       </div>
 
@@ -823,8 +1369,10 @@ html.st-embed a[href="/studio/"] { display: none !important; }
     </section>
   </main>
 
-  <div class="st-toast" id="st-toast" role="status" aria-live="polite"></div>
+  <!-- 全局悬浮 HUD Tooltip（供 GitHub 热力图格子与柱状图悬停展示日期与详细数据） -->
+  <div class="st-hud-tooltip" id="st-hud-tooltip" role="tooltip" aria-hidden="true"></div>
 
+  <div class="st-toast" id="st-toast" role="status" aria-live="polite"></div>
   <script>
     if (new URLSearchParams(location.search).get('embed') === '1') {
       document.documentElement.classList.add('st-embed');
@@ -1546,11 +2094,45 @@ html.st-embed a[href="/studio/"] { display: none !important; }
       }
 
       // =========================================================================
-      // 3. 访客记录数据引擎（支持每日访客数、IP、设备及按日/周/月/年整合）
+      // 3. 访客记录数据引擎（支持 GitHub 热力图矩阵、当前时段柱状统计图、省级提取及二级菜单）
       // =========================================================================
       let visitorLogs = [];
       let nextLogId = 1;
       let currentClientIp = '';
+
+      const CN_PROVINCE_NAMES = [
+        '北京市', '上海市', '天津市', '重庆市',
+        '广东省', '浙江省', '江苏省', '四川省', '湖北省', '湖南省', '福建省', '山东省',
+        '河南省', '河北省', '陕西省', '安徽省', '江西省', '辽宁省', '吉林省', '黑龙江省',
+        '广西', '云南省', '贵州省', '山西省', '内蒙古', '甘肃省', '宁夏', '青海省',
+        '新疆', '西藏', '海南省', '中国香港', '中国澳门', '中国台湾',
+        '北京', '上海', '天津', '重庆', '广东', '浙江', '江苏', '四川', '湖北', '湖南',
+        '福建', '山东', '河南', '河北', '陕西', '安徽', '江西', '辽宁', '吉林', '黑龙江',
+        '云南', '贵州', '山西', '甘肃', '青海', '海南', '香港', '澳门', '台湾'
+      ];
+
+      function extractProvinceLabel(r) {
+        const reg = String(r.region || '').trim();
+        if (r.countryCode === 'CN' || r.countryZh === '中国') {
+          for (let i = 0; i < CN_PROVINCE_NAMES.length; i++) {
+            const p = CN_PROVINCE_NAMES[i];
+            if (reg.includes(p)) {
+              if (p === '香港' || p === '中国香港') return '中国香港';
+              if (p === '澳门' || p === '中国澳门') return '中国澳门';
+              if (p === '台湾' || p === '中国台湾') return '中国台湾';
+              if (p === '北京' || p === '上海' || p === '天津' || p === '重庆') return p + '市';
+              if (p === '广西' || p === '内蒙古' || p === '宁夏' || p === '新疆' || p === '西藏') return p;
+              return p.endsWith('省') || p.endsWith('市') ? p : p + '省';
+            }
+          }
+          for (let i = 0; i < CN_CITY_COORDS.length; i++) {
+            const c = CN_CITY_COORDS[i];
+            if (reg.includes(c.match)) return c.match;
+          }
+          return reg.split('·')[0].trim() || '中国大陆';
+        }
+        return r.countryZh || '海外';
+      }
 
       function formatYmd(d) {
         const y = d.getFullYear();
@@ -1559,12 +2141,22 @@ html.st-embed a[href="/studio/"] { display: none !important; }
         return `${y}-${m}-${day}`;
       }
 
+      function parseYmdLocal(ymdStr) {
+        const parts = String(ymdStr || '').split('-').map(Number);
+        return new Date(parts[0] || 2026, (parts[1] || 1) - 1, parts[2] || 1);
+      }
+
       function getMondayYmd(ymdStr) {
-        const parts = ymdStr.split('-').map(Number);
-        const d = new Date(parts[0], parts[1] - 1, parts[2]);
+        const d = parseYmdLocal(ymdStr);
         const day = d.getDay();
         const diff = (day + 6) % 7;
         d.setDate(d.getDate() - diff);
+        return formatYmd(d);
+      }
+
+      function getSundayYmd(mondayYmdStr) {
+        const d = parseYmdLocal(mondayYmdStr);
+        d.setDate(d.getDate() + 6);
         return formatYmd(d);
       }
 
@@ -1575,26 +2167,365 @@ html.st-embed a[href="/studio/"] { display: none !important; }
         return ymdStr;
       }
 
-      function formatBucketLabel(granularity, bucket) {
-        if (granularity === 'day') return bucket;
-        if (granularity === 'week') return `${bucket} 周`;
-        if (granularity === 'month') return `${bucket} 月`;
-        return `${bucket} 年`;
+      /**
+       * 获取当前粒度下的活跃时间桶与可读标题：
+       * - 按日（day）：默认当日（YYYY-MM-DD），或用户在热力图中点选的某日
+       * - 按周（week）：默认本周（周一 YYYY-MM-DD），或所选日期所在周
+       * - 按月（month）：默认当月（YYYY-MM），或所选月份
+       * - 按年（year）：默认当年（YYYY），或所选年份
+       */
+      function resolveActiveBucketInfo(granularity, selectedBucket) {
+        const today = formatYmd(new Date());
+        const thisWeekMonday = getMondayYmd(today);
+        const thisMonth = today.slice(0, 7);
+        const thisYear = today.slice(0, 4);
+
+        let activeBucket = selectedBucket;
+        if (!activeBucket) {
+          activeBucket =
+            granularity === 'day' ? today
+            : granularity === 'week' ? thisWeekMonday
+            : granularity === 'month' ? thisMonth
+            : thisYear;
+        } else {
+          // 若从其他粒度切换过来，自动将 selectedBucket 对齐到当前粒度格式
+          if (granularity === 'day' && activeBucket.length !== 10) activeBucket = today;
+          else if (granularity === 'week') {
+            activeBucket = activeBucket.length === 10 ? getMondayYmd(activeBucket) : thisWeekMonday;
+          } else if (granularity === 'month') {
+            activeBucket = activeBucket.length >= 7 ? activeBucket.slice(0, 7) : thisMonth;
+          } else if (granularity === 'year') {
+            activeBucket = activeBucket.slice(0, 4) || thisYear;
+          }
+        }
+
+        let scopeTitle = '';
+        if (granularity === 'day') {
+          scopeTitle = activeBucket === today ? `今日 (${activeBucket})` : `指定日 (${activeBucket})`;
+        } else if (granularity === 'week') {
+          const sun = getSundayYmd(activeBucket);
+          scopeTitle = activeBucket === thisWeekMonday
+            ? `本周 (${activeBucket.slice(5)} ~ ${sun.slice(5)})`
+            : `${activeBucket.slice(5)} ~ ${sun.slice(5)} 周`;
+        } else if (granularity === 'month') {
+          scopeTitle = activeBucket === thisMonth ? `本月 (${activeBucket})` : `${activeBucket} 月`;
+        } else {
+          scopeTitle = activeBucket === thisYear ? `本年 (${activeBucket})` : `${activeBucket} 年`;
+        }
+
+        return { activeBucket, scopeTitle, today, thisWeekMonday, thisMonth, thisYear };
+      }
+
+      /**
+       * 生成 GitHub 风格访问贡献热力图数据（过去 28 周 × 7 天 = 196 天网格，右侧对齐本周）
+       */
+      function buildGithubHeatmap(logs, selectedCountry, selectedDevice) {
+        const dayMap = new Map();
+        for (const r of logs) {
+          if (selectedCountry && r.countryZh !== selectedCountry) continue;
+          if (selectedDevice && r.deviceType !== selectedDevice) continue;
+          let d = dayMap.get(r.visitDate);
+          if (!d) {
+            d = {
+              date: r.visitDate,
+              ips: new Set(),
+              pv: 0,
+              desktop: 0,
+              mobile: 0,
+              tablet: 0,
+              regionCounts: new Map()
+            };
+            dayMap.set(r.visitDate, d);
+          }
+          d.ips.add(r.ip);
+          const pv = Number(r.pvCount) || 1;
+          d.pv += pv;
+          if (r.deviceType === 'Desktop') d.desktop += pv;
+          else if (r.deviceType === 'Mobile') d.mobile += pv;
+          else d.tablet += pv;
+
+          const prov = extractProvinceLabel(r);
+          d.regionCounts.set(prov, (d.regionCounts.get(prov) || 0) + pv);
+        }
+
+        const WEEKS_COUNT = 28;
+        const todayDate = new Date();
+        const todayStr = formatYmd(todayDate);
+        const currentMonday = parseYmdLocal(getMondayYmd(todayStr));
+        const startMonday = new Date(currentMonday);
+        startMonday.setDate(startMonday.getDate() - (WEEKS_COUNT - 1) * 7);
+
+        let maxDailyPv = 0;
+        for (const d of dayMap.values()) {
+          if (d.pv > maxDailyPv) maxDailyPv = d.pv;
+        }
+
+        const weeks = [];
+        const monthHeaders = [];
+        let lastMonth = -1;
+        const weekdayNames = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
+
+        for (let w = 0; w < WEEKS_COUNT; w++) {
+          const colCells = [];
+          let monthLabel = '';
+          for (let dow = 0; dow < 7; dow++) {
+            const cur = new Date(startMonday);
+            cur.setDate(startMonday.getDate() + w * 7 + dow);
+            const ymd = formatYmd(cur);
+            const m = cur.getMonth() + 1;
+            if (dow === 0 && m !== lastMonth) {
+              monthLabel = `${m}月`;
+              lastMonth = m;
+            }
+            const stat = dayMap.get(ymd);
+            const pv = stat ? stat.pv : 0;
+            const uv = stat ? stat.ips.size : 0;
+            let topRegion = '暂无记录';
+            if (stat && stat.regionCounts.size > 0) {
+              let bestK = '';
+              let bestV = -1;
+              stat.regionCounts.forEach((v, k) => {
+                if (v > bestV) { bestV = v; bestK = k; }
+              });
+              topRegion = bestK;
+            }
+
+            let lv = 0;
+            if (pv > 0) {
+              if (maxDailyPv <= 4) {
+                lv = Math.min(4, pv);
+              } else {
+                const ratio = pv / maxDailyPv;
+                lv = ratio <= 0.25 ? 1 : ratio <= 0.50 ? 2 : ratio <= 0.75 ? 3 : 4;
+              }
+            }
+
+            colCells.push({
+              date: ymd,
+              weekday: weekdayNames[dow],
+              uv,
+              pv,
+              desktop: stat ? stat.desktop : 0,
+              mobile: stat ? stat.mobile : 0,
+              tablet: stat ? stat.tablet : 0,
+              topRegion,
+              lv,
+              isFuture: ymd > todayStr,
+              isToday: ymd === todayStr
+            });
+          }
+          weeks.push(colCells);
+          monthHeaders.push(monthLabel);
+        }
+
+        let activeDaysCount = 0;
+        let totalWindowPv = 0;
+        weeks.forEach((col) => col.forEach((c) => {
+          if (!c.isFuture && c.pv > 0) {
+            activeDaysCount++;
+            totalWindowPv += c.pv;
+          }
+        }));
+
+        return { weeks, monthHeaders, maxDailyPv, activeDaysCount, totalWindowPv };
+      }
+
+      /**
+       * 生成当前活跃时间段（activeBucket）的柱状图数据：
+       * - day：当日 24 小时分时柱（00时 ~ 23时）
+       * - week：当周 7 天柱（周一 ~ 周日）
+       * - month：当月每日柱（01日 ~ 月末）
+       * - year：当年 12 个月柱（1月 ~ 12月）
+       */
+      function buildCurrentPeriodBars(windowRows, granularity, activeBucket) {
+        const bars = [];
+        if (granularity === 'day') {
+          const hourBuckets = Array.from({ length: 24 }, (_, h) => ({
+            key: String(h).padStart(2, '0'),
+            label: `${String(h).padStart(2, '0')}时`,
+            shortLabel: h % 2 === 0 ? `${String(h).padStart(2, '0')}` : '',
+            title: `${activeBucket} ${String(h).padStart(2, '0')}:00 - ${String(h).padStart(2, '0')}:59`,
+            ips: new Set(),
+            pv: 0,
+            desktop: 0,
+            mobile: 0,
+            tablet: 0
+          }));
+          for (const r of windowRows) {
+            const timePart = String(r.lastSeen || r.firstSeen || '').slice(11, 13);
+            const h = Math.max(0, Math.min(23, parseInt(timePart, 10) || 0));
+            const b = hourBuckets[h];
+            b.ips.add(r.ip);
+            const pv = Number(r.pvCount) || 1;
+            b.pv += pv;
+            if (r.deviceType === 'Desktop') b.desktop += pv;
+            else if (r.deviceType === 'Mobile') b.mobile += pv;
+            else b.tablet += pv;
+          }
+          for (const b of hourBuckets) {
+            bars.push({
+              key: b.key,
+              label: b.label,
+              shortLabel: b.shortLabel || b.key,
+              title: b.title,
+              uv: b.ips.size,
+              pv: b.pv,
+              desktop: b.desktop,
+              mobile: b.mobile,
+              tablet: b.tablet
+            });
+          }
+        } else if (granularity === 'week') {
+          const wNames = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
+          const startD = parseYmdLocal(activeBucket);
+          const dayMap = new Map();
+          for (let i = 0; i < 7; i++) {
+            const d = new Date(startD);
+            d.setDate(startD.getDate() + i);
+            const ymd = formatYmd(d);
+            dayMap.set(ymd, {
+              key: ymd,
+              label: `${wNames[i]} (${ymd.slice(5)})`,
+              shortLabel: `${wNames[i]}`,
+              title: `${ymd} ${wNames[i]}`,
+              ips: new Set(),
+              pv: 0,
+              desktop: 0,
+              mobile: 0,
+              tablet: 0
+            });
+          }
+          for (const r of windowRows) {
+            const b = dayMap.get(r.visitDate);
+            if (!b) continue;
+            b.ips.add(r.ip);
+            const pv = Number(r.pvCount) || 1;
+            b.pv += pv;
+            if (r.deviceType === 'Desktop') b.desktop += pv;
+            else if (r.deviceType === 'Mobile') b.mobile += pv;
+            else b.tablet += pv;
+          }
+          dayMap.forEach((b) => {
+            bars.push({
+              key: b.key,
+              label: b.label,
+              shortLabel: b.shortLabel,
+              title: b.title,
+              uv: b.ips.size,
+              pv: b.pv,
+              desktop: b.desktop,
+              mobile: b.mobile,
+              tablet: b.tablet
+            });
+          });
+        } else if (granularity === 'month') {
+          const [yStr, mStr] = activeBucket.split('-');
+          const y = Number(yStr) || 2026;
+          const m = Number(mStr) || 1;
+          const daysInMonth = new Date(y, m, 0).getDate();
+          const pad2 = (n) => String(n).padStart(2, '0');
+          const weekOf = (day) => Math.floor((day - 1) / 7);
+          const weekMap = new Map();
+
+          for (let d = 1; d <= daysInMonth; d += 1) {
+            const idx = weekOf(d);
+            if (weekMap.has(idx)) continue;
+            const start = idx * 7 + 1;
+            const end = Math.min(daysInMonth, start + 6);
+            weekMap.set(idx, {
+              key: `${activeBucket}-w${idx + 1}`,
+              label: `${pad2(start)}-${pad2(end)}`,
+              shortLabel: `${pad2(start)}-${pad2(end)}`,
+              title: `${activeBucket} ${pad2(start)} ~ ${pad2(end)}`,
+              ips: new Set(),
+              pv: 0,
+              desktop: 0,
+              mobile: 0,
+              tablet: 0
+            });
+          }
+
+          for (const r of windowRows) {
+            const day = Number(String(r.visitDate || '').slice(8, 10));
+            if (!day) continue;
+            const b = weekMap.get(weekOf(day));
+            if (!b) continue;
+            b.ips.add(r.ip);
+            const pv = Number(r.pvCount) || 1;
+            b.pv += pv;
+            if (r.deviceType === 'Desktop') b.desktop += pv;
+            else if (r.deviceType === 'Mobile') b.mobile += pv;
+            else b.tablet += pv;
+          }
+
+          weekMap.forEach((b) => {
+            bars.push({
+              key: b.key,
+              label: b.label,
+              shortLabel: b.shortLabel,
+              title: b.title,
+              uv: b.ips.size,
+              pv: b.pv,
+              desktop: b.desktop,
+              mobile: b.mobile,
+              tablet: b.tablet
+            });
+          });
+        } else {
+          const monthMap = new Map();
+          for (let m = 1; m <= 12; m++) {
+            const mm = String(m).padStart(2, '0');
+            const ym = `${activeBucket}-${mm}`;
+            monthMap.set(ym, {
+              key: ym,
+              label: `${m}月`,
+              shortLabel: `${m}月`,
+              title: `${activeBucket}年${m}月`,
+              ips: new Set(),
+              pv: 0,
+              desktop: 0,
+              mobile: 0,
+              tablet: 0
+            });
+          }
+          for (const r of windowRows) {
+            const ym = r.visitDate.slice(0, 7);
+            const b = monthMap.get(ym);
+            if (!b) continue;
+            b.ips.add(r.ip);
+            const pv = Number(r.pvCount) || 1;
+            b.pv += pv;
+            if (r.deviceType === 'Desktop') b.desktop += pv;
+            else if (r.deviceType === 'Mobile') b.mobile += pv;
+            else b.tablet += pv;
+          }
+          monthMap.forEach((b) => {
+            bars.push({
+              key: b.key,
+              label: b.label,
+              shortLabel: b.shortLabel,
+              title: b.title,
+              uv: b.ips.size,
+              pv: b.pv,
+              desktop: b.desktop,
+              mobile: b.mobile,
+              tablet: b.tablet
+            });
+          });
+        }
+        return bars;
       }
 
       function computeDashboard(opts) {
         const granularity = opts.granularity || 'day';
-        const selBucket = opts.bucket || null;
         const selCountry = opts.country || null;
         const selDevice = opts.device || null;
         const q = (opts.q || '').trim().toLowerCase();
         const page = Math.max(1, opts.page || 1);
-        const pageSize = opts.pageSize || 10;
+        const pageSize = opts.pageSize || 12;
 
-        const today = formatYmd(new Date());
-        const weekStart = getMondayYmd(today);
-        const thisMonth = today.slice(0, 7);
-        const thisYear = today.slice(0, 4);
+        const { activeBucket, scopeTitle, today, thisWeekMonday, thisMonth, thisYear } =
+          resolveActiveBucketInfo(granularity, opts.bucket || null);
 
         const calcUvPv = (pred) => {
           const ips = new Set();
@@ -1602,64 +2533,31 @@ html.st-embed a[href="/studio/"] { display: none !important; }
           for (const r of visitorLogs) {
             if (pred(r)) {
               ips.add(r.ip);
-              pv += r.pvCount;
+              pv += Number(r.pvCount) || 1;
             }
           }
           return { uv: ips.size, pv };
         };
 
         const todayStat = calcUvPv((r) => r.visitDate === today);
-        const weekStat = calcUvPv((r) => r.visitDate >= weekStart);
+        const weekStat = calcUvPv((r) => r.visitDate >= thisWeekMonday);
         const monthStat = calcUvPv((r) => r.visitDate.startsWith(thisMonth));
         const yearStat = calcUvPv((r) => r.visitDate.startsWith(thisYear));
         const totalStat = calcUvPv(() => true);
         const allCountriesSet = new Set(visitorLogs.map((r) => r.countryZh));
 
-        const bucketMap = new Map();
-        for (const r of visitorLogs) {
-          if (selCountry && r.countryZh !== selCountry) continue;
-          if (selDevice && r.deviceType !== selDevice) continue;
-          const bKey = getBucketKey(r.visitDate, granularity);
-          let b = bucketMap.get(bKey);
-          if (!b) {
-            b = {
-              bucket: bKey,
-              label: formatBucketLabel(granularity, bKey),
-              ips: new Set(),
-              pv: 0,
-              desktop: 0,
-              mobile: 0,
-              tablet: 0,
-              topCountry: r.countryZh
-            };
-            bucketMap.set(bKey, b);
-          }
-          b.ips.add(r.ip);
-          b.pv += r.pvCount;
-          if (r.deviceType === 'Desktop') b.desktop++;
-          else if (r.deviceType === 'Mobile') b.mobile++;
-          else b.tablet++;
-        }
+        // 1. 构建 GitHub 贡献热力矩阵
+        const heatmap = buildGithubHeatmap(visitorLogs, selCountry, selDevice);
 
-        const limitBuckets = granularity === 'day' ? 14 : granularity === 'week' ? 10 : granularity === 'month' ? 12 : 5;
-        const series = Array.from(bucketMap.values())
-          .sort((a, b) => b.bucket.localeCompare(a.bucket))
-          .slice(0, limitBuckets)
-          .map((b) => ({
-            bucket: b.bucket,
-            label: b.label,
-            uv: b.ips.size,
-            pv: b.pv,
-            desktop: b.desktop,
-            mobile: b.mobile,
-            tablet: b.tablet,
-            topCountry: b.topCountry
-          }));
-
+        // 2. 严格筛选当前时间窗口（activeBucket）内的记录
+        const periodRows = [];
         const countryMap = new Map();
         const beaconMap = new Map();
+        const provinceMap = new Map();
+        const deviceBreakdownMap = new Map();
+
         for (const r of visitorLogs) {
-          if (selBucket && getBucketKey(r.visitDate, granularity) !== selBucket) continue;
+          if (getBucketKey(r.visitDate, granularity) !== activeBucket) continue;
           const resolved = resolveVisitorCoords(r);
           r.lat = resolved.lat;
           r.lon = resolved.lon;
@@ -1682,7 +2580,7 @@ html.st-embed a[href="/studio/"] { display: none !important; }
             countryMap.set(r.countryZh, c);
           }
           c.ips.add(r.ip);
-          c.pv += r.pvCount;
+          c.pv += Number(r.pvCount) || 1;
           if (r.lastSeen >= c.lastSeen) {
             c.lastSeen = r.lastSeen;
             c.latestIp = r.ip;
@@ -1709,13 +2607,66 @@ html.st-embed a[href="/studio/"] { display: none !important; }
             beaconMap.set(bKey, b);
           }
           b.ips.add(r.ip);
-          b.pv += r.pvCount;
+          b.pv += Number(r.pvCount) || 1;
           if (r.lastSeen >= b.lastSeen) {
             b.lastSeen = r.lastSeen;
             b.latestIp = r.ip;
             b.region = r.region || r.countryZh;
           }
+
+          if (selCountry && r.countryZh !== selCountry) continue;
+          if (selDevice && r.deviceType !== selDevice) continue;
+
+          periodRows.push(r);
+
+          const provName = extractProvinceLabel(r);
+          let pItem = provinceMap.get(provName);
+          if (!pItem) {
+            pItem = { name: provName, ips: new Set(), pv: 0, lat: resolved.lat, lon: resolved.lon, countryZh: r.countryZh };
+            provinceMap.set(provName, pItem);
+          }
+          pItem.ips.add(r.ip);
+          pItem.pv += Number(r.pvCount) || 1;
+
+          const devLabel = `${r.deviceType} · ${r.os} (${r.browser})`;
+          let dItem = deviceBreakdownMap.get(devLabel);
+          if (!dItem) {
+            dItem = { name: devLabel, deviceType: r.deviceType, ips: new Set(), pv: 0 };
+            deviceBreakdownMap.set(devLabel, dItem);
+          }
+          dItem.ips.add(r.ip);
+          dItem.pv += Number(r.pvCount) || 1;
         }
+
+        const periodBars = buildCurrentPeriodBars(periodRows, granularity, activeBucket);
+        const periodIps = new Set(periodRows.map((r) => r.ip));
+        const periodPv = periodRows.reduce((acc, r) => acc + (Number(r.pvCount) || 1), 0);
+
+        const totalProvPv = Math.max(1, periodPv);
+        const provinceList = Array.from(provinceMap.values())
+          .sort((a, b) => b.pv - a.pv || b.ips.size - a.ips.size)
+          .slice(0, 12)
+          .map((p) => ({
+            name: p.name,
+            uv: p.ips.size,
+            pv: p.pv,
+            share: Number(((p.pv / totalProvPv) * 100).toFixed(1)),
+            lat: p.lat,
+            lon: p.lon,
+            countryZh: p.countryZh
+          }));
+
+        const deviceList = Array.from(deviceBreakdownMap.values())
+          .sort((a, b) => b.pv - a.pv || b.ips.size - a.ips.size)
+          .slice(0, 12)
+          .map((d) => ({
+            name: d.name,
+            deviceType: d.deviceType,
+            uv: d.ips.size,
+            pv: d.pv,
+            share: Number(((d.pv / totalProvPv) * 100).toFixed(1))
+          }));
+
         const rawCountries = Array.from(countryMap.values()).sort((a, b) => b.ips.size - a.ips.size || b.pv - a.pv);
         const sumCountryPv = Math.max(1, rawCountries.reduce((acc, c) => acc + c.pv, 0));
         const countries = rawCountries.map((c) => ({
@@ -1732,6 +2683,7 @@ html.st-embed a[href="/studio/"] { display: none !important; }
           latestDevice: c.latestDevice,
           lastSeen: c.lastSeen
         }));
+
         const beacons = Array.from(beaconMap.values()).map((b) => ({
           countryZh: b.countryZh,
           countryEn: b.countryEn,
@@ -1744,11 +2696,9 @@ html.st-embed a[href="/studio/"] { display: none !important; }
           lastSeen: b.lastSeen
         }));
 
-        const filteredRows = visitorLogs
+        // 3. 二级菜单「访客记录明细」：严格只显示当前时间窗口（periodRows）内的访客记录！
+        const searchedRows = periodRows
           .filter((r) => {
-            if (selBucket && getBucketKey(r.visitDate, granularity) !== selBucket) return false;
-            if (selCountry && r.countryZh !== selCountry) return false;
-            if (selDevice && r.deviceType !== selDevice) return false;
             if (q) {
               const hay = `${r.ip} ${r.countryZh} ${r.region} ${r.os} ${r.browser} ${r.path}`.toLowerCase();
               if (!hay.includes(q)) return false;
@@ -1757,19 +2707,20 @@ html.st-embed a[href="/studio/"] { display: none !important; }
           })
           .sort((a, b) => b.visitDate.localeCompare(a.visitDate) || b.lastSeen.localeCompare(a.lastSeen) || b.id - a.id);
 
-        // 同一 IP 在当前筛选窗口内合并为一条记录；访问次数为窗口内各天访问次数之和。
+        // 按 (IP + 设备类型 + OS + 浏览器) 聚合当前时间窗口内的记录，既不跨时间窗口混杂，又保留同 IP 下不同设备的独立明细
         const groupedLogs = new Map();
-        for (const r of filteredRows) {
-          const prev = groupedLogs.get(r.ip);
+        for (const r of searchedRows) {
+          const groupKey = `${r.ip}|${r.deviceType}|${r.os}|${r.browser}`;
+          const prev = groupedLogs.get(groupKey);
           if (!prev) {
-            groupedLogs.set(r.ip, {
+            groupedLogs.set(groupKey, {
               ...r,
-              pvCount: Number(r.pvCount) || 0,
+              pvCount: Number(r.pvCount) || 1,
               visitCount: Number(r.visitCount) || 1,
             });
             continue;
           }
-          prev.pvCount += Number(r.pvCount) || 0;
+          prev.pvCount += Number(r.pvCount) || 1;
           prev.visitCount += Number(r.visitCount) || 1;
           if (r.firstSeen < prev.firstSeen) prev.firstSeen = r.firstSeen;
           if (r.lastSeen >= prev.lastSeen) {
@@ -1782,10 +2733,6 @@ html.st-embed a[href="/studio/"] { display: none !important; }
             prev.region = r.region;
             prev.lat = r.lat;
             prev.lon = r.lon;
-            prev.deviceType = r.deviceType;
-            prev.os = r.os;
-            prev.browser = r.browser;
-            prev.userAgent = r.userAgent;
             prev.path = r.path;
             prev.referrer = r.referrer;
           }
@@ -1799,7 +2746,8 @@ html.st-embed a[href="/studio/"] { display: none !important; }
 
         return {
           granularity,
-          selectedBucket: selBucket,
+          selectedBucket: activeBucket,
+          scopeTitle,
           selectedCountry: selCountry,
           selectedDevice: selDevice,
           summary: {
@@ -1813,9 +2761,14 @@ html.st-embed a[href="/studio/"] { display: none !important; }
             yearPv: yearStat.pv,
             totalUv: totalStat.uv,
             totalPv: totalStat.pv,
-            activeCountries: allCountriesSet.size
+            activeCountries: allCountriesSet.size,
+            periodUv: periodIps.size,
+            periodPv
           },
-          series,
+          heatmap,
+          periodBars,
+          provinceList,
+          deviceList,
           countries,
           beacons,
           logs: {
@@ -1828,16 +2781,18 @@ html.st-embed a[href="/studio/"] { display: none !important; }
       }
 
       // =========================================================================
-      // 4. 状态管理（精简直观）
+      // 4. 状态管理（新增 chartMode 与 logsDrawerOpen 二级菜单状态）
       // =========================================================================
       const state = {
         granularity: 'day',
         selectedBucket: null,
         selectedCountryZh: null,
         selectedDeviceType: null,
+        chartSubView: 'time', // 'time' (时段柱状图) | 'province' (中国省份/地区排行) | 'device' (设备与浏览器分布)
+        logsDrawerOpen: false, // 二级菜单：访客记录明细抽屉开关
         logSearchQuery: '',
         page: 1,
-        pageSize: 10
+        pageSize: 12
       };
 
       const globeState = {
@@ -1851,9 +2806,7 @@ html.st-embed a[href="/studio/"] { display: none !important; }
         zoom: 1.02,
         autoRotate: true,
         rotSpeed: 0.78,
-        // 独立描边粒子颜色模式：'white' (纯白色描边) | 'light' (稍浅一点的主题色描边)
         outlineStyle: 'white',
-        // 海洋粒子模式：'white' (纯白微光) | 'pale' (淡主题色)
         oceanStyle: 'white',
         showBackHemisphere: true,
         axialTilt: true,
@@ -1886,7 +2839,37 @@ html.st-embed a[href="/studio/"] { display: none !important; }
 
       let dashboard = null;
 
+      function hideHudTooltip() {
+        const tip = $('#st-hud-tooltip');
+        if (tip) {
+          tip.classList.remove('is-visible');
+          tip.setAttribute('aria-hidden', 'true');
+        }
+      }
+
+      function showHudTooltip(clientX, clientY, htmlContent) {
+        const tip = $('#st-hud-tooltip');
+        if (!tip) return;
+        tip.innerHTML = htmlContent;
+        tip.classList.add('is-visible');
+        tip.setAttribute('aria-hidden', 'false');
+        const pad = 14;
+        const rect = tip.getBoundingClientRect();
+        let x = clientX;
+        let y = clientY - 10;
+        if (x - rect.width * 0.5 < pad) x = pad + rect.width * 0.5;
+        if (x + rect.width * 0.5 > window.innerWidth - pad) x = window.innerWidth - pad - rect.width * 0.5;
+        if (y - rect.height < pad) {
+          tip.style.transform = 'translate(-50%, 16px)';
+        } else {
+          tip.style.transform = 'translate(-50%, -100%) translateY(-8px)';
+        }
+        tip.style.left = `${Math.round(x)}px`;
+        tip.style.top = `${Math.round(y)}px`;
+      }
+
       function refreshDashboard() {
+        hideHudTooltip();
         dashboard = computeDashboard({
           granularity: state.granularity,
           bucket: state.selectedBucket,
@@ -1901,7 +2884,7 @@ html.st-embed a[href="/studio/"] { display: none !important; }
       }
 
       // =========================================================================
-      // 5. 顶栏与左侧「数据与统计整合」面板渲染（无模拟/样本按钮，仅真实访客数据）
+      // 5. 顶栏、左侧（GitHub 热力矩阵 + 当前时段柱状图）与二级菜单「访客记录明细」渲染
       // =========================================================================
       function renderTopBar() {
         const bar = $('#st-bar');
@@ -1923,11 +2906,12 @@ html.st-embed a[href="/studio/"] { display: none !important; }
               <button type="button" class="st-btn" data-top-gran="month" aria-pressed="${state.granularity === 'month'}">按月</button>
               <button type="button" class="st-btn" data-top-gran="year" aria-pressed="${state.granularity === 'year'}">按年</button>
             </div>
+
           </div>
 
           <div class="st-topbar-right">
             <button type="button" class="st-btn st-btn--primary" id="st-btn-refresh" title="同步最新真实访客记录">↻ 刷新数据</button>
-            <button type="button" class="st-btn" id="st-btn-export">导出 CSV</button>
+            <button type="button" class="st-btn" id="st-btn-export" title="导出当前时间段的访客 CSV">导出 CSV</button>
             <button type="button" class="st-btn st-btn--danger" id="st-btn-clear" title="清空全部访客记录">清空</button>
             <a class="st-btn" href="/studio/" title="返回后台工作台">← 返回后台</a>
           </div>
@@ -1979,15 +2963,20 @@ html.st-embed a[href="/studio/"] { display: none !important; }
         if (!pane || !dashboard) return;
         const d = dashboard;
 
-        const granLabel =
-          state.granularity === 'day' ? '按日统计'
-          : state.granularity === 'week' ? '按周整合'
-          : state.granularity === 'month' ? '按月整合'
-          : '按年整合';
+        if (state.logsDrawerOpen) {
+          renderLogsDrawer();
+          return;
+        }
 
-        const maxSeriesPv = Math.max(1, ...d.series.map((s) => s.pv));
-        const totalPages = Math.max(1, Math.ceil(d.logs.total / d.logs.pageSize));
-        const hasFilters = Boolean(state.selectedBucket || state.selectedCountryZh || state.selectedDeviceType || state.logSearchQuery);
+        const granLabel =
+          state.granularity === 'day' ? '按日统计 (24h 分时)'
+          : state.granularity === 'week' ? '按周统计 (周一至周日)'
+          : state.granularity === 'month' ? '按月统计 (按周分段)'
+          : '按年统计 (1-12月)';
+
+        const hasFilters = Boolean(state.selectedBucket || state.selectedCountryZh || state.selectedDeviceType);
+        const hm = d.heatmap;
+        const maxBarPv = Math.max(1, ...d.periodBars.map((b) => b.pv));
 
         pane.innerHTML = `
           <!-- 1. 四维指标切换按钮卡（日 / 周 / 月 / 年） -->
@@ -2014,12 +3003,12 @@ html.st-embed a[href="/studio/"] { display: none !important; }
             </button>
           </div>
 
-          <!-- 2. 按日 / 周 / 月 / 年 统计整合表 -->
+          <!-- 2. 数据统计整合（重构为 GitHub 项目提交贡献热力图形式，访问越多颜色越深，悬停显示日期与具体数据） -->
           <div class="st-card">
             <div class="st-card-head">
               <div class="st-card-title">
                 <span>数据统计整合</span>
-                <span class="st-card-badge">${esc(granLabel)}</span>
+                <span class="st-card-badge">近 28 周访问热力 · 活跃 ${hm.activeDaysCount} 天</span>
               </div>
               <div class="st-btn-group">
                 <button type="button" class="st-btn" data-card-gran="day" aria-pressed="${state.granularity === 'day'}">日</button>
@@ -2028,135 +3017,178 @@ html.st-embed a[href="/studio/"] { display: none !important; }
                 <button type="button" class="st-btn" data-card-gran="year" aria-pressed="${state.granularity === 'year'}">年</button>
               </div>
             </div>
-            <div class="st-table-scroll" style="max-height:11.8rem;">
-              <table class="st-table">
-                <thead>
-                  <tr>
-                    <th>周期 (${esc(granLabel)})</th>
-                    <th>独立访客 UV</th>
-                    <th>访问量 PV</th>
-                    <th>使用设备 (桌 / 移 / 板)</th>
-                    <th>主要来源</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  ${d.series.length === 0 ? `
-                    <tr><td colspan="5" style="text-align:center;color:var(--muted);padding:1.2rem;">暂无汇总数据</td></tr>
-                  ` : d.series.slice(0, 8).map((r) => {
-                    const active = state.selectedBucket === r.bucket;
-                    const pct = Math.max(6, Math.round((r.pv / maxSeriesPv) * 100));
-                    return `
-                      <tr class="${active ? 'is-active' : ''}" data-bucket-row="${esc(r.bucket)}" style="cursor:pointer;" title="点击筛选该周期的访客记录">
-                        <td class="st-mono"><strong>${esc(r.label)}</strong></td>
-                        <td class="st-mono" style="color:var(--accent);font-weight:700;">${r.uv} UV</td>
-                        <td class="st-mono">
-                          <span class="st-inline-bar">
-                            <span>${r.pv}</span>
-                            <span class="st-inline-track"><span class="st-inline-fill" style="width:${pct}%;"></span></span>
-                          </span>
-                        </td>
-                        <td class="st-mono" style="color:var(--muted);">${r.desktop} / ${r.mobile} / ${r.tablet}</td>
-                        <td><span class="st-country-pill">${esc(r.topCountry)}</span></td>
-                      </tr>
-                    `;
-                  }).join('')}
-                </tbody>
-              </table>
+
+            <div class="st-hm-card-body">
+              <div class="st-hm-scroll" id="st-hm-scroll">
+                <div class="st-hm-matrix-wrap">
+                  <div class="st-hm-months">
+                    ${hm.monthHeaders.map((m) => `<span>${esc(m)}</span>`).join('')}
+                  </div>
+                  <div class="st-hm-main-row">
+                    <div class="st-hm-weekdays" aria-hidden="true">
+                      <span>一</span>
+                      <span></span>
+                      <span>三</span>
+                      <span></span>
+                      <span>五</span>
+                      <span></span>
+                      <span>日</span>
+                    </div>
+                    <div class="st-hm-grid" role="grid" aria-label="访客访问频率热力图">
+                      ${hm.weeks.map((col) =>
+                        col.map((cell) => {
+                          const cellBucket = getBucketKey(cell.date, state.granularity);
+                          const isSelected = d.selectedBucket === cellBucket && (state.granularity !== 'day' || d.selectedBucket === cell.date);
+                          return `<button
+                            type="button"
+                            class="st-hm-cell ${cell.isFuture ? 'is-future' : ''} ${isSelected && state.granularity === 'day' && d.selectedBucket === cell.date ? 'is-selected' : ''}"
+                            data-lv="${cell.lv}"
+                            data-hm-date="${esc(cell.date)}"
+                            data-hm-weekday="${esc(cell.weekday)}"
+                            data-hm-uv="${cell.uv}"
+                            data-hm-pv="${cell.pv}"
+                            data-hm-desk="${cell.desktop}"
+                            data-hm-mob="${cell.mobile}"
+                            data-hm-tab="${cell.tablet}"
+                            data-hm-region="${esc(cell.topRegion)}"
+                            aria-label="${esc(cell.date)} ${cell.uv} UV ${cell.pv} PV"
+                          ></button>`;
+                        }).join('')
+                      ).join('')}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="st-hm-foot">
+                <div class="st-hm-legend" aria-label="访问热度图例">
+                  <span>少</span>
+                  <span class="st-hm-legend-box" data-lv="0"></span>
+                  <span class="st-hm-legend-box" data-lv="1"></span>
+                  <span class="st-hm-legend-box" data-lv="2"></span>
+                  <span class="st-hm-legend-box" data-lv="3"></span>
+                  <span class="st-hm-legend-box" data-lv="4"></span>
+                  <span>多</span>
+                </div>
+              </div>
             </div>
           </div>
 
-          <!-- 3. 每日访客记录明细（IP 地址 + 使用设备 + 国家定位） -->
+          <!-- 3. 当前时间段柱状统计图（原访客记录明细位置） + 二级菜单入口 -->
           <div class="st-card st-card--grow">
             <div class="st-card-head">
               <div class="st-card-title">
-                <span>访客记录明细</span>
-                <span class="st-card-badge">${d.logs.total} 条记录</span>
+                <span>时段统计分布</span>
+                <span class="st-card-badge">${esc(d.scopeTitle)}</span>
               </div>
-              <div class="st-btn-group" aria-label="按设备筛选">
-                <button type="button" class="st-btn" data-dev-btn="" aria-pressed="${!state.selectedDeviceType}">全部</button>
-                <button type="button" class="st-btn" data-dev-btn="Desktop" aria-pressed="${state.selectedDeviceType === 'Desktop'}">桌面</button>
-                <button type="button" class="st-btn" data-dev-btn="Mobile" aria-pressed="${state.selectedDeviceType === 'Mobile'}">移动</button>
-                <button type="button" class="st-btn" data-dev-btn="Tablet" aria-pressed="${state.selectedDeviceType === 'Tablet'}">平板</button>
+              <div style="display:flex;align-items:center;gap:0.4rem;flex-wrap:wrap;">
+                <div class="st-btn-group" role="tablist" aria-label="柱状图统计维度">
+                  <button type="button" class="st-btn" data-subview-btn="time" aria-pressed="${state.chartSubView === 'time'}">时段柱状图</button>
+                  <button type="button" class="st-btn" data-subview-btn="province" aria-pressed="${state.chartSubView === 'province'}">省份/地区</button>
+                  <button type="button" class="st-btn" data-subview-btn="device" aria-pressed="${state.chartSubView === 'device'}">设备/浏览器</button>
+                </div>
+                <button type="button" class="st-btn st-btn--primary" id="st-card-open-logs" title="展开二级菜单查看当前时间段的访客明细">
+                  访客记录明细 (${d.logs.total}) →
+                </button>
               </div>
             </div>
 
             ${hasFilters ? `
               <div class="st-filter-bar">
-                <span style="color:var(--muted);font-family:var(--mono);font-size:0.7rem;">已筛选:</span>
-                ${state.selectedBucket ? `<span class="st-chip">周期: ${esc(state.selectedBucket)} <button type="button" data-clear-f="bucket" title="移除周期筛选">×</button></span>` : ''}
+                <span style="color:var(--muted);font-family:var(--mono);font-size:0.7rem;">当前筛选:</span>
+                <span class="st-chip">时间: ${esc(d.scopeTitle)} ${state.selectedBucket ? `<button type="button" data-clear-f="bucket" title="重置为当前默认周期">↺</button>` : ''}</span>
                 ${state.selectedCountryZh ? `<span class="st-chip">国家: ${esc(state.selectedCountryZh)} <button type="button" data-clear-f="country" title="移除国家筛选">×</button></span>` : ''}
                 ${state.selectedDeviceType ? `<span class="st-chip">设备: ${esc(state.selectedDeviceType)} <button type="button" data-clear-f="device" title="移除设备筛选">×</button></span>` : ''}
-                <button type="button" class="st-btn" id="st-clear-all-filters" style="margin-left:auto;padding:0.12rem 0.5rem;font-size:0.72rem;">清除全部</button>
+                <button type="button" class="st-btn" id="st-clear-all-filters" style="margin-left:auto;padding:0.12rem 0.5rem;font-size:0.72rem;">重置筛选</button>
               </div>
             ` : ''}
 
-            <div class="st-log-toolbar">
-              <input
-                type="search"
-                id="st-log-search"
-                class="st-search-input"
-                value="${esc(state.logSearchQuery)}"
-                placeholder="搜索访客 IP 地址、国家/城市、使用设备 (macOS / iOS / Windows / Chrome)…"
-              />
-            </div>
+            <div class="st-chart-body">
+              <div class="st-chart-summary-strip">
+                <div class="st-chart-metrics">
+                  <span class="st-chart-metric-item">当前范围：<strong>${esc(d.scopeTitle)}</strong></span>
+                  <span class="st-chart-metric-item">独立访客：<strong>${d.summary.periodUv} UV</strong></span>
+                  <span class="st-chart-metric-item">总访问量：<strong>${d.summary.periodPv} PV</strong></span>
+                </div>
+                <div class="st-btn-group" aria-label="按设备筛选柱状图">
+                  <button type="button" class="st-btn" data-dev-btn="" aria-pressed="${!state.selectedDeviceType}">全部</button>
+                  <button type="button" class="st-btn" data-dev-btn="Desktop" aria-pressed="${state.selectedDeviceType === 'Desktop'}">桌面</button>
+                  <button type="button" class="st-btn" data-dev-btn="Mobile" aria-pressed="${state.selectedDeviceType === 'Mobile'}">移动</button>
+                  <button type="button" class="st-btn" data-dev-btn="Tablet" aria-pressed="${state.selectedDeviceType === 'Tablet'}">平板</button>
+                </div>
+              </div>
 
-            <div class="st-table-scroll">
-              <table class="st-table">
-                <thead>
-                  <tr>
-                    <th>日期 / 时间</th>
-                    <th>访客 IP 地址</th>
-                    <th>国家 / 地区</th>
-                    <th>使用设备 (终端 · 系统 · 浏览器)</th>
-                    <th>受访页 · PV</th>
-                    <th>访问次数</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  ${d.logs.items.length === 0 ? `
-                    <tr><td colspan="6" style="text-align:center;color:var(--muted);padding:2rem;">未找到匹配的访客记录</td></tr>
-                  ` : d.logs.items.map((item) => {
-                    const isCountrySelected = globeState.clickedCountry && globeState.clickedCountry.zh === item.countryZh;
+              ${state.chartSubView === 'time' ? `
+                <div class="st-bars-stage" data-count="${d.periodBars.length}" role="img" aria-label="${esc(granLabel)}柱状统计图">
+                  ${d.periodBars.map((b) => {
+                    const pvHeightPct = b.pv > 0 ? Math.max(8, Math.round((b.pv / maxBarPv) * 100)) : 0;
+                    const uvHeightPct = b.pv > 0 ? Math.max(25, Math.round((b.uv / Math.max(1, b.pv)) * 100)) : 0;
                     return `
-                      <tr class="${isCountrySelected ? 'is-active' : ''}" data-log-row="${item.id}" data-country="${esc(item.countryZh)}" data-region="${esc(item.region)}" data-ip="${esc(item.ip)}" data-lat="${item.lat}" data-lon="${item.lon}" style="cursor:pointer;" title="点击在右侧地球模型上精准定位该访客所在位置">
-                        <td class="st-mono">
-                          <div>${esc(item.visitDate)}</div>
-                          <div style="font-size:0.68rem;color:var(--muted);">${esc(item.lastSeen.slice(11, 19))}</div>
-                        </td>
-                        <td>
-                          <code class="st-ip-badge" data-copy-ip="${esc(item.ip)}" title="点击复制 IP 地址">${esc(item.ip)}</code>
-                        </td>
-                        <td>
-                          <span class="st-country-pill">${esc(item.countryZh)}</span>
-                          <div style="font-size:0.72rem;color:var(--muted);margin-top:2px;">${esc(item.region)}</div>
-                        </td>
-                        <td>
-                          <span class="st-dev-tag st-dev-tag--${esc(item.deviceType.toLowerCase())}">${esc(item.deviceType)}</span>
-                          <span style="margin-left:0.25rem;">${esc(item.os)} · ${esc(item.browser)}</span>
-                        </td>
-                        <td class="st-mono">
-                          <span style="color:var(--accent);">${esc(item.path)}</span>
-                          <span style="color:var(--muted);margin-left:0.25rem;">(${item.pvCount})</span>
-                        </td>
-                        <td class="st-mono" style="color:var(--accent);font-weight:700;">${Number(item.visitCount) || 0}</td>
-                      </tr>
+                      <div
+                        class="st-bar-col ${b.pv > 0 ? 'is-highlight' : ''}"
+                        data-bar-key="${esc(b.key)}"
+                        data-bar-title="${esc(b.title)}"
+                        data-bar-uv="${b.uv}"
+                        data-bar-pv="${b.pv}"
+                        data-bar-desk="${b.desktop}"
+                        data-bar-mob="${b.mobile}"
+                        data-bar-tab="${b.tablet}"
+                      >
+                        <span class="st-bar-val-top">${b.pv > 0 ? b.pv : ''}</span>
+                        ${b.pv > 0 ? `
+                        <div class="st-bar-pair">
+                          <div class="st-bar-track-v"><div class="st-bar-fill-pv" style="height:${pvHeightPct}%;"></div></div>
+                          <div class="st-bar-track-v"><div class="st-bar-fill-uv" style="height:${Math.max(4, Math.round((b.uv / maxBarPv) * 100))}%;"></div></div>
+                        </div>` : ''}
+                        <span class="st-bar-x-label">${esc(b.shortLabel)}</span>
+                      </div>
                     `;
                   }).join('')}
-                </tbody>
-              </table>
-            </div>
+                </div>
+              ` : state.chartSubView === 'province' ? `
+                <div class="st-hbars-list">
+                  ${d.provinceList.length === 0 ? `
+                    <div style="text-align:center;color:var(--muted);padding:2.4rem 1rem;">当前时间段 (${esc(d.scopeTitle)}) 暂无省市/地区记录</div>
+                  ` : [...d.provinceList].sort((a, b) => b.pv - a.pv || b.uv - a.uv).map((p) => `
+                    <div class="st-hbar-row" data-prov-row="${esc(p.name)}" data-country="${esc(p.countryZh)}" data-lat="${p.lat}" data-lon="${p.lon}" title="点击在右侧 3D 地球仪上定位到 ${esc(p.name)}">
+                      <span class="st-hbar-name">${esc(p.name)}</span>
+                      <div class="st-hbar-track"><div class="st-hbar-fill" style="width:${Math.max(4, p.share)}%;"></div></div>
+                      <span class="st-hbar-meta"><strong style="color:var(--accent);">${p.uv} UV</strong> · ${p.pv} PV (${p.share}%)</span>
+                    </div>
+                  `).join('')}
+                </div>
+              ` : `
+                <div class="st-hbars-list">
+                  ${d.deviceList.length === 0 ? `
+                    <div style="text-align:center;color:var(--muted);padding:2.4rem 1rem;">当前时间段 (${esc(d.scopeTitle)}) 暂无终端设备记录</div>
+                  ` : [...d.deviceList].sort((a, b) => b.pv - a.pv || b.uv - a.uv).map((dv) => `
+                    <div class="st-hbar-row" data-dev-row="${esc(dv.deviceType)}" title="点击筛选 ${esc(dv.deviceType)} 终端设备">
+                      <span class="st-hbar-name">${esc(dv.name)}</span>
+                      <div class="st-hbar-track"><div class="st-hbar-fill" style="width:${Math.max(4, dv.share)}%;"></div></div>
+                      <span class="st-hbar-meta"><strong style="color:var(--accent);">${dv.uv} UV</strong> · ${dv.pv} PV (${dv.share}%)</span>
+                    </div>
+                  `).join('')}
+                </div>
+              `}
 
-            <div class="st-card-foot">
-              <span>第 ${d.logs.page} / ${totalPages} 页 · 点击任意访客行联动右侧地球定位</span>
-              <div style="display:flex;gap:0.35rem;">
-                <button type="button" class="st-btn" id="st-log-prev" style="padding:0.2rem 0.55rem;font-size:0.74rem;" ${d.logs.page <= 1 ? 'disabled' : ''}>← 上一页</button>
-                <button type="button" class="st-btn" id="st-log-next" style="padding:0.2rem 0.55rem;font-size:0.74rem;" ${d.logs.page >= totalPages ? 'disabled' : ''}>下一页 →</button>
+              <div class="st-card-foot" style="padding:0.35rem 0 0;background:transparent;">
+                <span>
+                  <span style="display:inline-block;width:8px;height:8px;background:var(--accent);border-radius:1px;margin-right:4px;"></span>总访问量 PV
+                  <span style="display:inline-block;width:8px;height:8px;background:color-mix(in srgb, var(--ink) 78%, var(--accent));border-radius:1px;margin:0 4px 0 10px;"></span>独立访客 UV
+                </span>
+                <span>周期维度：${esc(granLabel)} · 点击「访客记录明细」在左侧展开完整记录</span>
               </div>
             </div>
           </div>
         `;
 
-        // 绑定左侧交互事件
+        // 自动将热力图横向滚动条滚至最右侧（最新周）
+        const hmScroll = $('#st-hm-scroll', pane);
+        if (hmScroll) {
+          hmScroll.scrollLeft = hmScroll.scrollWidth;
+        }
+
+        // 1. 粒度切换按钮
         $$('[data-kpi-gran], [data-card-gran]', pane).forEach((btn) => {
           btn.addEventListener('click', () => {
             const g = btn.dataset.kpiGran || btn.dataset.cardGran;
@@ -2168,15 +3200,124 @@ html.st-embed a[href="/studio/"] { display: none !important; }
           });
         });
 
-        $$('[data-bucket-row]', pane).forEach((row) => {
-          row.addEventListener('click', () => {
-            const b = row.dataset.bucketRow;
-            state.selectedBucket = state.selectedBucket === b ? null : b;
+        // 2. GitHub 热力图格子悬停 Tooltip 与点击锁定周期
+        $$('[data-hm-date]', pane).forEach((cell) => {
+          cell.addEventListener('pointerenter', (e) => {
+            const dt = cell.dataset.hmDate;
+            const wd = cell.dataset.hmWeekday;
+            const uv = cell.dataset.hmUv;
+            const pv = cell.dataset.hmPv;
+            const desk = cell.dataset.hmDesk;
+            const mob = cell.dataset.hmMob;
+            const tab = cell.dataset.hmTab;
+            const reg = cell.dataset.hmRegion;
+            showHudTooltip(
+              e.clientX,
+              e.clientY,
+              `<div class="st-hud-tooltip-title"><span>${esc(dt)} (${esc(wd)})</span><span>${esc(uv)} UV / ${esc(pv)} PV</span></div>
+               <div class="st-hud-tooltip-sub">设备：桌面 ${esc(desk)} · 移动 ${esc(mob)} · 平板 ${esc(tab)}</div>
+               <div class="st-hud-tooltip-sub">主要来源：${esc(reg)}</div>`
+            );
+          });
+          cell.addEventListener('pointermove', (e) => {
+            const tip = $('#st-hud-tooltip');
+            if (tip && tip.classList.contains('is-visible')) {
+              tip.style.left = `${Math.round(e.clientX)}px`;
+              tip.style.top = `${Math.round(e.clientY - 10)}px`;
+            }
+          });
+          cell.addEventListener('pointerleave', () => hideHudTooltip());
+          cell.addEventListener('click', () => {
+            const dt = cell.dataset.hmDate;
+            if (!dt) return;
+            const targetBucket = getBucketKey(dt, state.granularity);
+            state.selectedBucket = state.selectedBucket === targetBucket ? null : targetBucket;
             state.page = 1;
             refreshDashboard();
           });
         });
 
+        // 3. 柱状图悬停 Tooltip 与点击下钻
+        $$('[data-bar-key]', pane).forEach((col) => {
+          col.addEventListener('pointerenter', (e) => {
+            const title = col.dataset.barTitle;
+            const uv = col.dataset.barUv;
+            const pv = col.dataset.barPv;
+            const desk = col.dataset.barDesk;
+            const mob = col.dataset.barMob;
+            const tab = col.dataset.barTab;
+            showHudTooltip(
+              e.clientX,
+              e.clientY,
+              `<div class="st-hud-tooltip-title"><span>${esc(title)}</span><span>${esc(uv)} UV / ${esc(pv)} PV</span></div>
+               <div class="st-hud-tooltip-sub">桌面 ${esc(desk)} · 移动 ${esc(mob)} · 平板 ${esc(tab)}</div>`
+            );
+          });
+          col.addEventListener('pointermove', (e) => {
+            const tip = $('#st-hud-tooltip');
+            if (tip && tip.classList.contains('is-visible')) {
+              tip.style.left = `${Math.round(e.clientX)}px`;
+              tip.style.top = `${Math.round(e.clientY - 10)}px`;
+            }
+          });
+          col.addEventListener('pointerleave', () => hideHudTooltip());
+          col.addEventListener('click', () => {
+            const key = col.dataset.barKey || '';
+            if ((state.granularity === 'week' || state.granularity === 'month') && key.length === 10) {
+              state.granularity = 'day';
+              state.selectedBucket = key;
+              state.page = 1;
+              refreshDashboard();
+            } else if (state.granularity === 'year' && key.length === 7) {
+              state.granularity = 'month';
+              state.selectedBucket = key;
+              state.page = 1;
+              refreshDashboard();
+            } else {
+              state.logsDrawerOpen = true;
+              renderTopBar();
+              renderLeftPane();
+            }
+          });
+        });
+
+        // 4. 省份/地区横向柱点击联动 3D 地球仪
+        $$('[data-prov-row]', pane).forEach((row) => {
+          row.addEventListener('click', () => {
+            const region = row.dataset.provRow || '';
+            const zh = row.dataset.country || '中国';
+            const lat = Number(row.dataset.lat);
+            const lon = Number(row.dataset.lon);
+            const meta = countryByZh.get(zh) || { id: 140, zh: zh || '中国', en: 'China', cont: '亚洲', lat: 35.0, lon: 104.0 };
+            selectCountryOnGlobe(meta, lat, lon, true, { region, ip: '' });
+          });
+        });
+
+        $$('[data-dev-row]', pane).forEach((row) => {
+          row.addEventListener('click', () => {
+            const dt = row.dataset.devRow || null;
+            state.selectedDeviceType = state.selectedDeviceType === dt ? null : dt;
+            state.page = 1;
+            refreshDashboard();
+          });
+        });
+
+        // 5. 子维度切换（时段柱状图 / 省份排行 / 设备分布）
+        $$('[data-subview-btn]', pane).forEach((btn) => {
+          btn.addEventListener('click', () => {
+            state.chartSubView = btn.dataset.subviewBtn || 'time';
+            renderLeftPane();
+          });
+        });
+
+        // 6. 打开二级菜单「访客记录明细」
+        $('#st-card-open-logs', pane)?.addEventListener('click', () => {
+          state.logsDrawerOpen = true;
+          renderTopBar();
+          renderLeftPane();
+        });
+
+        // 7. 设备筛选与清除筛选
         $$('[data-dev-btn]', pane).forEach((btn) => {
           btn.addEventListener('click', () => {
             state.selectedDeviceType = btn.dataset.devBtn || null;
@@ -2208,20 +3349,146 @@ html.st-embed a[href="/studio/"] { display: none !important; }
           selectCountryOnGlobe(null);
           refreshDashboard();
         });
+      }
 
-        const searchInput = $('#st-log-search', pane);
+      /**
+       * 二级菜单抽屉：访客记录明细（严格仅显示当前时间段 d.scopeTitle 的访客记录）
+       */
+      function renderLogsDrawer() {
+        const pane = $('#st-left-pane');
+        if (!pane || !dashboard || !state.logsDrawerOpen) return;
+        const d = dashboard;
+        const drawer = pane;
+
+        const totalPages = Math.max(1, Math.ceil(d.logs.total / d.logs.pageSize));
+
+        drawer.innerHTML = `
+          <div class="st-logs-wrap" aria-label="访客记录明细">
+            <div class="st-drawer-head">
+              <div class="st-drawer-title-group">
+                <h2 class="st-drawer-title">访客记录明细</h2>
+                <span class="st-card-badge">当前范围 · ${esc(d.scopeTitle)}</span>
+                <span class="st-card-badge">${d.logs.total} 条记录 (${d.summary.periodUv} UV / ${d.summary.periodPv} PV)</span>
+              </div>
+              <div style="display:flex;align-items:center;gap:0.4rem;">
+                <div class="st-btn-group" aria-label="在二级菜单中切换时间粒度">
+                  <button type="button" class="st-btn" data-drw-gran="day" aria-pressed="${state.granularity === 'day'}">当日</button>
+                  <button type="button" class="st-btn" data-drw-gran="week" aria-pressed="${state.granularity === 'week'}">本周</button>
+                  <button type="button" class="st-btn" data-drw-gran="month" aria-pressed="${state.granularity === 'month'}">当月</button>
+                  <button type="button" class="st-btn" data-drw-gran="year" aria-pressed="${state.granularity === 'year'}">当年</button>
+                </div>
+                <button type="button" class="st-btn" id="st-drawer-close" title="关闭二级菜单 (Esc)">✕ 关闭明细</button>
+              </div>
+            </div>
+
+            <div class="st-log-toolbar">
+              <input
+                type="search"
+                id="st-log-search"
+                class="st-search-input"
+                value="${esc(state.logSearchQuery)}"
+                placeholder="在${esc(d.scopeTitle)}记录中搜索 IP、中国省份/城市、使用设备 (HarmonyOS / iOS / Windows / Chrome)…"
+              />
+              <div class="st-btn-group" aria-label="按设备筛选">
+                <button type="button" class="st-btn" data-drw-dev="" aria-pressed="${!state.selectedDeviceType}">全部</button>
+                <button type="button" class="st-btn" data-drw-dev="Desktop" aria-pressed="${state.selectedDeviceType === 'Desktop'}">桌面</button>
+                <button type="button" class="st-btn" data-drw-dev="Mobile" aria-pressed="${state.selectedDeviceType === 'Mobile'}">移动</button>
+                <button type="button" class="st-btn" data-drw-dev="Tablet" aria-pressed="${state.selectedDeviceType === 'Tablet'}">平板</button>
+              </div>
+            </div>
+
+            <div class="st-table-scroll">
+              <table class="st-table">
+                <thead>
+                  <tr>
+                    <th>日期 / 时间</th>
+                    <th>访客 IP 地址</th>
+                    <th>国家 / 省份与运营商</th>
+                    <th>使用设备 (终端 · 系统 · 浏览器)</th>
+                    <th>受访页 · PV</th>
+                    <th>访问次数</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${d.logs.items.length === 0 ? `
+                    <tr><td colspan="6" style="text-align:center;color:var(--muted);padding:2.6rem;">${esc(d.scopeTitle)}内未找到匹配的访客记录</td></tr>
+                  ` : d.logs.items.map((item) => {
+                    const isCountrySelected = globeState.clickedCountry && globeState.clickedCountry.zh === item.countryZh;
+                    return `
+                      <tr class="${isCountrySelected ? 'is-active' : ''}" data-log-row="${item.id}" data-country="${esc(item.countryZh)}" data-region="${esc(item.region)}" data-ip="${esc(item.ip)}" data-lat="${item.lat}" data-lon="${item.lon}" style="cursor:pointer;" title="点击在右侧地球模型上精准定位该访客所在省市位置">
+                        <td class="st-mono">
+                          <div>${esc(item.visitDate)}</div>
+                          <div style="font-size:0.68rem;color:var(--muted);">${esc(item.lastSeen.slice(11, 19))}</div>
+                        </td>
+                        <td>
+                          <code class="st-ip-badge" data-copy-ip="${esc(item.ip)}" title="点击复制 IP 地址">${esc(item.ip)}</code>
+                        </td>
+                        <td>
+                          <span class="st-country-pill">${esc(extractProvinceLabel(item))}</span>
+                          <div style="font-size:0.72rem;color:var(--muted);margin-top:2px;">${esc(item.region)}</div>
+                        </td>
+                        <td>
+                          <span class="st-dev-tag st-dev-tag--${esc(item.deviceType.toLowerCase())}">${esc(item.deviceType)}</span>
+                          <span style="margin-left:0.25rem;">${esc(item.os)} · ${esc(item.browser)}</span>
+                        </td>
+                        <td class="st-mono">
+                          <span style="color:var(--accent);">${esc(item.path)}</span>
+                          <span style="color:var(--muted);margin-left:0.25rem;">(${item.pvCount})</span>
+                        </td>
+                        <td class="st-mono" style="color:var(--accent);font-weight:700;">${Number(item.visitCount) || 1}</td>
+                      </tr>
+                    `;
+                  }).join('')}
+                </tbody>
+              </table>
+            </div>
+
+            <div class="st-card-foot">
+              <span>第 ${d.logs.page} / ${totalPages} 页 · 当前范围：${esc(d.scopeTitle)} · 点击任意访客行联动右侧地球定位</span>
+              <div style="display:flex;gap:0.35rem;">
+                <button type="button" class="st-btn" id="st-log-prev" style="padding:0.2rem 0.55rem;font-size:0.74rem;" ${d.logs.page <= 1 ? 'disabled' : ''}>← 上一页</button>
+                <button type="button" class="st-btn" id="st-log-next" style="padding:0.2rem 0.55rem;font-size:0.74rem;" ${d.logs.page >= totalPages ? 'disabled' : ''}>下一页 →</button>
+              </div>
+            </div>
+          </div>
+        `;
+
+        $('#st-drawer-close', drawer)?.addEventListener('click', () => {
+          state.logsDrawerOpen = false;
+          renderTopBar();
+          renderLeftPane();
+        });
+
+        $$('[data-drw-gran]', drawer).forEach((btn) => {
+          btn.addEventListener('click', () => {
+            state.granularity = btn.dataset.drwGran || 'day';
+            state.selectedBucket = null;
+            state.page = 1;
+            refreshDashboard();
+          });
+        });
+
+        $$('[data-drw-dev]', drawer).forEach((btn) => {
+          btn.addEventListener('click', () => {
+            state.selectedDeviceType = btn.dataset.drwDev || null;
+            state.page = 1;
+            refreshDashboard();
+          });
+        });
+
+        const searchInput = $('#st-log-search', drawer);
         searchInput?.addEventListener('input', () => {
           state.logSearchQuery = searchInput.value;
           state.page = 1;
           refreshDashboard();
-          const nextEl = $('#st-log-search');
+          const nextEl = $('#st-log-search', drawer);
           if (nextEl) {
             nextEl.focus();
             nextEl.setSelectionRange(state.logSearchQuery.length, state.logSearchQuery.length);
           }
         });
 
-        $$('[data-copy-ip]', pane).forEach((codeEl) => {
+        $$('[data-copy-ip]', drawer).forEach((codeEl) => {
           codeEl.addEventListener('click', (e) => {
             e.stopPropagation();
             const ip = codeEl.dataset.copyIp;
@@ -2229,14 +3496,14 @@ html.st-embed a[href="/studio/"] { display: none !important; }
           });
         });
 
-        $$('[data-log-row]', pane).forEach((row) => {
+        $$('[data-log-row]', drawer).forEach((row) => {
           row.addEventListener('click', () => {
             const zh = row.dataset.country;
             const region = row.dataset.region || '';
             const ip = row.dataset.ip || '';
             const lat = Number(row.dataset.lat);
             const lon = Number(row.dataset.lon);
-            const meta = countryByZh.get(zh) || { id: 140, zh: zh || '中国', en: '', cont: '亚洲', lat: 35.0, lon: 104.0 };
+            const meta = countryByZh.get(zh) || { id: 140, zh: zh || '中国', en: 'China', cont: '亚洲', lat: 35.0, lon: 104.0 };
             const resolved = resolveVisitorCoords({
               countryZh: zh,
               countryCode: zh === '中国' ? 'CN' : '',
@@ -2244,22 +3511,32 @@ html.st-embed a[href="/studio/"] { display: none !important; }
               lat,
               lon
             });
+            state.logsDrawerOpen = false;
+            renderTopBar();
+            renderLeftPane();
             selectCountryOnGlobe(meta, resolved.lat, resolved.lon, true, { region, ip });
           });
         });
 
-        $('#st-log-prev', pane)?.addEventListener('click', () => {
+        $('#st-log-prev', drawer)?.addEventListener('click', () => {
           if (state.page > 1) {
             state.page--;
             refreshDashboard();
           }
         });
-        $('#st-log-next', pane)?.addEventListener('click', () => {
+        $('#st-log-next', drawer)?.addEventListener('click', () => {
           state.page++;
           refreshDashboard();
         });
       }
 
+      document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && state.logsDrawerOpen) {
+          state.logsDrawerOpen = false;
+          renderTopBar();
+          renderLeftPane();
+        }
+      });
       // =========================================================================
       // 7. 右侧 3D 动态粒子旋转地球模型（保留 3d.html + 独立纯白/浅主题色描边粒子层）
       // =========================================================================
