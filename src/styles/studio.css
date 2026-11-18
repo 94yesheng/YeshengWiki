@@ -6465,3 +6465,102 @@ html[data-theme-switching="true"] *::after {
   gap: 0.45rem;
   flex-wrap: wrap;
 }
+
+/* --------------------------------------------------------------------------
+   信息悬浮窗状态条 & 常用标签管理弹窗
+   -------------------------------------------------------------------------- */
+.st-rail-dock-status {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  padding: 0.55rem 0.7rem;
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--paper) 92%, var(--canvas));
+}
+
+.st-rail-dock-status-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.st-rail-dock-status-row strong {
+  color: var(--ink);
+  font-family: var(--mono);
+  font-weight: 500;
+}
+
+.st-rail-dock-status-cards {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+}
+
+.st-rail-dock-status-cards span {
+  padding: 0.1rem 0.4rem;
+  border: 1px solid var(--rule);
+  border-radius: 2px;
+  font-size: 0.7rem;
+  color: var(--muted);
+}
+
+.st-quick-tag-more {
+  min-width: 1.8rem;
+  justify-content: center;
+}
+
+.st-tag-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 130;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  background: color-mix(in srgb, #000 32%, transparent);
+}
+
+.st-tag-modal {
+  width: min(34rem, 100%);
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--paper);
+  border: 1px solid var(--ink);
+  border-radius: 4px;
+  box-shadow: 0 18px 50px color-mix(in srgb, #000 22%, transparent);
+}
+
+.st-tag-modal-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.7rem 0.85rem;
+  border-bottom: 1px solid var(--rule);
+}
+
+.st-tag-modal-head span {
+  font-size: 0.72rem;
+  color: var(--muted);
+}
+
+.st-tag-modal-list {
+  padding: 0.65rem 0.85rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem 0.95rem;
+  overflow-y: auto;
+}
+
+.st-tag-modal-foot {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  padding: 0.65rem 0.85rem;
+  border-top: 1px solid var(--rule);
+}

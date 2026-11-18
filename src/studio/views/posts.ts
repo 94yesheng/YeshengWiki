@@ -89,6 +89,95 @@ function currentPost(): PostEntry | null {
   return state.posts.find((p) => p.id === state.selected) ?? null;
 }
 
+function slugifyTitle(title: string): string {
+  const text = String(title ?? '').trim().toLowerCase();
+  let out = '';
+  for (const ch of text) {
+    const code = ch.codePointAt(0) ?? 0;
+    if (/[a-z0-9]/.test(ch)) out += ch;
+    else if (code >= 0x4e00 && code <= 0x9fff) out += ch;
+    else if (code >= 0x3400 && code <= 0x4dbf) out += ch;
+    else if (ch === ' ' || ch === '_' || ch === '-' || ch === '·') out += '-';
+  }
+  return out.replace(/-+/g, '-').replace(/^-|-$/g, '').slice(0, 90);
+}
+
+const QUICK_TAG_KEY = 'studio.quickTagPicks';
+
+function loadQuickTagPicks(): string[] {
+  try {
+    const raw = window.localStorage.getItem(QUICK_TAG_KEY);
+    const arr = raw ? (JSON.parse(raw) as unknown) : [];
+    return Array.isArray(arr) ? arr.map(String).filter(Boolean).slice(0, 4) : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveQuickTagPicks(list: string[]): void {
+  try {
+    window.localStorage.setItem(QUICK_TAG_KEY, JSON.stringify(list.slice(0, 4)));
+  } catch {
+    /* localStorage 不可用时忽略 */
+  }
+}
+
+let railPreviewTimer = 0;
+function scheduleRailPreview(d: PostDraftUi): void {
+  if (d.rightTab !== 'rail') return;
+  if (railPreviewTimer) window.clearTimeout(railPreviewTimer);
+  railPreviewTimer = window.setTimeout(() => {
+    railPreviewTimer = 0;
+    renderRightRailPreview(d);
+  }, 240);
+}
+
+function openTagPickerModal(d: PostDraftUi, allTags: string[], current: string[] = []): void {
+  const stored = loadQuickTagPicks();
+  const saved = stored.length ? stored : current;
+  const overlay = document.createElement('div');
+  overlay.className = 'st-tag-modal-backdrop';
+  overlay.innerHTML = `<div class="st-tag-modal" role="dialog" aria-label="管理常用快选标签">
+    <div class="st-tag-modal-head">
+      <strong>管理常用快选标签</strong>
+      <span>最多展示 4 个</span>
+    </div>
+    <div class="st-tag-modal-list">
+      ${allTags
+        .map(
+          (t) => `<label class="st-check"><input type="checkbox" value="${esc(t)}" ${saved.includes(t) ? 'checked' : ''} /><span>${esc(t)}</span></label>`
+        )
+        .join('')}
+    </div>
+    <div class="st-tag-modal-foot">
+      <button type="button" class="stage-mini-btn" data-tag-modal-cancel>取消</button>
+      <button type="button" class="st-btn" data-tag-modal-save>保存</button>
+    </div>
+  </div>`;
+  document.body.appendChild(overlay);
+  const close = () => overlay.remove();
+  overlay.addEventListener('click', (e) => {
+    if (e.target === overlay) close();
+  });
+  overlay.querySelector('[data-tag-modal-cancel]')?.addEventListener('click', close);
+  overlay.querySelector('[data-tag-modal-save]')?.addEventListener('click', () => {
+    const picked = Array.from(overlay.querySelectorAll<HTMLInputElement>('input[type=checkbox]:checked'))
+      .map((i) => i.value)
+      .slice(0, 4);
+    saveQuickTagPicks(picked);
+    close();
+    renderPostView();
+  });
+  overlay.querySelectorAll<HTMLInputElement>('input[type=checkbox]').forEach((cb) =>
+    cb.addEventListener('change', () => {
+      if (overlay.querySelectorAll('input[type=checkbox]:checked').length > 4) {
+        cb.checked = false;
+        toast('常用快选最多展示 4 个标签', true);
+      }
+    })
+  );
+}
+
 function extractAutoLeadFromMarkdown(mdText: string): string {
   const blocks = mdText.split(/\n\s*\n/);
   const parts: string[] = [];
@@ -125,6 +214,25 @@ function createDefaultWidget(type: RailWidgetType): RailWidgetCard {
       audioArtist: '夜笙 · ACOUSTIC BGM',
       loop: true,
       autoplay: false,
+    };
+  }
+  if (type === 'docspec') {
+    return {
+      id,
+      enabled: true,
+      type: 'docspec',
+      kicker: 'DOC SPEC // 文档速查卡',
+      badge: 'BASELINE',
+      items: [],
+    };
+  }
+  if (type === 'related') {
+    return {
+      id,
+      enabled: true,
+      type: 'related',
+      kicker: 'ARCHIVE // 同系列文章切换',
+      badge: 'RELATED',
     };
   }
   if (type === 'kv') {
@@ -178,12 +286,7 @@ function postDraft(): PostDraftUi | undefined {
     const rawSpecs = Array.isArray(d.railSpecs) ? (d.railSpecs as RailKvItem[]) : [];
     const normalizedCfg = normalizePostRailConfig(d.railTopology);
     const rawMode = String(d.railMode ?? '');
-    const initialMode =
-      rawMode === 'custom' || rawMode === 'minimal' || rawMode === 'follow'
-        ? rawMode
-        : rawSpecs.length || (normalizedCfg.cards && normalizedCfg.cards.length)
-          ? 'custom'
-          : 'follow';
+    const initialMode: 'custom' | 'minimal' = rawMode === 'minimal' ? 'minimal' : 'custom';
 
     const fields: Record<string, unknown> = {
       title: d.title ?? '',
@@ -230,7 +333,10 @@ function renderRailCustomCardsEditor(cards: RailWidgetCard[]): string {
       const bulletsText = (card.bullets ?? []).join('\n');
 
       let bodyEditorHtml = '';
-      if (type === 'music') {
+      if (type === 'related') {
+        bodyEditorHtml = `
+          <div class="st-hint" style="margin-top:0.55rem;">自动按标签匹配同系列文章，展示顺序与数量沿用全局相关文章设置，无需手动填写内容。</div>`;
+      } else if (type === 'music') {
         const previewAudioSrc = normalizeMediaAssetUrl(card.audioUrl ?? '');
         bodyEditorHtml = `
           <div class="st-grid-2" style="margin-top:0.55rem;">
@@ -264,7 +370,7 @@ function renderRailCustomCardsEditor(cards: RailWidgetCard[]): string {
               </div>
             </div>
           </div>`;
-      } else if (type === 'kv') {
+      } else if (type === 'kv' || type === 'docspec') {
         bodyEditorHtml = `
           <div class="st-kv-editor-list" style="margin-top:0.55rem;">
             ${items
@@ -327,6 +433,8 @@ function renderRailCustomCardsEditor(cards: RailWidgetCard[]): string {
             </label>
             <select class="st-select st-rail-type-select" data-rc-type="${cIdx}" aria-label="卡片类型">
               <option value="music"${type === 'music' ? ' selected' : ''}>音乐播放卡 (Music)</option>
+              <option value="docspec"${type === 'docspec' ? ' selected' : ''}>文档速查卡 (Doc Spec)</option>
+              <option value="related"${type === 'related' ? ' selected' : ''}>同系列文章切换 (Related)</option>
               <option value="kv"${type === 'kv' ? ' selected' : ''}>键值参数表 (KV)</option>
               <option value="note"${type === 'note' ? ' selected' : ''}>伴读便签卡 (Note)</option>
               <option value="links"${type === 'links' ? ' selected' : ''}>参考链接卡 (Links)</option>
@@ -975,7 +1083,7 @@ export function renderPostView(): void {
   const globalAuto = autoUpdatedDefault();
   const curAuto = d.fields.autoUpdated;
   const autoValue = curAuto === true ? 'on' : curAuto === false ? 'off' : 'follow';
-  const railMode = String(d.fields.railMode ?? 'follow');
+  const railMode = String(d.fields.railMode ?? 'custom') === 'minimal' ? 'minimal' : 'custom';
   const railSpecs = (d.fields.railSpecs as RailKvItem[]) ?? [];
   const railCfg = normalizePostRailConfig(d.fields.railTopology);
   d.fields.railTopology = railCfg;
@@ -990,6 +1098,11 @@ export function renderPostView(): void {
       state.posts.flatMap((p) => (Array.isArray(p.parsed.data.tags) ? p.parsed.data.tags.map(String) : []))
     )
   ).filter((t) => !(d.fields.tags as string[]).includes(t));
+
+  const myTags = d.fields.tags as string[];
+  const quickTags = Array.from(new Set([...loadQuickTagPicks(), ...allKnownTags]))
+    .filter((t) => !myTags.includes(t))
+    .slice(0, 4);
 
   const entryIndex = state.posts.findIndex((p) => p.id === d.entry.id) + 1;
   const entryNo = String(Math.max(1, entryIndex)).padStart(2, '0');
@@ -1015,14 +1128,7 @@ export function renderPostView(): void {
             <h2 id="st-live-title">${esc(d.fields.title || '（未填标题）')}</h2>
           </div>
           <div class="st-head-btns">
-            <button type="button" class="st-btn" id="st-quick-add-music-btn" title="在文章右侧悬浮窗中快速调用/插入音乐播放模块">
-              <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true" style="vertical-align:-2px;margin-right:4px;">
-                <path d="M6 12.5V3.5l8-1.5v9"/>
-                <circle cx="4" cy="12.5" r="2"/>
-                <circle cx="12" cy="11" r="2"/>
-              </svg>
-              <span>调用音乐播放模块</span>
-            </button>
+
             <button type="button" class="st-btn st-btn--preview" id="st-btn-preview-post">
               <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true" style="vertical-align:-2px;margin-right:4px;">
                 <path d="M1.5 8s2.4-4.5 6.5-4.5S14.5 8 14.5 8s-2.4 4.5-6.5 4.5S1.5 8 1.5 8Z"/>
@@ -1143,9 +1249,10 @@ export function renderPostView(): void {
                   allKnownTags.length
                     ? `<div class="st-quick-tags st-meta-quick-tags">
                         <span>常用快选：</span>
-                        ${allKnownTags
+                        ${quickTags
                           .map((t) => `<button type="button" class="stage-mini-btn" data-add-tag="${esc(t)}">＋ ${esc(t)}</button>`)
                           .join('')}
+                        <button type="button" class="stage-mini-btn st-quick-tag-more" id="st-quick-tag-more" title="管理常用快选标签">＋</button>
                       </div>`
                     : `<span class="st-meta-hint-inline">输入标签名按回车添加</span>`
                 }
@@ -1188,7 +1295,6 @@ export function renderPostView(): void {
       <div class="st-section-box st-post-meta-section">
         <div class="st-section-head">
           <span>02 // VISUAL &amp; LEAD INTERFACE · 首屏导语、16:9 宽银幕封面与三体画布遥测</span>
-          <button type="button" class="stage-mini-btn" id="st-auto-lead-btn">从正文自动提取导语</button>
         </div>
 
         <div class="st-meta-sheet st-meta-sheet--visual">
@@ -1199,10 +1305,13 @@ export function renderPostView(): void {
                   <span class="st-meta-idx">01</span>
                   <span>首屏导语 (Lead)</span>
                 </label>
-                <span class="st-meta-hint-inline">留空则自动抽取正文首段</span>
+                <span class="st-meta-hint-inline" style="display:inline-flex;align-items:center;gap:0.4rem;">
+                  留空则自动抽取正文首段
+                  <button type="button" class="stage-mini-btn" id="st-auto-lead-btn" style="padding:0.12rem 0.5rem;font-size:0.72rem;">提取导语</button>
+                </span>
               </div>
               <div class="st-meta-cell-body">
-                <textarea class="st-textarea st-meta-input" id="st-f-lead" rows="3" placeholder="显示在文章详细页标题下方、主页焦点摘要与归档时间轴卡片上…">${esc(
+                <textarea class="st-textarea st-meta-input" id="st-f-lead" rows="3" style="resize:none;overflow:hidden;" placeholder="显示在文章详细页标题下方、主页焦点摘要与归档时间轴卡片上…">${esc(
                   d.fields.lead
                 )}</textarea>
               </div>
@@ -1289,7 +1398,7 @@ export function renderPostView(): void {
         <div class="st-section-head" id="st-rail-head" role="button" tabindex="0" aria-expanded="${d.railOpen ? 'true' : 'false'}" aria-controls="st-rail-body" aria-label="信息悬浮窗：点击展开或收起">
           <span>03 // FLOATING RAIL STUDIO · 信息悬浮窗高自定义工作台（对应前台文章右侧伴读栏）</span>
           <span class="st-sec-mono" style="font-family:var(--mono);font-size:0.75rem;letter-spacing:0.06em;color:var(--accent);">
-            ${railMode === 'custom' ? `独立定制 (${customCards.length} 卡片)` : railMode === 'minimal' ? '极简模式' : '跟随全局'} · 点击展开/收起
+            ${railMode === 'custom' ? `默认模式 (${customCards.length} 卡片)` : '极简模式'} · 点击展开/收起
           </span>
           <span class="st-collapse-icon">›</span>
         </div>
@@ -1298,13 +1407,12 @@ export function renderPostView(): void {
             <div class="st-field">
               <label>悬浮窗模式</label>
               <div class="st-seg-row">
-                <button type="button" class="stage-mini-btn" data-rail-mode="follow" aria-pressed="${railMode === 'follow'}">跟随全局默认</button>
-                <button type="button" class="stage-mini-btn" data-rail-mode="custom" aria-pressed="${railMode === 'custom'}">本文独立定制（推荐）</button>
+                <button type="button" class="stage-mini-btn" data-rail-mode="custom" aria-pressed="${railMode !== 'minimal'}">默认模式（本文专属卡片）</button>
                 <button type="button" class="stage-mini-btn" data-rail-mode="minimal" aria-pressed="${railMode === 'minimal'}">极简模式（仅展示本文卡片）</button>
               </div>
             </div>
 
-            <div id="st-rail-custom-editor" ${railMode === 'follow' ? 'hidden' : ''} style="margin-top:1rem;">
+            <div id="st-rail-custom-editor" style="margin-top:1rem;">
               <!-- 模块 A：文档速查卡与本文参数 -->
               <div class="st-rail-block">
                 <div class="st-pages-subhead">
@@ -1363,6 +1471,8 @@ export function renderPostView(): void {
                   <div class="st-sub-kicker">B // 本文专属悬浮卡片（支持多卡片自由组合与排序）</div>
                   <div class="st-rail-add-bar">
                     <button type="button" class="stage-mini-btn st-btn--preview" data-add-widget="music">♫ ＋ 音乐播放卡</button>
+                    <button type="button" class="stage-mini-btn" data-add-widget="docspec">＋ 文档速查卡</button>
+                    <button type="button" class="stage-mini-btn" data-add-widget="related">＋ 同系列文章切换</button>
                     <button type="button" class="stage-mini-btn" data-add-widget="kv">＋ 参数表卡</button>
                     <button type="button" class="stage-mini-btn" data-add-widget="note">＋ 伴读便签卡</button>
                     <button type="button" class="stage-mini-btn" data-add-widget="links">＋ 参考链接卡</button>
@@ -1374,20 +1484,7 @@ export function renderPostView(): void {
                 </div>
               </div>
 
-              <!-- 模块 C：全局卡片与相关文章联动 -->
-              <div class="st-rail-block" style="margin-top:1rem;" ${railMode === 'minimal' ? 'hidden' : ''}>
-                <div class="st-sub-kicker">C // 全局悬浮模块联动显示</div>
-                <div class="st-check-row">
-                  <label class="st-check">
-                    <input type="checkbox" data-rail-bool="showGlobalCards" ${railCfg.showGlobalCards !== false ? 'checked' : ''} />
-                    <span>同时展示全局伴读卡片（在「页面 → 文章」中维护的全局卡片）</span>
-                  </label>
-                  <label class="st-check">
-                    <input type="checkbox" data-rail-bool="showRelated" ${railCfg.showRelated !== false ? 'checked' : ''} />
-                    <span>底部展示「同系列文章切换」列表</span>
-                  </label>
-                </div>
-              </div>
+
             </div>
           </div>
         </div>
@@ -1415,7 +1512,7 @@ export function renderPostView(): void {
       if (key === 'cover') {
         syncCoverUi(d);
       }
-      if (d.rightTab === 'rail') renderRightRailPreview(d);
+      scheduleRailPreview(d);
     });
 
   bindInput('#st-f-title', 'title');
@@ -1423,6 +1520,15 @@ export function renderPostView(): void {
   bindInput('#st-f-badge', 'entryBadge');
   bindInput('#st-f-updated', 'updatedDate');
   bindInput('#st-f-lead', 'lead');
+
+  const autosizeLead = () => {
+    const el = $<HTMLTextAreaElement>('#st-f-lead');
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = `${el.scrollHeight}px`;
+  };
+  autosizeLead();
+  $('#st-f-lead')?.addEventListener('input', autosizeLead);
   bindInput('#st-f-desc', 'description');
   bindInput('#st-f-kinetic', 'kineticCaption');
   bindInput('#st-f-cover', 'cover');
@@ -1444,19 +1550,13 @@ export function renderPostView(): void {
     toast('已清除文章封面，当前使用昼/夜主题 SVG 图案');
   });
 
-  // 路由标识修改
-  $<HTMLInputElement>('#st-f-slug')?.addEventListener('change', (e) => {
-    const nextSlug = (e.target as HTMLInputElement).value
-      .trim()
-      .toLowerCase()
-      .replace(/[^a-z0-9-_]/g, '-')
-      .replace(/-+/g, '-')
-      .replace(/^-|-$/g, '');
-    if (!nextSlug || nextSlug === d.entry.id) return;
+  // 路由标识：手工修改 + 已发布文章随标题自动同步
+  const applySlug = (raw: string): boolean => {
+    const nextSlug = slugifyTitle(raw);
+    if (!nextSlug || nextSlug === d.entry.id) return false;
     if (state.posts.some((p) => p.id === nextSlug && p !== d.entry)) {
       toast(`路由标识「${nextSlug}」已被其它文章占用`, true);
-      (e.target as HTMLInputElement).value = d.entry.id;
-      return;
+      return false;
     }
     if (!d.entry.prevPath) {
       d.entry.prevPath = d.entry.path;
@@ -1468,6 +1568,19 @@ export function renderPostView(): void {
     markDirty();
     rerender();
     toast(`文章路由已更新为 /posts/${nextSlug}/`);
+    return true;
+  };
+
+  $<HTMLInputElement>('#st-f-slug')?.addEventListener('change', (e) => {
+    const input = e.target as HTMLInputElement;
+    if (!applySlug(input.value)) input.value = d.entry.id;
+  });
+
+  $<HTMLInputElement>('#st-f-title')?.addEventListener('change', () => {
+    if (d.fields.draft === true) return;
+    const next = slugifyTitle(String(d.fields.title ?? ''));
+    if (!next || next === d.entry.id) return;
+    applySlug(next);
   });
 
   $('#st-f-updated')?.addEventListener('input', () => {
@@ -1525,7 +1638,11 @@ export function renderPostView(): void {
     }
     d.fields.lead = extracted;
     const leadEl = $<HTMLTextAreaElement>('#st-f-lead');
-    if (leadEl) leadEl.value = extracted;
+    if (leadEl) {
+      leadEl.value = extracted;
+      leadEl.style.height = 'auto';
+      leadEl.style.height = `${leadEl.scrollHeight}px`;
+    }
     markDirty();
     toast('已从正文首段自动提取导语');
   });
@@ -1538,12 +1655,15 @@ export function renderPostView(): void {
     const v = input.value.trim();
     if (v && !(d.fields.tags as string[]).includes(v)) {
       (d.fields.tags as string[]).push(v);
+      saveQuickTagPicks([v, ...loadQuickTagPicks()].filter((t, i, arr) => arr.indexOf(t) === i).slice(0, 4));
       markDirty();
       renderPostView();
       $<HTMLInputElement>('#st-f-newtag')?.focus();
     }
     input.value = '';
   });
+
+  $('#st-quick-tag-more', edit)?.addEventListener('click', () => openTagPickerModal(d, allKnownTags, quickTags));
 
   edit.querySelectorAll<HTMLButtonElement>('[data-add-tag]').forEach((b) =>
     b.addEventListener('click', () => {
@@ -1600,14 +1720,15 @@ export function renderPostView(): void {
 
   $('#st-btn-preview-post')?.addEventListener('click', () => previewCurrentPost());
   $('#st-del-post')?.addEventListener('click', () => {
-    if (!isV2Layout()) {
-      removePost(d.entry);
-      return;
-    }
+    const title = String(d.fields.title ?? '').trim() || '（未填标题）';
+    const isNewDraft = isStagedNew(d.entry);
     void showConfirm({
       title: '删除这篇文章？',
-      body: '会先暂存删除，点「保存当前」才真正从数据库删除；保存前可以点「重新读取」撤销。',
-      confirm: '暂存删除',
+      body: isNewDraft
+        ? `「${title}」是尚未保存的新草稿，删除后会立即从列表移除。`
+        : `「${title}」会先标记为待删除，点右上角「保存」后才真正从数据库删除；保存前点「重新读取」可以撤销。`,
+      confirm: isNewDraft ? '删除草稿' : '暂存删除',
+      cancel: '再想想',
     }).then((ok) => {
       if (ok) removePost(d.entry);
     });
@@ -1638,7 +1759,7 @@ function wireRailEditorEvents(
 
   root.querySelectorAll<HTMLButtonElement>('[data-rail-mode]').forEach((btn) =>
     btn.addEventListener('click', () => {
-      d.fields.railMode = btn.dataset.railMode ?? 'follow';
+      d.fields.railMode = btn.dataset.railMode === 'minimal' ? 'minimal' : 'custom';
       d.rightTab = 'rail';
       d.railOpen = true;
       markDirty();
@@ -2022,7 +2143,7 @@ function renderRightDock(d: PostDraftUi): void {
       d.editor = createEditor(areaHost, barHost, d.body, {
         onInput: () => {
           markDirty();
-          if (d.rightTab === 'rail') renderRightRailPreview(d);
+          scheduleRailPreview(d);
         },
         getPostAssets: () => state.postAssetFiles,
         onUploadPostAsset: async (file: File) => {
@@ -2071,7 +2192,7 @@ function renderRightRailPreview(d: PostDraftUi): void {
   const tags = (d.fields.tags as string[]) ?? [];
   const tagText = tags.length ? tags.join(' · ') : '未分类';
 
-  const railMode = String(d.fields.railMode ?? 'follow');
+  const railMode = String(d.fields.railMode ?? 'custom') === 'minimal' ? 'minimal' : 'custom';
   const postSpecs = (d.fields.railSpecs as RailKvItem[]) ?? [];
   const postCfg = normalizePostRailConfig(d.fields.railTopology);
 
@@ -2098,23 +2219,19 @@ function renderRightRailPreview(d: PostDraftUi): void {
 
   host.innerHTML = `
     <div class="st-rail-preview-wrap">
-      <div class="st-rail-dock-quick">
-        <div class="st-rail-dock-quick-head">
-          <span>快捷模式与卡片构建</span>
-          <button type="button" class="stage-mini-btn" id="st-dock-open-rail-sec">展开左侧详细配置</button>
+      <div class="st-rail-dock-status">
+        <div class="st-rail-dock-status-row">
+          <span>当前文章悬浮窗</span>
+          <strong>${railMode === 'minimal' ? '极简模式' : '默认模式'} · ${(postCfg.cards ?? []).length} 张卡片</strong>
         </div>
-        <div class="st-seg-row" style="margin-top:0.4rem;">
-          <button type="button" class="stage-mini-btn" data-dock-rail-mode="follow" aria-pressed="${railMode === 'follow'}">跟随全局</button>
-          <button type="button" class="stage-mini-btn" data-dock-rail-mode="custom" aria-pressed="${railMode === 'custom'}">独立定制</button>
-          <button type="button" class="stage-mini-btn" data-dock-rail-mode="minimal" aria-pressed="${railMode === 'minimal'}">极简</button>
+        <div class="st-rail-dock-status-cards">
+          ${(postCfg.cards ?? []).length
+            ? (postCfg.cards ?? [])
+                .map((c) => `<span>${esc(String(c.kicker || c.type || '卡片'))}</span>`)
+                .join('')
+            : '<span>暂无自定义卡片</span>'}
         </div>
-        <div class="st-rail-dock-add-grid">
-          <button type="button" class="ed-btn" data-dock-add-card="music" style="grid-column:1 / -1;border-color:color-mix(in srgb, var(--accent) 55%, var(--rule));color:var(--accent);font-weight:600;">♫ ＋ 调用音乐播放模块 (Music Player)</button>
-          <button type="button" class="ed-btn" data-dock-add-card="kv">＋ 参数速查卡</button>
-          <button type="button" class="ed-btn" data-dock-add-card="note">＋ 伴读便签卡</button>
-          <button type="button" class="ed-btn" data-dock-add-card="links">＋ 参考链接卡</button>
-          <button type="button" class="ed-btn" data-dock-add-card="list">＋ 核心要点卡</button>
-        </div>
+        <button type="button" class="stage-mini-btn" id="st-dock-open-rail-sec">展开详细配置</button>
       </div>
 
       <div class="st-sub-kicker" style="margin:0.85rem 0 0.45rem;">LIVE RAIL PREVIEW // 前台文章右侧悬浮窗 1:1 实时预览</div>
@@ -2131,40 +2248,6 @@ function renderRightRailPreview(d: PostDraftUi): void {
     const sec = $('#st-rail-section');
     sec?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   });
-
-  host.querySelectorAll<HTMLButtonElement>('[data-dock-rail-mode]').forEach((btn) =>
-    btn.addEventListener('click', () => {
-      d.fields.railMode = btn.dataset.dockRailMode ?? 'follow';
-      d.railOpen = d.fields.railMode !== 'follow';
-      markDirty();
-      renderPostView();
-    })
-  );
-
-  host.querySelectorAll<HTMLButtonElement>('[data-dock-add-card]').forEach((btn) =>
-    btn.addEventListener('click', () => {
-      const type = (btn.dataset.dockAddCard ?? 'note') as RailWidgetType;
-      const cfg = normalizePostRailConfig(d.fields.railTopology);
-      if (!cfg.cards) cfg.cards = [];
-      cfg.cards.push(createDefaultWidget(type));
-      d.fields.railTopology = cfg;
-      if (d.fields.railMode === 'follow') d.fields.railMode = 'custom';
-      d.railOpen = true;
-      markDirty();
-      renderPostView();
-      const sec = $('#st-rail-section');
-      sec?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      const addedIdx = cfg.cards.length - 1;
-      if (type === 'music') {
-        openAudioPickerModal(d, addedIdx, () => {
-          d.railOpen = true;
-          renderPostView();
-        });
-      } else {
-        toast('已添加悬浮卡片并展开左侧配置区');
-      }
-    })
-  );
 
   // 为右侧实时预览中的音乐播放卡绑定播放/暂停交互
   host.querySelectorAll<HTMLElement>('[data-rail-music-player]').forEach((cardEl) => {
@@ -2252,7 +2335,7 @@ export function previewCurrentPost(): void {
     entryBadge: String(d.fields.entryBadge ?? ''),
     kineticCaption: String(d.fields.kineticCaption ?? ''),
     bodyMarkdown: d.editor?.getMarkdown() ?? d.body,
-    railMode: String(d.fields.railMode ?? 'follow'),
+    railMode: String(d.fields.railMode ?? 'custom') === 'minimal' ? 'minimal' : 'custom',
     railSpecs: Array.isArray(d.fields.railSpecs) ? (d.fields.railSpecs as RailKvItem[]) : [],
     railConfig: (d.fields.railTopology ?? {}) as Record<string, unknown>,
     globalRail,
@@ -2279,6 +2362,13 @@ export function createNewPost(): void {
   if (!entry) {
     toast('新建失败：模板没能解析', true);
     return;
+  }
+  {
+    const data = entry.parsed.data as Record<string, unknown>;
+    data.railMode = 'custom';
+    data.railTopology = {
+      cards: [createDefaultWidget('docspec'), createDefaultWidget('related')],
+    };
   }
   state.posts.unshift(entry);
   stageAdd(entry);
@@ -2373,6 +2463,12 @@ export async function savePostCurrent(gh: Github): Promise<boolean> {
   }
 
   const changed = diffFields(d.baseline, d.fields, [...POST_FIELDS]);
+  // 新建文章的悬浮窗默认配置是"运行时注入"的，baseline 里已经包含它们，
+  // 不强制写入的话保存后 frontmatter 会缺少 railMode / railTopology —— 刷新后就丢了。
+  if (isNew) {
+    changed.railMode = d.fields.railMode;
+    changed.railTopology = d.fields.railTopology;
+  }
   await savePost(gh, d.entry, changed, bodySame ? d.body : body);
   return true;
 }

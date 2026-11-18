@@ -429,11 +429,32 @@ export function createEditor(
     });
   }
 
+  /** 确保编辑区始终以块级段落承载文字：裸文本包进 <p>，空内容补一个空段落 */
+  function ensureParagraphBlocks(): void {
+    const kids = Array.from(area.childNodes);
+    const hasBlock = kids.some(
+      (n) => n.nodeType === 1 && /^(P|H[1-6]|UL|OL|BLOCKQUOTE|PRE|TABLE|HR|FIGURE|DIV|SECTION)$/.test((n as Element).tagName)
+    );
+    if (!hasBlock) {
+      for (const node of kids) {
+        if (node.nodeType === 3 && (node.textContent ?? '').trim()) {
+          const p = document.createElement('p');
+          node.parentNode?.replaceChild(p, node);
+          p.appendChild(node);
+        }
+      }
+    }
+    if (!area.querySelector('p, h1, h2, h3, h4, h5, h6, ul, ol, blockquote, pre, table, hr, figure')) {
+      area.innerHTML = '<p><br></p>';
+    }
+  }
+
   function setMarkdown(mdText: string): void {
     syncing = true;
     const extracted = extractRawHtml(mdText);
     raws = extracted.raws;
     area.innerHTML = renderMarkdown(mdText, { forEditor: true });
+    ensureParagraphBlocks();
     normalizeEditorImagePreviews();
     sourceArea.value = mdText;
     syncing = false;
@@ -456,6 +477,7 @@ export function createEditor(
     const extracted = extractRawHtml(mdText);
     raws = extracted.raws;
     area.innerHTML = renderMarkdown(mdText, { forEditor: true });
+    ensureParagraphBlocks();
     normalizeEditorImagePreviews();
     syncing = false;
   }
@@ -694,7 +716,19 @@ export function createEditor(
       return;
     }
     area.focus();
-    document.execCommand('insertHTML', false, html);
+    document.execCommand('insertHTML', false, html + '<p><br></p>');
+    // 光标移到分割线下方的新段落，避免继续输入和 <hr> 同一行
+    const hrs = area.querySelectorAll('hr');
+    const lastHr = hrs[hrs.length - 1];
+    const next = lastHr?.nextElementSibling;
+    if (next && next.tagName === 'P') {
+      const range = document.createRange();
+      range.selectNodeContents(next);
+      range.collapse(true);
+      const sel = window.getSelection();
+      sel?.removeAllRanges();
+      sel?.addRange(range);
+    }
     changed();
   }
 
@@ -1547,11 +1581,16 @@ export function createEditor(
     }
   });
 
+  try {
+    document.execCommand('defaultParagraphSeparator', false, 'p');
+  } catch {
+    /* 非 Chromium 环境忽略 */
+  }
+
   area.addEventListener('input', () => {
+    ensureParagraphBlocks();
     if (mode === 'split') syncVisualToSource();
-    updateCount();
-    renderTocPreview();
-    opts.onInput();
+    scheduleHeavy(120);
   });
 
   sourceArea.addEventListener('input', () => {
@@ -1709,12 +1748,24 @@ export function createEditor(
   };
   activeEditorCleanup = destroyEditor;
 
+  let heavyTimer = 0;
+
+  /** 高频编辑（连续插入分割线等）时合并重活：Markdown 同步、目录、字数与外部回调 */
+  function scheduleHeavy(delay = 160): void {
+    if (heavyTimer) window.clearTimeout(heavyTimer);
+    heavyTimer = window.setTimeout(() => {
+      heavyTimer = 0;
+      if (mode !== 'markdown') syncVisualToSource();
+      updateCount();
+      renderTocPreview();
+      opts.onInput();
+    }, delay);
+  }
+
   function changed(): void {
-    if (mode !== 'markdown') syncVisualToSource();
-    updateCount();
-    renderTocPreview();
-    opts.onInput();
+    if (mode === 'split') syncVisualToSource();
     syncToolbar();
+    scheduleHeavy();
   }
 
   function syncToolbar(): void {

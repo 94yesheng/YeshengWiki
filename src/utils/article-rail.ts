@@ -21,7 +21,7 @@ export interface RailLinkItem {
   note?: string;
 }
 
-export type RailWidgetType = 'kv' | 'note' | 'links' | 'list' | 'music';
+export type RailWidgetType = 'kv' | 'docspec' | 'related' | 'note' | 'links' | 'list' | 'music';
 
 export interface RailWidgetCard {
   id: string;
@@ -233,7 +233,7 @@ export function normalizePostRailConfig(raw: unknown): PostRailConfig {
     .map((c, idx) => {
       const t = String(c.type ?? 'note');
       const type: RailWidgetType =
-        t === 'kv' || t === 'links' || t === 'list' || t === 'note' || t === 'music' ? t : 'note';
+        t === 'kv' || t === 'docspec' || t === 'related' || t === 'links' || t === 'list' || t === 'note' || t === 'music' ? t : 'note';
       const items = Array.isArray(c.items)
         ? c.items
             .filter((it): it is Record<string, unknown> => Boolean(it && typeof it === 'object'))
@@ -382,7 +382,7 @@ export function renderWidgetCardHtml(
     </div>`;
   }
 
-  if (type === 'kv') {
+  if (type === 'kv' || type === 'docspec') {
     const items = Array.isArray(card.items) ? card.items.filter((r) => r.label || r.value) : [];
     if (!items.length) return '';
     return `<div class="rail-blueprint-card">
@@ -482,6 +482,7 @@ export function renderArticleRailSlots(input: RenderRailInput): {
   const isCustomMode = mode === 'custom' || mode === 'minimal';
   const isMinimal = mode === 'minimal';
   const postCfg = normalizePostRailConfig(input.railConfig);
+  const hasExplicitCards = Array.isArray((input.railConfig as Record<string, unknown> | undefined)?.cards);
   const globalRail = input.globalRail ?? {};
   const docSpecCfg = globalRail.docSpec ?? {};
   const postSpecs = (input.railSpecs ?? []).filter((r) => r.label.trim() || r.value.trim());
@@ -553,12 +554,11 @@ export function renderArticleRailSlots(input: RenderRailInput): {
     }
   }
 
-  const postCustomCardsHtml = (postCfg.cards ?? [])
-    .map((c) => renderWidgetCardHtml(c, input.isStudioDockPreview))
-    .filter(Boolean)
-    .join('\n');
+  const perPostCards = (postCfg.cards ?? []).filter((c) => c.enabled !== false);
+  const hasDocSpecCard = perPostCards.some((c) => c.type === 'docspec');
+  const perPostRelatedCards = perPostCards.filter((c) => c.type === 'related');
 
-  const allowGlobalCards = isMinimal ? false : isCustomMode ? postCfg.showGlobalCards !== false : true;
+  const allowGlobalCards = mode === 'follow';
   const globalCardsHtml = allowGlobalCards
     ? (globalRail.customCards ?? [])
         .map((c) => renderWidgetCardHtml(c, input.isStudioDockPreview))
@@ -618,7 +618,8 @@ export function renderArticleRailSlots(input: RenderRailInput): {
         .join('')}</ul>`
     : `<p class="st-hint" style="margin:0;">暂无其它归档文章</p>`;
 
-  const relatedCardHtml = showRelated
+  const relatedCardHtml =
+    showRelated && perPostRelatedCards.length === 0 && (!isCustomMode || !hasExplicitCards)
     ? `<div class="rail-blueprint-card">
         <div class="rail-card-kicker">
           <span>${esc(relatedKicker)}</span>
@@ -627,6 +628,38 @@ export function renderArticleRailSlots(input: RenderRailInput): {
         ${relatedListHtml}
       </div>`
     : '';
+
+  if (isCustomMode && (hasDocSpecCard || hasExplicitCards)) specBlocks.length = 0;
+
+  const specCardFromConfig = (card: RailWidgetCard): string => {
+    const rows = [
+      ...(showDocSpec ? autoRows : []),
+      ...(Array.isArray(card.items) ? card.items.filter((r) => r.label || r.value) : []),
+    ];
+    if (!rows.length) return '';
+    const k = card.kicker?.trim() || postCfg.specKicker?.trim() || docSpecCfg.kicker || 'DOC SPEC // 文档速查卡';
+    const b = card.badge?.trim() || postCfg.specBadge?.trim() || docSpecCfg.badge || 'BASELINE';
+    return `<div class="rail-blueprint-card" id="rail-spec-card">
+      <div class="rail-card-kicker"><span>${esc(k)}</span><span>${esc(b)}</span></div>
+      <ul class="rail-kv-list" id="rail-spec-list">
+        ${rows.map((r) => `<li><span>${esc(r.label)}</span><strong>${esc(r.value)}</strong></li>`).join('')}
+      </ul>
+    </div>`;
+  };
+
+  const postCustomCardsHtml = perPostCards
+    .map((c) => {
+      if (c.type === 'docspec') return specCardFromConfig(c as unknown as RailWidgetCard);
+      if (c.type === 'related') {
+        return `<div class="rail-blueprint-card">
+          <div class="rail-card-kicker"><span>${esc(c.kicker || relatedKicker)}</span><span>${esc(c.badge || relatedBadge)}</span></div>
+          ${relatedListHtml}
+        </div>`;
+      }
+      return renderWidgetCardHtml(c, input.isStudioDockPreview);
+    })
+    .filter(Boolean)
+    .join('\n');
 
   return {
     topCardsHtml: postCustomCardsHtml,

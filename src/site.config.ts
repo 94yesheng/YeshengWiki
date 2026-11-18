@@ -54,7 +54,7 @@ export interface RailCustomCard {
   enabled: boolean;
   kicker: string;
   badge: string;
-  type: 'text' | 'note' | 'kv' | 'links' | 'list' | 'music';
+  type: 'text' | 'note' | 'kv' | 'docspec' | 'related' | 'links' | 'list' | 'music';
   content?: string;
   items?: Array<{ label: string; value: string }>;
   links?: Array<{ label: string; url: string; note?: string }>;
