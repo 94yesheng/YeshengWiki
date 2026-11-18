@@ -1,16 +1,14 @@
 /**
- * 访客统计的 IP / CIDR 黑名单。
+ * 访客统计的 IP / CIDR 黑名单（含已知爬虫 IP 与国内外主流云机房 CIDR 段）。
  *
  * 背景：UA、扫描路径、机房 IP 信誉能过滤掉大部分机器人，但分布式爬虫会
- * 使用住宅代理和完整浏览器请求头，单看 UA 很难识别。这里提供一条显式的
- * 批量规则：命中的 IP 连 visitor_logs 都不会写入，后台统计和 CSV 也不会出现。
+ * 使用云服务器池和完整浏览器请求头。这里提供显式的 IP + CIDR + IPv6 前缀拦截规则：
+ * 命中的 IP 连 visitor_logs 都不会写入，后台统计和 CSV 也不会出现。
  *
  * 规则来源：
- *   1. 下方 DEFAULT_BOT_IP_RULES 中的已知批量爬虫 IP；
- *   2. 环境变量 BLOG_BOT_IP_RULES（逗号、空格或换行分隔，支持 IPv4 CIDR），
+ *   1. 下方 DEFAULT_BOT_IP_RULES 中的已知批量爬虫 IP 与主流云机房/网络空间测绘 CIDR 段；
+ *   2. 环境变量 BLOG_BOT_IP_RULES（逗号、空格或换行分隔，支持 IPv4 CIDR 与 IPv6 前缀），
  *      重启 blog.service 后生效。
- *
- * 规则只支持精确 IP 和 IPv4 CIDR；IPv6 仅支持精确匹配。
  */
 
 const DEFAULT_BOT_IP_RULES = `
@@ -35,6 +33,130 @@ const DEFAULT_BOT_IP_RULES = `
 183.134.40.84
 161.115.237.172
 37.66.41.21
+
+# 阿里云 ECS / 轻量应用服务器常见公网机房 CIDR 段
+8.128.0.0/10
+39.96.0.0/12
+47.88.0.0/13
+47.96.0.0/11
+101.132.0.0/15
+101.200.0.0/15
+106.14.0.0/15
+112.124.0.0/14
+114.55.0.0/16
+118.31.0.0/16
+118.178.0.0/16
+120.24.0.0/14
+120.55.0.0/16
+120.76.0.0/14
+121.40.0.0/14
+139.196.0.0/16
+139.224.0.0/16
+
+# 腾讯云 CVM / 轻量云服务器常见公网机房 CIDR 段
+42.192.0.0/14
+43.128.0.0/10
+49.232.0.0/14
+81.68.0.0/14
+82.156.0.0/15
+101.32.0.0/14
+106.52.0.0/14
+111.229.0.0/16
+118.24.0.0/15
+119.28.0.0/15
+119.45.0.0/16
+121.4.0.0/15
+122.51.0.0/16
+124.220.0.0/14
+129.204.0.0/16
+129.211.0.0/16
+132.232.0.0/16
+134.175.0.0/16
+139.155.0.0/16
+139.186.0.0/16
+139.199.0.0/16
+140.143.0.0/16
+150.109.0.0/16
+152.136.0.0/16
+159.75.0.0/16
+162.14.0.0/16
+175.24.0.0/14
+182.254.0.0/16
+193.112.0.0/16
+203.195.128.0/17
+211.159.128.0/17
+212.64.0.0/16
+212.129.128.0/17
+
+# 华为云 / UCloud / 火山引擎机房常见段
+1.92.0.0/14
+106.75.0.0/16
+114.115.128.0/17
+114.116.0.0/16
+117.50.0.0/16
+119.3.0.0/16
+121.36.0.0/15
+122.112.128.0/17
+123.60.0.0/16
+124.70.0.0/15
+139.9.0.0/16
+139.159.128.0/17
+
+# 海外高频扫描机房（Censys / Shodan / DigitalOcean / Vultr / Hetzner / OVH）
+66.240.192.0/18
+71.6.128.0/17
+80.82.77.0/24
+89.248.160.0/19
+93.174.95.0/24
+104.131.0.0/16
+104.236.0.0/16
+128.199.0.0/16
+134.122.0.0/16
+134.209.0.0/16
+137.184.0.0/16
+138.68.0.0/16
+138.197.0.0/16
+139.59.0.0/16
+142.93.0.0/16
+143.110.128.0/17
+143.198.0.0/16
+146.190.0.0/16
+157.230.0.0/16
+157.245.0.0/16
+159.65.0.0/16
+159.89.0.0/16
+159.203.0.0/16
+159.223.0.0/16
+161.35.0.0/16
+162.243.0.0/16
+164.90.128.0/17
+164.92.0.0/16
+165.22.0.0/16
+165.227.0.0/16
+165.232.0.0/16
+167.71.0.0/16
+167.99.0.0/16
+167.172.0.0/16
+170.64.128.0/17
+174.138.0.0/17
+178.62.0.0/16
+178.128.0.0/16
+188.166.0.0/16
+192.241.128.0/17
+198.199.64.0/18
+198.211.96.0/19
+206.189.0.0/16
+207.154.192.0/18
+209.97.128.0/18
+209.38.0.0/16
+162.142.125.0/24
+167.94.138.0/24
+167.94.145.0/24
+167.94.146.0/24
+167.248.133.0/24
+199.45.154.0/24
+199.45.155.0/24
+2602:80d:1000::/44
 `;
 
 interface BotIpRule {
@@ -42,6 +164,7 @@ interface BotIpRule {
   exact?: string;
   base?: number;
   bits?: number;
+  ipv6Prefix?: string;
 }
 
 function parseIpv4(value: string): number | null {
@@ -75,7 +198,12 @@ function parseRules(raw: string): BotIpRule[] {
       if (!token) continue;
       if (token.includes('/')) {
         const [baseRaw, bitsRaw] = token.split('/', 2);
-        const base = parseIpv4(baseRaw);
+        if (baseRaw && baseRaw.includes(':')) {
+          const prefix = normalizeRuleIp(baseRaw).replace(/::$/, ':');
+          if (prefix) rules.push({ source: token, ipv6Prefix: prefix });
+          continue;
+        }
+        const base = parseIpv4(baseRaw ?? '');
         const bits = Number(bitsRaw);
         if (base === null || !Number.isInteger(bits) || bits < 0 || bits > 32) continue;
         rules.push({ source: token, base, bits });
@@ -96,6 +224,7 @@ const EXACT_RULES = new Set(
   RULES.filter((r) => r.exact).map((r) => r.exact as string)
 );
 const CIDR_RULES = RULES.filter((r) => r.base !== undefined && r.bits !== undefined);
+const IPV6_PREFIX_RULES = RULES.filter((r) => Boolean(r.ipv6Prefix));
 
 function ipv4InCidr(ipInt: number, base: number, bits: number): boolean {
   if (bits === 0) return true;
@@ -108,6 +237,13 @@ export function matchBotIpRule(ipRaw: string): BotIpRule | null {
   const ip = normalizeRuleIp(ipRaw);
   if (!ip) return null;
   if (EXACT_RULES.has(ip)) return { source: ip, exact: ip };
+
+  if (ip.includes(':')) {
+    for (const rule of IPV6_PREFIX_RULES) {
+      if (rule.ipv6Prefix && ip.startsWith(rule.ipv6Prefix)) return rule;
+    }
+    return null;
+  }
 
   const ipv4 = parseIpv4(ip);
   if (ipv4 === null) return null;

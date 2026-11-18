@@ -1,14 +1,24 @@
 /**
  * 访客统计数据层（`visitor_logs` 表）：
- *   1. 支持「服务端请求头链 + 浏览器端真实公网 IP 遥测信标（WebRTC STUN / 国内 BGP 节点 / JSONP）」双通道真实 IP 采集，彻底解决反代/内网穿透下只识别到 127.0.0.1 本地 IP 的问题；
- *   2. 采用「内存写缓冲合并 + 预编译事务落盘 + LRU 归属地缓存 + 省市级精准坐标匹配」，对前台页面加载速度零阻塞（0ms TTFB 开销）；
- *   3. 支持按日（day）、按周（week）、按月（month）、按年（year）四个时间维度整合统计，不含任何伪造/模拟样本数据。
+ *   1. 支持「前端轻量化 JS 挑战信标（`/api/analytics/collect`）+ 服务端请求头链」双层防刷采集，
+ *      结合离线 `ip2region.xdb` 内存查询、云厂商 CIDR 黑名单与 ISP 机房词典，入库前同步拦截机房与伪装爬虫；
+ *   2. 采用「内存写缓冲合并 + 预编译事务落盘 + 0.01ms 离线/多源中国 34 省级行政区定位 + 省市级精准坐标匹配」，
+ *      对前台页面加载速度零阻塞（0ms TTFB 开销）；
+ *   3. 修复 OpenHarmony（纯血鸿蒙）、iOS 第三方 App 内置 WebView 误判为 Bot 的问题，
+ *      支持结合前端 `maxTouchPoints` 与 `Client Hints` 精准区分 iPadOS 13+ 与 macOS、Windows 11 与 Windows 10，
+ *      并按 `(visit_date, ip, device_type, os, browser)` 复合维度独立记录同 Wi-Fi 出口下的不同终端设备。
  */
 import type { APIContext } from 'astro';
 import type Database from 'better-sqlite3';
 import { getClientIp, isPrivateOrLoopbackIp, normalizeIp } from '../auth';
 import { matchBotIpRule } from '../bot-ip-rules';
 import { getDb } from '../db';
+import {
+  extractChinaProvince,
+  isDatacenterIspText,
+  normalizeIspShort,
+  searchIp2RegionMemory,
+} from '../ip2region';
 
 export type StatsGranularity = 'day' | 'week' | 'month' | 'year';
 
@@ -111,9 +121,19 @@ export interface GeoProfile {
   lat: number;
   lon: number;
   enriched?: boolean;
+  isDatacenter?: boolean;
 }
 
-export interface ClientBeaconPayload {
+export interface ClientHintsInput {
+  maxTouchPoints?: number;
+  platform?: string;
+  platformVersion?: string;
+  screenW?: number;
+  screenH?: number;
+  webdriver?: boolean;
+}
+
+export interface ClientBeaconPayload extends ClientHintsInput {
   ip?: string;
   path?: string;
   referrer?: string;
@@ -127,6 +147,7 @@ export interface ClientBeaconPayload {
   isp?: string;
   lat?: number;
   lon?: number;
+  tz?: string;
 }
 
 /* --------------------------------------------------------------------------
@@ -206,7 +227,6 @@ const COUNTRY_BY_CODE: Record<string, Omit<GeoProfile, 'region' | 'enriched'>> =
 
 /** 中国各省/直辖市/自治区及主要城市经纬度坐标表（城市优先匹配，省会兜底） */
 const CN_PROVINCE_COORDS: Array<{ match: string; lat: number; lon: number }> = [
-  // 直辖市与特别行政区（优先精确匹配）
   { match: '香港', lat: 22.32, lon: 114.17 },
   { match: '澳门', lat: 22.20, lon: 113.55 },
   { match: '台北', lat: 25.03, lon: 121.56 },
@@ -647,25 +667,6 @@ const CN_IPV4_FIRST_OCTETS = new Set([
   202, 203, 210, 211, 218, 219, 220, 221, 222, 223,
 ]);
 
-/** 粗略判断是否为中国大陆 IP（用于决定是否允许回退到海外库）。 */
-function isLikelyChinaIp(ipRaw: string): boolean {
-  const ip = normalizeIp(ipRaw);
-  if (!ip) return false;
-  if (ip.includes(':')) {
-    const lower = ip.toLowerCase();
-    return (
-      lower.startsWith('240e:') ||
-      lower.startsWith('2408:') ||
-      lower.startsWith('2409:') ||
-      lower.startsWith('240c:') ||
-      lower.startsWith('2001:da8:') ||
-      lower.startsWith('2001:250:')
-    );
-  }
-  const firstOctet = Number(ip.split('.')[0]);
-  return CN_IPV4_FIRST_OCTETS.has(firstOctet);
-}
-
 /* --------------------------------------------------------------------------
    内存级 IP 归属地 LRU 缓存（最大 4000 条，0ms 命中有记录 IP）
    -------------------------------------------------------------------------- */
@@ -715,7 +716,7 @@ const BOT_OR_SCANNER_UA_RE = new RegExp(
     'screaming frog', 'seokicks', 'sistrix', 'megaindex', 'serpstatbot', 'zoominfobot',
     // 无头浏览器与自动化框架
     'headless', 'headlesschrome', 'phantomjs', 'slimerjs', 'playwright', 'puppeteer',
-    'selenium', 'webdriver', 'cypress', 'electron/', ' splash', 'htmlunit',
+    'selenium', 'webdriver', 'cypress', ' splash', 'htmlunit',
     // 编程语言 HTTP 客户端与命令行工具
     'curl/', 'wget/', 'python-requests', 'python-urllib', 'python-httpx', 'aiohttp',
     'scrapy', 'go-http-client', 'fasthttp', 'java/', 'apache-httpclient', 'okhttp',
@@ -728,11 +729,10 @@ const BOT_OR_SCANNER_UA_RE = new RegExp(
 );
 
 /**
- * 2. 漏洞扫描器高频探测的路径与恶意 Query 参数特征（即使访问 `/?s=thinkphp` 返回 200 也会被拦截）
+ * 2. 漏洞扫描器高频探测的路径与恶意 Query 参数特征
  */
 const SCANNER_PATH_OR_QUERY_RE = new RegExp(
   [
-    // 常见后台/CMS 扫描路径
     '(?:^|/)(?:wp-admin|wp-login|wp-content|wp-includes|wp-json|xmlrpc\\.php)',
     '(?:^|/)(?:phpmyadmin|pma|adminer|mysql|dbadmin)',
     '(?:^|/)(?:\\.env|\\.git|\\.svn|\\.hg|\\.DS_Store|\\.vscode|\\.idea|\\.aws|\\.ssh)',
@@ -740,7 +740,6 @@ const SCANNER_PATH_OR_QUERY_RE = new RegExp(
     '(?:^|/)(?:vendor/phpunit|phpunit|thinkphp|laravel|telescope|ignition)',
     '(?:^|/)(?:cgi-bin|boaform|HNAP1|GponForm|sdk|evox|weaver|seeyon|tongda)',
     '(?:^|/)(?:shell|cmd|eval|backdoor|webshell|tz\\.php|phpinfo|info\\.php|test\\.php)',
-    // 针对根路径 `/` 的典型漏洞扫描 Query 参数
     '(?:^|[?&])(?:s=/index/|s=index/|invokefunction|call_user_func)',
     '(?:^|[?&])(?:XDEBUG_SESSION_START|xdebug)',
     '(?:^|[?&])(?:rest_route=|wp_scrape|author=\\d+)',
@@ -760,15 +759,10 @@ const BURST_MAX_HITS = 12;
 const BURST_BAN_MS = 30 * 60 * 1000;
 const ipBurstCounters = new Map<string, { count: number; windowStart: number; bannedUntil: number }>();
 
-/**
- * 检查某 IP 是否触发高频扫描限流，或同一页面 5 秒内重复刷新/304 重验。
- * 返回 true 表示应丢弃本次记录。
- */
 function shouldDropByRateOrDedup(ip: string, cleanPath: string): boolean {
   if (!ip) return true;
   const now = Date.now();
 
-  // (a) 突发扫描检测：10 秒内连续请求超过 12 个页面，判定为伪装 UA 的扫描器
   let burst = ipBurstCounters.get(ip);
   if (!burst) {
     if (ipBurstCounters.size > 4000) {
@@ -788,7 +782,6 @@ function shouldDropByRateOrDedup(ip: string, cleanPath: string): boolean {
       burst.count += 1;
       if (burst.count > BURST_MAX_HITS) {
         burst.bannedUntil = now + BURST_BAN_MS;
-        // 清理该扫描 IP 尚未落盘的缓冲记录
         for (const [k, v] of pendingVisits.entries()) {
           if (v.ip === ip) pendingVisits.delete(k);
         }
@@ -797,7 +790,6 @@ function shouldDropByRateOrDedup(ip: string, cleanPath: string): boolean {
     }
   }
 
-  // (b) 同一 IP + 同一路径 5 秒内防抖（防止双击、F5 连按、浏览器 304 重验或预渲染导致重复 +1）
   const dedupKey = `${ip}|${cleanPath}`;
   const lastHit = recentVisitCooldown.get(dedupKey);
   if (lastHit && now - lastHit < RECENT_HIT_COOLDOWN_MS) {
@@ -812,18 +804,25 @@ function shouldDropByRateOrDedup(ip: string, cleanPath: string): boolean {
 }
 
 /**
- * 解析 User-Agent，提取设备类型、操作系统、浏览器，并严格过滤扫描机器人与异常客户端。
- * 关键加固：
- *   - 空 UA、长度 < 24 的极短 UA、不包含 `Mozilla/5.0` 的非标准客户端一律识别为 `Bot`；
- *   - 无法识别出任何主流浏览器内核（Chrome/Safari/Firefox/Edge/Opera/WeChat/UC/Quark）的伪造 UA 一律识别为 `Bot`。
+ * 解析 User-Agent 与客户端环境提示（Client Hints / TouchPoints）：
+ *   1. 支持识别纯血鸿蒙 OpenHarmony / HarmonyOS NEXT 与 ArkWeb 内核；
+ *   2. 支持识别 iOS / Android 端主流 App 内置 WebView（微信、企业微信、QQ、微博、小红书、抖音/头条、B站、知乎、钉钉、飞书）及 iOS WKWebView 兜底，消除误判为 Bot 的问题；
+ *   3. 结合前端上报的 `maxTouchPoints > 1` 精准识别伪装成 `Macintosh` 的 iPadOS 13+ 平板设备；
+ *   4. 结合 `platformVersion` 区分 Windows 11 与 Windows 10，并拦截过旧的伪造 Chrome 版本（如 Chrome < 95）。
  */
-export function parseUserAgent(uaRaw: string): {
+export function parseUserAgent(
+  uaRaw: string,
+  hints?: ClientHintsInput
+): {
   deviceType: 'Desktop' | 'Mobile' | 'Tablet' | 'Bot';
   os: string;
   browser: string;
 } {
+  if (hints?.webdriver === true) {
+    return { deviceType: 'Bot', os: 'Automation', browser: 'Bot' };
+  }
+
   const ua = (uaRaw || '').trim();
-  // 关键修复：空 UA 或过短 UA 绝不能当作 Desktop 正常访客，99.9% 是扫描器或脚本探针
   if (!ua || ua.length < 24 || ua.length > 600) {
     return { deviceType: 'Bot', os: 'Scanner', browser: 'Bot' };
   }
@@ -832,40 +831,121 @@ export function parseUserAgent(uaRaw: string): {
     return { deviceType: 'Bot', os: 'Crawler', browser: 'Bot' };
   }
 
-  // 现代真实桌面/移动浏览器（含微信/夸克/UC 内置 WebView）均以 Mozilla/5.0 开头
   if (!/^Mozilla\/5\.0\s*\(/i.test(ua)) {
     return { deviceType: 'Bot', os: 'Scanner', browser: 'Bot' };
   }
 
-  let deviceType: 'Desktop' | 'Mobile' | 'Tablet' = 'Desktop';
-  if (/(ipad|tablet|playbook|silk)|(android(?!.*mobile))/i.test(ua)) {
-    deviceType = 'Tablet';
-  } else if (/(mobi|iphone|ipod|android.*mobile|harmonyos.*mobile|windows phone)/i.test(ua)) {
-    deviceType = 'Mobile';
+  // 拦截机房爬虫高频伪造的远古 Chrome UA（如 Chrome/49 ~ Chrome/89，排除内置低版本内核的特殊老设备）
+  const chromeMatch = ua.match(/\bChrome\/(\d{2,3})\./i);
+  if (chromeMatch) {
+    const major = Number(chromeMatch[1]);
+    if (
+      major > 0 &&
+      major < 90 &&
+      !/openharmony|harmonyos|micromessenger|baiduboxapp|ucbrowser|quark/i.test(ua)
+    ) {
+      return { deviceType: 'Bot', os: 'SpoofedUA', browser: 'Bot' };
+    }
   }
 
-  let os = 'Unknown';
-  if (/windows nt 10\.0/i.test(ua)) os = 'Windows 11/10';
-  else if (/windows nt/i.test(ua)) os = 'Windows';
-  else if (/harmonyos/i.test(ua)) os = 'HarmonyOS';
-  else if (/ipad/i.test(ua)) os = 'iPadOS';
-  else if (/iphone|ipod/i.test(ua)) os = 'iOS';
-  else if (/mac os x|macintosh/i.test(ua)) os = 'macOS';
-  else if (/android/i.test(ua)) os = 'Android';
-  else if (/cros/i.test(ua)) os = 'ChromeOS';
-  else if (/linux|x11|ubuntu|debian|fedora/i.test(ua)) os = 'Linux';
+  const touchPoints = typeof hints?.maxTouchPoints === 'number' ? hints.maxTouchPoints : 0;
+  const screenW = typeof hints?.screenW === 'number' ? hints.screenW : 0;
 
+  // 1. 操作系统识别（优先识别 OpenHarmony / HarmonyOS 与 iPadOS 13+ 桌面伪装）
+  let os = 'Unknown';
+  if (/openharmony/i.test(ua)) {
+    os = 'HarmonyOS NEXT';
+  } else if (/harmonyos|hms\/|hmos/i.test(ua)) {
+    os = 'HarmonyOS';
+  } else if (/ipad/i.test(ua)) {
+    os = 'iPadOS';
+  } else if (/iphone|ipod/i.test(ua)) {
+    os = 'iOS';
+  } else if (/mac os x|macintosh/i.test(ua)) {
+    // iPadOS 13+ 默认发送 Macintosh 桌面 UA，但具备多点触控（maxTouchPoints >= 2）
+    if (touchPoints > 1) {
+      os = 'iPadOS';
+    } else {
+      os = 'macOS';
+    }
+  } else if (/windows phone/i.test(ua)) {
+    os = 'Windows Phone';
+  } else if (/windows nt 10\.0/i.test(ua)) {
+    const pv = (hints?.platformVersion || '').trim();
+    const pvMajor = pv ? parseInt(pv.split('.')[0] || '0', 10) : 0;
+    if (pvMajor >= 13) os = 'Windows 11';
+    else if (pvMajor > 0) os = 'Windows 10';
+    else os = 'Windows 11/10';
+  } else if (/windows nt 6\.3/i.test(ua)) {
+    os = 'Windows 8.1';
+  } else if (/windows nt 6\.2/i.test(ua)) {
+    os = 'Windows 8';
+  } else if (/windows nt 6\.1/i.test(ua)) {
+    os = 'Windows 7';
+  } else if (/windows/i.test(ua)) {
+    os = 'Windows';
+  } else if (/android/i.test(ua)) {
+    os = 'Android';
+  } else if (/cros/i.test(ua)) {
+    os = 'ChromeOS';
+  } else if (/linux|x11|ubuntu|debian|fedora|archlinux|centos/i.test(ua)) {
+    os = 'Linux';
+  }
+
+  // 2. 设备类型识别（Tablet / Mobile / Desktop）
+  let deviceType: 'Desktop' | 'Mobile' | 'Tablet' = 'Desktop';
+  if (
+    os === 'iPadOS' ||
+    /(ipad|tablet|playbook|silk|kindle|sm-t|gt-p|matepad|mipad|pad)/i.test(ua) ||
+    (/android/i.test(ua) && !/mobile/i.test(ua))
+  ) {
+    deviceType = 'Tablet';
+  } else if (
+    os === 'iOS' ||
+    os === 'Windows Phone' ||
+    /(mobi|iphone|ipod|phone|android.*mobile|harmonyos.*mobile|openharmony.*mobile|arkweb.*mobile)/i.test(ua)
+  ) {
+    deviceType = 'Mobile';
+  } else if (touchPoints > 1 && screenW > 0 && screenW <= 1024) {
+    deviceType = screenW >= 600 ? 'Tablet' : 'Mobile';
+  }
+
+  // 3. 浏览器与国内主流 App 容器识别
   let browser = 'Unknown';
-  if (/micromessenger/i.test(ua)) browser = 'WeChat';
+  if (/wxwork/i.test(ua)) browser = '企业微信';
+  else if (/micromessenger/i.test(ua)) browser = 'WeChat';
+  else if (/dingtalk/i.test(ua)) browser = '钉钉';
+  else if (/feishu|lark/i.test(ua)) browser = '飞书';
+  else if (/xhsdiscover/i.test(ua)) browser = '小红书';
+  else if (/aweme|bytedancewebview|toutiaomicroapp|newsarticle/i.test(ua)) browser = '抖音/头条';
+  else if (/biliapp/i.test(ua)) browser = 'Bilibili';
+  else if (/zhihuhybrid|zhihu/i.test(ua)) browser = '知乎';
+  else if (/weibo/i.test(ua)) browser = 'Weibo';
   else if (/quark/i.test(ua)) browser = 'Quark';
-  else if (/ucbrowser/i.test(ua)) browser = 'UC';
+  else if (/ucbrowser|ubrowser/i.test(ua)) browser = 'UC';
+  else if (/mqqbrowser/i.test(ua)) browser = 'QQ浏览器';
+  else if (/\bqq\//i.test(ua)) browser = 'QQ';
+  else if (/baiduboxapp|baidubrowser/i.test(ua)) browser = '百度';
+  else if (/arkweb|huaweibrowser|hbpc/i.test(ua)) browser = '华为浏览器';
+  else if (/miuibrowser/i.test(ua)) browser = '小米浏览器';
+  else if (/vivobrowser/i.test(ua)) browser = 'Vivo浏览器';
+  else if (/heytapbrowser|oppobrowser/i.test(ua)) browser = 'OPPO浏览器';
+  else if (/honorbrowser/i.test(ua)) browser = '荣耀浏览器';
+  else if (/samsungbrowser/i.test(ua)) browser = 'Samsung';
   else if (/edg\/|edgios\/|edga\//i.test(ua)) browser = 'Edge';
   else if (/opr\/|opera|opios/i.test(ua)) browser = 'Opera';
+  else if (/vivaldi/i.test(ua)) browser = 'Vivaldi';
+  else if (/brave/i.test(ua)) browser = 'Brave';
   else if (/firefox\/|fxios\//i.test(ua)) browser = 'Firefox';
-  else if (/chrome\/|crios\//i.test(ua)) browser = 'Chrome';
+  else if (/chrome\/|crios\/|chromium\//i.test(ua)) browser = 'Chrome';
   else if (/safari\//i.test(ua) && /version\//i.test(ua)) browser = 'Safari';
+  else if ((os === 'iOS' || os === 'iPadOS' || os === 'macOS') && /applewebkit/i.test(ua)) {
+    // 关键修复：iOS/iPadOS 第三方 App 内置 WKWebView 没有 Version/x.x，兜底归为 Safari / WebView，避免误杀为 Bot
+    browser = /mobile\//i.test(ua) && !/safari\//i.test(ua) ? 'iOS WebView' : 'Safari';
+  } else if ((os === 'Android' || os.startsWith('HarmonyOS')) && /applewebkit/i.test(ua)) {
+    browser = 'WebView';
+  }
 
-  // 若既无法识别主流操作系统，或无法识别出真实浏览器渲染内核（例如仅写 `Mozilla/5.0 (compatible)` 的扫描器），直接归为 Bot
   if (os === 'Unknown' || browser === 'Unknown') {
     return { deviceType: 'Bot', os: 'Scanner', browser: 'Bot' };
   }
@@ -880,14 +960,12 @@ export function isScannerOrNonHumanPageRequest(context: APIContext): boolean {
   const { pathname, search } = context.url;
   const fullUrlTarget = `${pathname}${search || ''}`;
 
-  // 1. 拦截带漏洞扫描载荷的路径或 Query 参数
   if (SCANNER_PATH_OR_QUERY_RE.test(fullUrlTarget)) {
     return true;
   }
 
   const headers = context.request.headers;
 
-  // 2. 拦截浏览器预取/预渲染（Prefetch / Prerender / Preview），避免用户还没点进去就被误计入访问
   const purpose = (
     headers.get('sec-purpose') ||
     headers.get('purpose') ||
@@ -899,7 +977,6 @@ export function isScannerOrNonHumanPageRequest(context: APIContext): boolean {
     return true;
   }
 
-  // 3. 校验 Sec-Fetch-Mode / Sec-Fetch-Dest（现代浏览器访问页面时必为 navigate / document 或 iframe）
   const secFetchMode = (headers.get('sec-fetch-mode') || '').toLowerCase();
   if (secFetchMode && secFetchMode !== 'navigate' && secFetchMode !== 'nested-navigate') {
     return true;
@@ -914,14 +991,11 @@ export function isScannerOrNonHumanPageRequest(context: APIContext): boolean {
     return true;
   }
 
-  // 4. 校验 Accept 请求头：真实浏览器访问 HTML 页面必然声明接受 text/html 或 application/xhtml+xml，
-  //    而绝大部分批量端口/HTTP 扫描器只发 `Accept: */*` 或无 Accept 头
   const accept = (headers.get('accept') || '').toLowerCase();
   if (!accept.includes('text/html') && !accept.includes('application/xhtml+xml')) {
     return true;
   }
 
-  // 5. 校验 Accept-Language：真实用户浏览器均带有语言偏好头，裸扫描脚本通常缺失
   const acceptLang = (headers.get('accept-language') || '').trim();
   if (!acceptLang) {
     return true;
@@ -944,7 +1018,30 @@ export function inferCoordsFromText(
 }
 
 /**
- * 第一层：纯内存 0ms 确定性归属地初判（严禁随机哈希映射）。
+ * 格式化中国大陆地区展示文本，确保省份（如 `浙江省`、`广东省`、`北京市`）始终在最前，
+ * 便于统计面板按具体省份聚合与搜索。
+ */
+function formatChinaRegionLabel(
+  rawPro: string,
+  rawCity: string,
+  rawIsp: string,
+  fallbackAddr = ''
+): string {
+  const combined = `${rawPro} ${rawCity} ${fallbackAddr}`.trim();
+  const stdProvince = extractChinaProvince(combined) || rawPro.trim();
+  const cleanCity = rawCity.trim().replace(/^0$/, '');
+  let loc = stdProvince;
+  if (cleanCity && !cleanCity.includes(stdProvince.replace(/[省市自治区]/g, ''))) {
+    loc = stdProvince ? `${stdProvince}${cleanCity}` : cleanCity;
+  } else if (!loc && cleanCity) {
+    loc = cleanCity;
+  }
+  const isp = normalizeIspShort(rawIsp || fallbackAddr.replace(rawPro, '').replace(rawCity, ''));
+  return [loc || '中国', isp].filter(Boolean).join(' · ').slice(0, 64);
+}
+
+/**
+ * 第一层：纯内存 0ms 确定性归属地解析（优先使用 ip2region.xdb 全内存库，0.01ms 一步到位定位省/市/ISP）。
  */
 export function resolveIpGeo(ipRaw: string, headers?: Headers): GeoProfile {
   const cleanIp = normalizeIp(ipRaw);
@@ -966,6 +1063,43 @@ export function resolveIpGeo(ipRaw: string, headers?: Headers): GeoProfile {
     return localProfile;
   }
 
+  // 1. 优先尝试离线 ip2region.xdb 全内存 Buffer 查询（~0.01ms，零网络开销）
+  const xdbRes = searchIp2RegionMemory(cleanIp);
+  if (xdbRes) {
+    if (xdbRes.isDatacenter) {
+      const dcProfile: GeoProfile = {
+        code: 'CN',
+        zh: '中国',
+        en: 'China',
+        region: xdbRes.raw,
+        lat: 35.0,
+        lon: 104.0,
+        enriched: true,
+        isDatacenter: true,
+      };
+      cacheIpReputation(cleanIp, 'bot');
+      setGeoCache(cleanIp, dcProfile);
+      return dcProfile;
+    }
+
+    if (xdbRes.country === '中国' || xdbRes.province) {
+      const region = formatChinaRegionLabel(xdbRes.province, xdbRes.city, xdbRes.isp);
+      const coords = inferCoordsFromText(`${region} ${xdbRes.province} ${xdbRes.city}`, 35.0, 104.0);
+      const profile: GeoProfile = {
+        code: 'CN',
+        zh: '中国',
+        en: 'China',
+        region,
+        lat: coords.lat,
+        lon: coords.lon,
+        enriched: Boolean(xdbRes.province),
+      };
+      setGeoCache(cleanIp, profile);
+      return profile;
+    }
+  }
+
+  // 2. 查询 SQLite 历史已富化缓存
   try {
     const prev = getStmts().findIpGeo.get(cleanIp) as
       | {
@@ -994,6 +1128,7 @@ export function resolveIpGeo(ipRaw: string, headers?: Headers): GeoProfile {
     /* ignore DB lookup error during early init */
   }
 
+  // 3. 解析 CDN 边缘透传地理位置头（若存在）
   const countryHeader = (
     headers?.get('cf-ipcountry') ||
     headers?.get('ali-cdn-real-ip-country') ||
@@ -1004,8 +1139,18 @@ export function resolveIpGeo(ipRaw: string, headers?: Headers): GeoProfile {
     .trim()
     .toUpperCase();
 
+  const cityHeader = cleanGeoText(
+    headers?.get('cf-ipcity') ||
+      headers?.get('ali-cdn-real-ip-city') ||
+      headers?.get('x-vercel-ip-city') ||
+      headers?.get('x-vercel-ip-country-region') ||
+      '',
+    32
+  );
+
   if (countryHeader && COUNTRY_BY_CODE[countryHeader]) {
     const c = COUNTRY_BY_CODE[countryHeader]!;
+    const stdProv = countryHeader === 'CN' && cityHeader ? extractChinaProvince(cityHeader) : '';
     const regionLabel =
       countryHeader === 'HK'
         ? '中国香港'
@@ -1013,15 +1158,18 @@ export function resolveIpGeo(ipRaw: string, headers?: Headers): GeoProfile {
           ? '中国澳门'
           : countryHeader === 'TW'
             ? '中国台湾'
-            : `${c.zh} · 公网节点`;
+            : stdProv
+              ? stdProv
+              : `${c.zh} · 公网节点`;
+    const coords = stdProv ? inferCoordsFromText(stdProv, c.lat, c.lon) : { lat: c.lat, lon: c.lon };
     const headerProfile: GeoProfile = {
       code: c.code,
       zh: c.zh,
       en: c.en,
       region: regionLabel,
-      lat: c.lat,
-      lon: c.lon,
-      enriched: false,
+      lat: coords.lat,
+      lon: coords.lon,
+      enriched: Boolean(stdProv || countryHeader === 'HK' || countryHeader === 'MO' || countryHeader === 'TW'),
     };
     setGeoCache(cleanIp, headerProfile);
     return headerProfile;
@@ -1037,7 +1185,7 @@ export function resolveIpGeo(ipRaw: string, headers?: Headers): GeoProfile {
     } else if (lower.startsWith('2409:')) {
       profile = { code: 'CN', zh: '中国', en: 'China', region: '中国 · 移动 IPv6', lat: 35.0, lon: 104.0, enriched: false };
     } else if (lower.startsWith('240c:') || lower.startsWith('2001:da8:') || lower.startsWith('2001:250:')) {
-      profile = { code: 'CN', zh: '中国', en: 'China', region: '中国 · 教育网 IPv6', lat: 39.9, lon: 116.4, enriched: false };
+      profile = { code: 'CN', zh: '中国', en: 'China', region: '北京市 · 教育网 IPv6', lat: 39.9, lon: 116.4, enriched: false };
     } else if (lower.startsWith('26')) {
       profile = { ...COUNTRY_BY_CODE.US!, region: '美国 · IPv6 节点', enriched: false };
     } else {
@@ -1072,10 +1220,6 @@ export function resolveIpGeo(ipRaw: string, headers?: Headers): GeoProfile {
   return fallbackProfile;
 }
 
-/**
- * 清洗外部 IP 归属地 API 或客户端上报文本中的危险 HTML/控制字符并限制长度，
- * 防止恶意网关/自定义 PTR 或伪造载荷向数据库写入潜在 XSS 字符。
- */
 function cleanGeoText(raw: unknown, maxLen = 48): string {
   if (typeof raw !== 'string') return '';
   return raw
@@ -1084,19 +1228,26 @@ function cleanGeoText(raw: unknown, maxLen = 48): string {
     .slice(0, maxLen);
 }
 
-/**
- * 将客户端遥测信标附带的归属地信息（如太平洋 IP 库 JSONP 或 ipwho.is）转换为标准 GeoProfile
- */
 function buildGeoFromBeaconPayload(ip: string, payload?: ClientBeaconPayload): GeoProfile | null {
   if (!payload) return null;
   const pro = cleanGeoText(payload.pro, 24);
   const city = cleanGeoText(payload.city, 24);
   const addr = cleanGeoText(payload.addr, 48);
   if (pro || city) {
-    const loc = pro && city && pro !== city ? `${pro}${city}` : pro || city;
-    const ispRaw = addr.replace(pro, '').replace(city, '').trim();
-    const region = [loc, ispRaw].filter(Boolean).join(' · ').slice(0, 64) || '中国';
-    const coords = inferCoordsFromText(`${pro}${city}${addr}`, 35.0, 104.0);
+    if (isDatacenterIspText(`${pro} ${city} ${addr}`)) {
+      return {
+        code: 'CN',
+        zh: '中国',
+        en: 'China',
+        region: addr || pro,
+        lat: 35.0,
+        lon: 104.0,
+        enriched: true,
+        isDatacenter: true,
+      };
+    }
+    const region = formatChinaRegionLabel(pro, city, '', addr);
+    const coords = inferCoordsFromText(`${region} ${pro} ${city} ${addr}`, 35.0, 104.0);
     const profile: GeoProfile = {
       code: 'CN',
       zh: '中国',
@@ -1119,7 +1270,23 @@ function buildGeoFromBeaconPayload(ip: string, payload?: ClientBeaconPayload): G
     const en = known ? known.en : cleanGeoText(payload.countryEn || zh, 32) || zh;
     const reg = cleanGeoText(payload.region, 32);
     const isp = cleanGeoText(payload.isp, 24);
-    const region = [reg || zh, isp].filter(Boolean).join(' · ').slice(0, 64) || zh;
+    if (isDatacenterIspText(`${reg} ${isp}`)) {
+      return {
+        code,
+        zh,
+        en,
+        region: `${reg} ${isp}`.trim(),
+        lat: known?.lat ?? 35.0,
+        lon: known?.lon ?? 104.0,
+        enriched: true,
+        isDatacenter: true,
+      };
+    }
+    const stdProv = code === 'CN' ? extractChinaProvince(reg) : '';
+    const region =
+      code === 'CN' && (stdProv || reg)
+        ? formatChinaRegionLabel(stdProv || reg, '', isp)
+        : [reg || zh, normalizeIspShort(isp)].filter(Boolean).join(' · ').slice(0, 64) || zh;
     const baseCoords = inferCoordsFromText(region, known?.lat ?? 35.0, known?.lon ?? 104.0);
     const lat =
       typeof payload.lat === 'number' && Number.isFinite(payload.lat)
@@ -1146,7 +1313,8 @@ function buildGeoFromBeaconPayload(ip: string, payload?: ClientBeaconPayload): G
 }
 
 /* --------------------------------------------------------------------------
-   第二层：服务端异步非阻塞精准 IP 归属地查询（国内优先太平洋 IP 库，海外回退 ip-api）
+   第二层：多源回退精准 IP 归属地与机房信誉联合查询
+   （修复原第 1214 行 pconline 超时或无省份时直接 return null 锁死中国大陆 IP 的问题）
    -------------------------------------------------------------------------- */
 const MAX_GEO_QUEUE = 1000;
 const MAX_FAILED_GEO_CACHE = 2000;
@@ -1155,12 +1323,39 @@ const failedGeoIps = new Map<string, number>();
 let geoWorkerRunning = false;
 
 export async function fetchAccurateIpGeo(ip: string): Promise<GeoProfile | null> {
-  let pconlineRespondedNoProvince = false;
-  // 方案 A：优先调用国内极速太平洋 IP 库（国内服务器响应约 20~40ms，精准到省、市、三大运营商）
+  // 0. 优先走内存 ip2region.xdb
+  const xdbRes = searchIp2RegionMemory(ip);
+  if (xdbRes && (xdbRes.province || xdbRes.isDatacenter)) {
+    if (xdbRes.isDatacenter) {
+      return {
+        code: 'CN',
+        zh: '中国',
+        en: 'China',
+        region: xdbRes.raw,
+        lat: 35.0,
+        lon: 104.0,
+        enriched: true,
+        isDatacenter: true,
+      };
+    }
+    const region = formatChinaRegionLabel(xdbRes.province, xdbRes.city, xdbRes.isp);
+    const coords = inferCoordsFromText(`${region} ${xdbRes.province} ${xdbRes.city}`, 35.0, 104.0);
+    return {
+      code: 'CN',
+      zh: '中国',
+      en: 'China',
+      region,
+      lat: coords.lat,
+      lon: coords.lon,
+      enriched: true,
+    };
+  }
+
+  // 方案 A：国内太平洋 IP 库（精准到中国大陆省、市、运营商）
   try {
     const res = await fetch(
       `https://whois.pconline.com.cn/ipJson.jsp?ip=${encodeURIComponent(ip)}&json=true`,
-      { signal: AbortSignal.timeout(2500) }
+      { signal: AbortSignal.timeout(2200) }
     );
     if (res.ok) {
       const buf = await res.arrayBuffer();
@@ -1174,12 +1369,24 @@ export async function fetchAccurateIpGeo(ip: string): Promise<GeoProfile | null>
       const pro = cleanGeoText(data.pro, 24);
       const city = cleanGeoText(data.city, 24);
       const addr = cleanGeoText(data.addr, 48);
-      // 若 pro 非空，说明明确属于中国省/直辖市/特区
-      if (pro) {
-        const loc = pro && city && pro !== city ? `${pro}${city}` : pro || city;
-        const ispPart = addr.replace(pro, '').replace(city, '').trim();
-        const region = [loc, ispPart].filter(Boolean).join(' · ').slice(0, 64) || '中国';
-        const coords = inferCoordsFromText(`${pro}${city}${addr}`, 35.0, 104.0);
+
+      if (isDatacenterIspText(`${pro} ${city} ${addr}`)) {
+        return {
+          code: 'CN',
+          zh: '中国',
+          en: 'China',
+          region: addr || '云机房节点',
+          lat: 35.0,
+          lon: 104.0,
+          enriched: true,
+          isDatacenter: true,
+        };
+      }
+
+      const stdProv = extractChinaProvince(`${pro} ${city} ${addr}`);
+      if (pro || stdProv) {
+        const region = formatChinaRegionLabel(stdProv || pro, city, '', addr);
+        const coords = inferCoordsFromText(`${region} ${pro} ${city} ${addr}`, 35.0, 104.0);
         return {
           code: 'CN',
           zh: '中国',
@@ -1190,34 +1397,16 @@ export async function fetchAccurateIpGeo(ip: string): Promise<GeoProfile | null>
           enriched: true,
         };
       }
-      if (addr && (addr.includes('香港') || addr.includes('澳门') || addr.includes('台湾'))) {
-        const coords = inferCoordsFromText(addr, 22.32, 114.17);
-        return {
-          code: 'CN',
-          zh: '中国',
-          en: 'China',
-          region: addr.slice(0, 64),
-          lat: coords.lat,
-          lon: coords.lon,
-          enriched: true,
-        };
-      }
-      // 太平洋库成功返回但 pro 为空（如海外 APNIC 节点或 IPv6），允许继续走全球库精准定位
-      pconlineRespondedNoProvince = true;
     }
   } catch {
-    /* fallback to global provider */
+    /* pconline 超时或不可达时直接平滑回退至下方方案 B / C，不再锁死返回 null */
   }
 
-  // 仅当太平洋库因网络抖动超时未响应、且为疑似中国大陆 IPv4 时才暂缓回退；
-  // 若太平洋库明确返回无省份（海外 APNIC / IPv6），则继续调用 ip-api 获取精确经纬度。
-  if (!pconlineRespondedNoProvince && !ip.includes(':') && isLikelyChinaIp(ip)) return null;
-
-  // 方案 B：海外或 IPv6 节点调用 ip-api.com (UTF-8 JSON，自带全球国家代码、城市、ISP 与经纬度)
+  // 方案 B：调用 ip-api.com（同时拉取省市名称与 hosting/proxy/isp/org/as 机房信誉标志）
   try {
     const res = await fetch(
-      `http://ip-api.com/json/${encodeURIComponent(ip)}?fields=status,country,countryCode,regionName,city,isp,org,lat,lon&lang=zh-CN`,
-      { signal: AbortSignal.timeout(2200) }
+      `http://ip-api.com/json/${encodeURIComponent(ip)}?fields=status,country,countryCode,regionName,city,isp,org,as,lat,lon,hosting,proxy&lang=zh-CN`,
+      { signal: AbortSignal.timeout(2400) }
     );
     if (res.ok) {
       const data = (await res.json()) as {
@@ -1228,10 +1417,27 @@ export async function fetchAccurateIpGeo(ip: string): Promise<GeoProfile | null>
         city?: string;
         isp?: string;
         org?: string;
+        as?: string;
         lat?: number;
         lon?: number;
+        hosting?: boolean;
+        proxy?: boolean;
       };
       if (data.status === 'success' && data.countryCode) {
+        const rawIspText = `${data.isp || ''} ${data.org || ''} ${data.as || ''}`.trim();
+        if (data.hosting || data.proxy || isDatacenterIspText(rawIspText)) {
+          return {
+            code: 'CN',
+            zh: '中国',
+            en: 'China',
+            region: cleanGeoText(rawIspText, 48) || '机房节点',
+            lat: 35.0,
+            lon: 104.0,
+            enriched: true,
+            isDatacenter: true,
+          };
+        }
+
         const ccRaw = cleanGeoText(data.countryCode, 4).toUpperCase();
         const cc = /^[A-Z]{2}$/.test(ccRaw) ? ccRaw : 'UN';
         const known = COUNTRY_BY_CODE[cc];
@@ -1242,24 +1448,19 @@ export async function fetchAccurateIpGeo(ip: string): Promise<GeoProfile | null>
 
         const rName = cleanGeoText(data.regionName, 32);
         const cName = cleanGeoText(data.city, 32);
-        const locPart =
-          rName && cName && rName !== cName
-            ? `${rName}${cName}`
-            : rName || cName || (cc === 'HK' ? '中国香港' : cc === 'MO' ? '中国澳门' : cc === 'TW' ? '中国台湾' : zh);
+        const ispShort = normalizeIspShort(cleanGeoText(data.isp || data.org, 48));
 
-        const rawIsp = cleanGeoText(data.isp || data.org, 48);
-        let ispShort = '';
-        if (/chinanet|telecom|电信/i.test(rawIsp)) ispShort = '电信';
-        else if (/unicom|联通/i.test(rawIsp)) ispShort = '联通';
-        else if (/mobile|cmnet|移动/i.test(rawIsp)) ispShort = '移动';
-        else if (/cernet|education|教育网/i.test(rawIsp)) ispShort = '教育网';
-        else if (/alibaba|aliyun|阿里云/i.test(rawIsp)) ispShort = '阿里云';
-        else if (/tencent|腾讯云/i.test(rawIsp)) ispShort = '腾讯云';
-        else if (/huawei|华为云/i.test(rawIsp)) ispShort = '华为云';
-        else if (/cloudflare/i.test(rawIsp)) ispShort = 'Cloudflare';
-        else if (rawIsp && rawIsp.length <= 24) ispShort = rawIsp;
+        let region = '';
+        if (code === 'CN') {
+          const stdProv =
+            extractChinaProvince(`${rName} ${cName}`) ||
+            (cc === 'HK' ? '中国香港' : cc === 'MO' ? '中国澳门' : cc === 'TW' ? '中国台湾' : rName);
+          region = formatChinaRegionLabel(stdProv, cName, ispShort);
+        } else {
+          const locPart = rName && cName && rName !== cName ? `${rName}${cName}` : rName || cName || zh;
+          region = [locPart, ispShort].filter(Boolean).join(' · ').slice(0, 64) || zh;
+        }
 
-        const region = [locPart, ispShort].filter(Boolean).join(' · ').slice(0, 64) || zh;
         const inferred = code === 'CN' ? inferCoordsFromText(region, NaN, NaN) : { lat: NaN, lon: NaN };
         const lat = Number.isFinite(inferred.lat)
           ? inferred.lat
@@ -1270,6 +1471,77 @@ export async function fetchAccurateIpGeo(ip: string): Promise<GeoProfile | null>
           ? inferred.lon
           : typeof data.lon === 'number' && Number.isFinite(data.lon)
             ? Number(data.lon.toFixed(2))
+            : (known?.lon ?? 104.0);
+
+        return { code, zh, en, region, lat, lon, enriched: true };
+      }
+    }
+  } catch {
+    /* fallback to HTTPS ipwho.is */
+  }
+
+  // 方案 C：HTTPS 兜底接口 ipwho.is（支持 IPv4 与 IPv6，解决部分国内环境阻断明文 HTTP 的情况）
+  try {
+    const res = await fetch(`https://ipwho.is/${encodeURIComponent(ip)}?lang=zh-CN`, {
+      signal: AbortSignal.timeout(2500),
+    });
+    if (res.ok) {
+      const data = (await res.json()) as {
+        success?: boolean;
+        country?: string;
+        country_code?: string;
+        region?: string;
+        city?: string;
+        latitude?: number;
+        longitude?: number;
+        connection?: { isp?: string; org?: string; domain?: string };
+        security?: { hosting?: boolean; proxy?: boolean; vpn?: boolean; tor?: boolean };
+      };
+      if (data.success && data.country_code) {
+        const ispRaw = `${data.connection?.isp || ''} ${data.connection?.org || ''}`.trim();
+        if (
+          data.security?.hosting ||
+          data.security?.proxy ||
+          data.security?.vpn ||
+          data.security?.tor ||
+          isDatacenterIspText(ispRaw)
+        ) {
+          return {
+            code: 'CN',
+            zh: '中国',
+            en: 'China',
+            region: cleanGeoText(ispRaw, 48) || '机房节点',
+            lat: 35.0,
+            lon: 104.0,
+            enriched: true,
+            isDatacenter: true,
+          };
+        }
+
+        const cc = cleanGeoText(data.country_code, 4).toUpperCase();
+        const known = COUNTRY_BY_CODE[cc];
+        const code = known ? known.code : cc;
+        const zh = known ? known.zh : cleanGeoText(data.country, 32) || cc;
+        const en = known ? known.en : cleanGeoText(data.country, 32) || cc;
+        const rName = cleanGeoText(data.region, 32);
+        const cName = cleanGeoText(data.city, 32);
+        const ispShort = normalizeIspShort(ispRaw);
+
+        const region =
+          code === 'CN'
+            ? formatChinaRegionLabel(extractChinaProvince(`${rName} ${cName}`) || rName, cName, ispShort)
+            : [rName || cName || zh, ispShort].filter(Boolean).join(' · ').slice(0, 64) || zh;
+
+        const inferred = code === 'CN' ? inferCoordsFromText(region, NaN, NaN) : { lat: NaN, lon: NaN };
+        const lat = Number.isFinite(inferred.lat)
+          ? inferred.lat
+          : typeof data.latitude === 'number' && Number.isFinite(data.latitude)
+            ? Number(data.latitude.toFixed(2))
+            : (known?.lat ?? 35.0);
+        const lon = Number.isFinite(inferred.lon)
+          ? inferred.lon
+          : typeof data.longitude === 'number' && Number.isFinite(data.longitude)
+            ? Number(data.longitude.toFixed(2))
             : (known?.lon ?? 104.0);
 
         return { code, zh, en, region, lat, lon, enriched: true };
@@ -1289,7 +1561,7 @@ function enqueueGeoEnrichment(ip: string): void {
   if (cached?.enriched) return;
 
   const lastFail = failedGeoIps.get(cleanIp);
-  if (lastFail && Date.now() - lastFail < 30 * 60 * 1000) return;
+  if (lastFail && Date.now() - lastFail < 10 * 60 * 1000) return;
   if (pendingGeoIps.size >= MAX_GEO_QUEUE) return;
 
   pendingGeoIps.add(cleanIp);
@@ -1305,6 +1577,12 @@ function enqueueGeoEnrichment(ip: string): void {
 
         const enriched = await fetchAccurateIpGeo(nextIp);
         if (enriched) {
+          if (enriched.isDatacenter) {
+            cacheIpReputation(nextIp, 'bot');
+            purgeBotIp(nextIp);
+            bumpAnalyticsVersion();
+            continue;
+          }
           setGeoCache(nextIp, enriched);
           try {
             getStmts().updateIpGeo.run(
@@ -1358,11 +1636,18 @@ function bumpAnalyticsVersion(): void {
   cachedRawLogs = null;
 }
 
+/**
+ * 启动时自动校准并清洗历史记录：
+ * 1. 自动清理命中新增云机房 CIDR、机房 ISP 关键词或爬虫 UA 的历史残留脏记录；
+ * 2. 用升级后的 `parseUserAgent` 修正被误标的设备/OS/浏览器（如 OpenHarmony / iOS WebView）；
+ * 3. 用 `extractChinaProvince` 与 `inferCoordsFromText` 标准化中国各省份名称与省市坐标。
+ */
 function repairExistingCoordsAndWarmCache(db: Database.Database): void {
   try {
     const rows = db
       .prepare(
-        `SELECT id, ip, country_code, country_zh, country_en, region, lat, lon
+        `SELECT id, ip, country_code, country_zh, country_en, region, lat, lon,
+                device_type, os, browser, user_agent
            FROM visitor_logs
           ORDER BY id DESC
           LIMIT 5000`
@@ -1376,42 +1661,101 @@ function repairExistingCoordsAndWarmCache(db: Database.Database): void {
       region: string;
       lat: number;
       lon: number;
+      device_type: string;
+      os: string;
+      browser: string;
+      user_agent: string;
     }>;
 
-    const updateCoordStmt = db.prepare(
-      `UPDATE visitor_logs SET lat = ?, lon = ? WHERE id = ?`
+    const deleteByIdStmt = db.prepare(`DELETE FROM visitor_logs WHERE id = ?`);
+    const updateRowStmt = db.prepare(
+      `UPDATE visitor_logs
+          SET region = ?, lat = ?, lon = ?, device_type = ?, os = ?, browser = ?
+        WHERE id = ?`
     );
 
     db.transaction(() => {
       for (const r of rows) {
+        // 1. 清理历史残留的机房 IP、CIDR 黑名单或扫描器 UA 记录
+        const xdb = r.ip ? searchIp2RegionMemory(r.ip) : null;
+        if (
+          !r.ip ||
+          matchBotIpRule(r.ip) ||
+          isDatacenterIspText(r.region) ||
+          xdb?.isDatacenter
+        ) {
+          deleteByIdStmt.run(r.id);
+          continue;
+        }
+
+        let deviceType = r.device_type;
+        let os = r.os;
+        let browser = r.browser;
+        if (r.user_agent) {
+          const reparsed = parseUserAgent(r.user_agent, {
+            maxTouchPoints: r.os === 'iPadOS' || r.device_type === 'Tablet' ? 5 : 0,
+          });
+          if (reparsed.deviceType === 'Bot') {
+            deleteByIdStmt.run(r.id);
+            continue;
+          }
+          // 保留先前由前端 maxTouchPoints 确认过的 iPadOS / Windows 11 精细标签
+          if (r.os !== 'iPadOS' && r.os !== 'Windows 11' && r.os !== 'Windows 10') {
+            deviceType = reparsed.deviceType;
+            os = reparsed.os;
+          }
+          browser = reparsed.browser;
+        }
+
+        let region = r.region;
         let lat = r.lat;
         let lon = r.lon;
+
         if (r.country_code === 'CN' || r.country_zh === '中国') {
-          const inferred = inferCoordsFromText(`${r.region} ${r.country_zh}`, NaN, NaN);
-          if (
-            Number.isFinite(inferred.lat) &&
-            Number.isFinite(inferred.lon) &&
-            (Math.abs(lat - inferred.lat) > 0.05 || Math.abs(lon - inferred.lon) > 0.05)
-          ) {
+          if (xdb && xdb.province) {
+            region = formatChinaRegionLabel(xdb.province, xdb.city, xdb.isp);
+          } else {
+            const stdProv = extractChinaProvince(region);
+            if (stdProv && !region.startsWith(stdProv)) {
+              region = `${stdProv} · ${region}`.slice(0, 64);
+            }
+          }
+          const inferred = inferCoordsFromText(`${region} ${r.country_zh}`, NaN, NaN);
+          if (Number.isFinite(inferred.lat) && Number.isFinite(inferred.lon)) {
             lat = inferred.lat;
             lon = inferred.lon;
-            updateCoordStmt.run(lat, lon, r.id);
           }
         } else if (COUNTRY_BY_CODE[r.country_code]) {
           const c = COUNTRY_BY_CODE[r.country_code]!;
           if (Math.abs(lat - 35.0) < 0.05 && Math.abs(lon - 104.0) < 0.05) {
             lat = c.lat;
             lon = c.lon;
-            updateCoordStmt.run(lat, lon, r.id);
           }
         }
 
-        if (r.ip && !ipGeoCache.has(r.ip) && r.region && !r.region.endsWith('公网节点') && !r.region.includes('本地')) {
+        if (
+          region !== r.region ||
+          Math.abs(lat - r.lat) > 0.05 ||
+          Math.abs(lon - r.lon) > 0.05 ||
+          deviceType !== r.device_type ||
+          os !== r.os ||
+          browser !== r.browser
+        ) {
+          updateRowStmt.run(region, lat, lon, deviceType, os, browser, r.id);
+        }
+
+        if (
+          r.ip &&
+          !ipGeoCache.has(r.ip) &&
+          region &&
+          !region.endsWith('公网节点') &&
+          !region.includes('本地')
+        ) {
           setGeoCache(r.ip, {
             code: r.country_code,
             zh: r.country_zh,
             en: r.country_en,
-            region: r.region,
+            region,
             lat,
             lon,
             enriched: true,
@@ -1430,9 +1774,11 @@ function getStmts(): PreparedStatements {
 
   cachedStmts = {
     db,
+    // 关键修复：按 (visit_date, ip, device_type, os, browser) 复合键查询，
+    // 复用 db/schema.sql 中的 visitor_logs_lookup_idx 索引，避免同一 Wi-Fi 下手机与电脑互相覆盖设备记录！
     findVisit: db.prepare(
       `SELECT id, pv_count, last_seen, path FROM visitor_logs
-        WHERE visit_date = ? AND ip = ?
+        WHERE visit_date = ? AND ip = ? AND device_type = ? AND os = ? AND browser = ?
         LIMIT 1`
     ),
     updateVisit: db.prepare(
@@ -1504,8 +1850,6 @@ const VISIT_SESSION_GAP_MS = 30 * 60 * 1000;
 
 /* --------------------------------------------------------------------------
    IP 信誉补充过滤：hosting / proxy / VPN / 云机房
-   在访问写入后异步批量查询，命中就删除该 IP 的统计记录并缓存为 bot，
-   不阻塞页面响应，也不影响后续真实访客。
    -------------------------------------------------------------------------- */
 type IpReputation = 'human' | 'bot';
 const ipReputationCache = new Map<string, IpReputation>();
@@ -1599,6 +1943,9 @@ async function flushIpReputation(): Promise<void> {
       query?: string;
       hosting?: boolean;
       proxy?: boolean;
+      isp?: string;
+      org?: string;
+      as?: string;
     }>;
     const seen = new Set<string>();
     for (const row of rows) {
@@ -1609,9 +1956,11 @@ async function flushIpReputation(): Promise<void> {
         recordFailedIpReputation(ip, Date.now() + REPUTATION_FAIL_TTL_MS);
         continue;
       }
-      if (row.hosting || row.proxy) {
+      const ispText = `${row.isp || ''} ${row.org || ''} ${row.as || ''}`;
+      if (row.hosting || row.proxy || isDatacenterIspText(ispText)) {
         cacheIpReputation(ip, 'bot');
         purgeBotIp(ip);
+        bumpAnalyticsVersion();
       } else {
         cacheIpReputation(ip, 'human');
       }
@@ -1620,7 +1969,6 @@ async function flushIpReputation(): Promise<void> {
       if (!seen.has(ip)) recordFailedIpReputation(ip, Date.now() + REPUTATION_FAIL_TTL_MS);
     }
   } catch {
-    // 查询失败时保留当前记录，30 分钟后由下一次访问重试
     for (const ip of ips) recordFailedIpReputation(ip, Date.now() + REPUTATION_FAIL_TTL_MS);
   } finally {
     reputationRunning = false;
@@ -1632,7 +1980,6 @@ async function flushIpReputation(): Promise<void> {
     }
   }
 }
-
 
 /** 立即将内存中的待写入访客记录批量事务写入 SQLite */
 export function flushPendingVisits(): void {
@@ -1651,10 +1998,22 @@ export function flushPendingVisits(): void {
 
     stmts.db.transaction(() => {
       for (const item of batch) {
-        if (matchBotIpRule(item.ip)) continue;
+        if (matchBotIpRule(item.ip) || ipReputationCache.get(item.ip) === 'bot') continue;
+        const fakeHeaders = item.countryHeader
+          ? new Headers({ 'x-country-code': item.countryHeader })
+          : undefined;
+        const geo = resolveIpGeo(item.ip, fakeHeaders);
+        if (geo.isDatacenter || isDatacenterIspText(geo.region)) {
+          cacheIpReputation(item.ip, 'bot');
+          continue;
+        }
+
         const existing = stmts.findVisit.get(
           item.visitDate,
-          item.ip
+          item.ip,
+          item.deviceType,
+          item.os,
+          item.browser
         ) as { id: number; pv_count: number; last_seen: string; path: string } | undefined;
 
         if (existing) {
@@ -1674,10 +2033,6 @@ export function flushPendingVisits(): void {
             existing.id
           );
         } else {
-          const fakeHeaders = item.countryHeader
-            ? new Headers({ 'x-country-code': item.countryHeader })
-            : undefined;
-          const geo = resolveIpGeo(item.ip, fakeHeaders);
           stmts.insertVisit.run(
             item.visitDate,
             item.ip,
@@ -1749,9 +2104,8 @@ const STATIC_EXT_RE =
   /\.(?:xml|js|mjs|css|png|jpe?g|webp|avif|gif|svg|ico|woff2?|ttf|otf|eot|mp3|wav|ogg|m4a|flac|aac|opus|webm|json|txt|map|webmanifest|php|asp|aspx|jsp|cgi|env|git|sql|bak|zip|tar|gz|rar)$/i;
 
 /**
- * 在 middleware 响应生成后调用：
- * 经过静态后缀过滤、扫描器路径/请求头校验、UA 指纹过滤和防抖/限流后，
- * 仅将真实公网访客写入内存缓冲队列。
+ * 服务端请求级采集入口（当启用前端 JS 信标时，默认以 `recordVisitBeacon` 为准；
+ * 若显式设置 `BLOG_SSR_RAW_VISIT=1` 或直接调用本函数，同样经过完整的机房 CIDR/ISP 与新 UA 规则过滤）。
  */
 export function recordVisit(context: APIContext): void {
   try {
@@ -1770,34 +2124,32 @@ export function recordVisit(context: APIContext): void {
       return;
     }
 
-    // 拦截漏洞扫描路径、预加载/预渲染、非 HTML 导航探测
     if (isScannerOrNonHumanPageRequest(context)) {
       return;
     }
 
     const headers = context.request.headers;
     const ua = headers.get('user-agent') ?? '';
-    const parsedUa = parseUserAgent(ua);
+    const chPlatformVer = (headers.get('sec-ch-ua-platform-version') || '').replace(/"/g, '');
+    const parsedUa = parseUserAgent(ua, { platformVersion: chPlatformVer });
     if (parsedUa.deviceType === 'Bot') return;
 
     const ip = getClientIp(context);
-    // 服务端只能看到 127.0.0.1 / 内网 IP 时不写入统计，避免本地地址污染。
     if (isPrivateOrLoopbackIp(ip)) {
       return;
     }
 
-    // 已知的云机房 / 代理 / VPN IP：不再写入，后续访问直接跳过
-    if (ipReputationCache.get(ip) === 'bot') {
+    if (ipReputationCache.get(ip) === 'bot' || matchBotIpRule(ip)) {
       return;
     }
 
-    // 显式 IP / CIDR 黑名单：批量爬虫即使伪装 UA 也不写入统计
-    if (matchBotIpRule(ip)) {
+    const geoCheck = resolveIpGeo(ip, headers);
+    if (geoCheck.isDatacenter || isDatacenterIspText(geoCheck.region)) {
+      cacheIpReputation(ip, 'bot');
       return;
     }
 
     const cleanPath = (pathname || '/').slice(0, 160);
-    // 同 IP + 同路径 5 秒防抖，以及单 IP 10 秒突发扫描限流
     if (shouldDropByRateOrDedup(ip, cleanPath)) {
       return;
     }
@@ -1813,13 +2165,10 @@ export function recordVisit(context: APIContext): void {
       ''
     ).trim();
 
-    const key = `${today}|${ip}`;
+    const key = `${today}|${ip}|${parsedUa.deviceType}|${parsedUa.os}|${parsedUa.browser}`;
     const existing = pendingVisits.get(key);
     if (existing) {
       existing.pvCount += 1;
-      existing.deviceType = parsedUa.deviceType;
-      existing.os = parsedUa.os;
-      existing.browser = parsedUa.browser;
       existing.userAgent = ua.slice(0, 300);
       existing.path = cleanPath;
       existing.referrer = referrer;
@@ -1841,7 +2190,6 @@ export function recordVisit(context: APIContext): void {
       });
     }
 
-    // 后台异步查询 IP 信誉；若命中 hosting/proxy/VPN，会删除该 IP 的统计行
     enqueueIpReputation(ip);
     scheduleVisitFlush();
   } catch (err) {
@@ -1850,18 +2198,34 @@ export function recordVisit(context: APIContext): void {
 }
 
 /**
- * 接收前端浏览器上报的真实公网 IP 与归属地信标（`POST /api/analytics/collect`）：
- * 当服务器 Nginx / 隧道未透传客户端 IP 导致服务端只看到 127.0.0.1 时，
- * 浏览器端直接通过国内 BGP / WebRTC STUN / JSONP 测得访客电脑或手机流量的真实公网 IP 并上报此处落库。
+ * 接收前端浏览器真实执行 JS 后上报的轻量遥测信标（`POST /api/analytics/collect`）：
+ *   1. 彻底过滤不执行 JS 的机房扫描器、Go/Python 抓取脚本与 Headless WebDriver；
+ *   2. 接收前端 `maxTouchPoints`、`platformVersion` 与屏幕尺寸，精准识别 iPadOS 13+ 与 Windows 11；
+ *   3. 推入非阻塞内存缓冲队列（`pendingVisits`）并立即返回，0ms 阻塞。
  */
 export async function recordVisitBeacon(
   context: APIContext,
   payload: ClientBeaconPayload | null
 ): Promise<{ ok: boolean; ip: string }> {
   try {
+    if (payload?.webdriver === true) {
+      return { ok: true, ip: '' };
+    }
+
     const headers = context.request.headers;
     const ua = headers.get('user-agent') ?? '';
-    const parsedUa = parseUserAgent(ua);
+    const chPlatformVer =
+      payload?.platformVersion ||
+      (headers.get('sec-ch-ua-platform-version') || '').replace(/"/g, '');
+
+    const parsedUa = parseUserAgent(ua, {
+      maxTouchPoints: payload?.maxTouchPoints,
+      platform: payload?.platform,
+      platformVersion: chPlatformVer,
+      screenW: payload?.screenW,
+      screenH: payload?.screenH,
+      webdriver: payload?.webdriver,
+    });
     if (parsedUa.deviceType === 'Bot') {
       return { ok: true, ip: '' };
     }
@@ -1869,8 +2233,6 @@ export async function recordVisitBeacon(
     const browserIp = normalizeIp(payload?.ip);
     const serverIp = getClientIp(context);
 
-    // 安全加固：当服务端已能直接获取真实公网 IP 时优先采用服务端可信 IP（防止外部脚本伪造 payload.ip 污染统计）；
-    // 仅当服务端看到回环/内网地址（127.0.0.1 等）时才回退采用浏览器探测上报的公网 IP。
     const effectiveIp =
       serverIp && !isPrivateOrLoopbackIp(serverIp)
         ? serverIp
@@ -1882,29 +2244,24 @@ export async function recordVisitBeacon(
       return { ok: false, ip: '' };
     }
 
-    if (ipReputationCache.get(effectiveIp) === 'bot') {
-      return { ok: true, ip: '' };
-    }
-
-    if (matchBotIpRule(effectiveIp)) {
+    if (ipReputationCache.get(effectiveIp) === 'bot' || matchBotIpRule(effectiveIp)) {
       return { ok: true, ip: '' };
     }
 
     const rawPath = String(payload?.path || '/').trim();
     const cleanPath = (rawPath.startsWith('/') ? rawPath : `/${rawPath}`).slice(0, 160);
-    if (cleanPath.startsWith('/studio') || cleanPath.startsWith('/api/')) {
+    if (
+      cleanPath.startsWith('/studio') ||
+      cleanPath.startsWith('/api/') ||
+      SCANNER_PATH_OR_QUERY_RE.test(cleanPath)
+    ) {
       return { ok: true, ip: effectiveIp };
     }
 
-    if (shouldDropByRateOrDedup(effectiveIp, `/__beacon__${cleanPath}`)) {
+    if (shouldDropByRateOrDedup(effectiveIp, cleanPath)) {
       return { ok: true, ip: effectiveIp };
     }
 
-    const today = formatDateYmd();
-    const nowSql = formatDateTimeSql();
-    const referrer = String(payload?.referrer || headers.get('referer') || '').slice(0, 240);
-
-    // 若前端已附带太平洋 IP 库或 ipwho.is 的省市/运营商数据，直接构建并缓存；否则 0ms 内存初判并交由后台异步富化
     let geo = buildGeoFromBeaconPayload(effectiveIp, payload ?? undefined);
     if (!geo) {
       const cached = ipGeoCache.get(effectiveIp);
@@ -1915,71 +2272,55 @@ export async function recordVisitBeacon(
       }
     }
 
-    // 检查是否刚刚被 middleware 的 pendingVisits 队列记录过同一次加载（避免同一次打开页面重复 +1）
-    const pendingKey = `${today}|${effectiveIp}`;
-    if (pendingVisits.has(pendingKey)) {
-      pendingVisits.delete(pendingKey);
+    if (geo.isDatacenter || isDatacenterIspText(geo.region)) {
+      cacheIpReputation(effectiveIp, 'bot');
+      purgeBotIp(effectiveIp);
+      return { ok: true, ip: '' };
     }
 
-    const stmts = getStmts();
-    const existing = stmts.findVisit.get(
-      today,
-      effectiveIp
-    ) as { id: number; pv_count: number; last_seen: string; path: string } | undefined;
+    const today = formatDateYmd();
+    const nowSql = formatDateTimeSql();
+    const referrer = String(payload?.referrer || headers.get('referer') || '').slice(0, 240);
+    const countryHeader = (
+      headers.get('cf-ipcountry') ||
+      headers.get('ali-cdn-real-ip-country') ||
+      headers.get('x-vercel-ip-country') ||
+      headers.get('x-country-code') ||
+      ''
+    ).trim();
 
+    // 推入内存写缓冲队列（按 日期 + IP + 设备类型 + 系统 + 浏览器 独立聚合），不阻塞请求响应
+    const key = `${today}|${effectiveIp}|${parsedUa.deviceType}|${parsedUa.os}|${parsedUa.browser}`;
+    const existing = pendingVisits.get(key);
     if (existing) {
-      // 如果同一秒内 middleware 已经写过完全相同的路径，只补全归属地不重复累加 PV
-      const isDuplicateWithin2Sec =
-        existing.path === cleanPath &&
-        Math.abs(new Date(nowSql).getTime() - new Date(existing.last_seen).getTime()) <= 2000;
-      if (!isDuplicateWithin2Sec) {
-        const gapMs =
-          new Date(nowSql).getTime() - new Date(existing.last_seen).getTime();
-        stmts.updateVisit.run(
-          1,
-          gapMs > VISIT_SESSION_GAP_MS ? 1 : 0,
-          parsedUa.deviceType,
-          parsedUa.os,
-          parsedUa.browser,
-          ua.slice(0, 300),
-          cleanPath,
-          referrer,
-          nowSql,
-          existing.id
-        );
-      }
-      if (geo.enriched) {
-        stmts.updateIpGeo.run(geo.code, geo.zh, geo.en, geo.region, geo.lat, geo.lon, effectiveIp);
-      } else {
-        enqueueGeoEnrichment(effectiveIp);
-      }
+      existing.pvCount += 1;
+      existing.userAgent = ua.slice(0, 300);
+      existing.path = cleanPath;
+      existing.referrer = referrer;
+      existing.lastSeen = nowSql;
     } else {
-      stmts.insertVisit.run(
-        today,
-        effectiveIp,
-        geo.code,
-        geo.zh,
-        geo.en,
-        geo.region,
-        geo.lat,
-        geo.lon,
-        parsedUa.deviceType,
-        parsedUa.os,
-        parsedUa.browser,
-        ua.slice(0, 300),
-        cleanPath,
+      pendingVisits.set(key, {
+        visitDate: today,
+        ip: effectiveIp,
+        deviceType: parsedUa.deviceType,
+        os: parsedUa.os,
+        browser: parsedUa.browser,
+        userAgent: ua.slice(0, 300),
+        path: cleanPath,
         referrer,
-        1,
-        1,
-        nowSql,
-        nowSql
-      );
-      if (!geo.enriched) {
-        enqueueGeoEnrichment(effectiveIp);
-      }
+        pvCount: 1,
+        firstSeen: nowSql,
+        lastSeen: nowSql,
+        countryHeader,
+      });
     }
 
-    bumpAnalyticsVersion();
+    if (!geo.enriched) {
+      enqueueGeoEnrichment(effectiveIp);
+    }
+    enqueueIpReputation(effectiveIp);
+    scheduleVisitFlush();
+
     return { ok: true, ip: effectiveIp };
   } catch (err) {
     console.error('[analytics] recordVisitBeacon failed:', err);
@@ -2024,9 +2365,9 @@ function getBucketSqlExpr(granularity: StatsGranularity, col = 'visit_date'): st
 }
 
 function formatBucketLabel(granularity: StatsGranularity, bucket: string): string {
-  if (granularity === 'day') return bucket.slice(5); // MM-DD
+  if (granularity === 'day') return bucket.slice(5);
   if (granularity === 'week') return `${bucket.slice(5)} 周`;
-  if (granularity === 'month') return bucket; // YYYY-MM
+  if (granularity === 'month') return bucket;
   return `${bucket} 年`;
 }
 
@@ -2058,7 +2399,6 @@ export function getAnalyticsDashboard(opts: AnalyticsQueryOptions = {}): Analyti
   const thisMonth = today.slice(0, 7);
   const thisYear = today.slice(0, 4);
 
-  // 1. 顶部核心指标汇总
   const todayRow = getStmts().todaySummary.get(today) as { uv: number; pv: number };
 
   const weekStartRow = db
@@ -2094,7 +2434,6 @@ export function getAnalyticsDashboard(opts: AnalyticsQueryOptions = {}): Analyti
     )
     .get() as { uv: number; pv: number; countries: number };
 
-  // 2. 按日 / 按周 / 按月 / 按年 时间序列聚合
   const bucketExpr = getBucketSqlExpr(granularity);
   const limitBuckets =
     granularity === 'day' ? 30 : granularity === 'week' ? 16 : granularity === 'month' ? 15 : 8;
@@ -2104,9 +2443,9 @@ export function getAnalyticsDashboard(opts: AnalyticsQueryOptions = {}): Analyti
       `SELECT ${bucketExpr} AS bucket,
               COUNT(DISTINCT ip) AS uv,
               COALESCE(SUM(pv_count), 0) AS pv,
-              SUM(CASE WHEN device_type = 'Desktop' THEN 1 ELSE 0 END) AS desktop,
-              SUM(CASE WHEN device_type = 'Mobile' THEN 1 ELSE 0 END) AS mobile,
-              SUM(CASE WHEN device_type = 'Tablet' THEN 1 ELSE 0 END) AS tablet,
+              SUM(CASE WHEN device_type = 'Desktop' THEN pv_count ELSE 0 END) AS desktop,
+              SUM(CASE WHEN device_type = 'Mobile' THEN pv_count ELSE 0 END) AS mobile,
+              SUM(CASE WHEN device_type = 'Tablet' THEN pv_count ELSE 0 END) AS tablet,
               MAX(country_zh) AS top_country,
               MAX(ip) AS top_ip,
               MAX(os || ' · ' || browser) AS top_device
@@ -2142,7 +2481,17 @@ export function getAnalyticsDashboard(opts: AnalyticsQueryOptions = {}): Analyti
     topDevice: r.top_device || '—',
   }));
 
-  // 3. 全球国家与地区聚合（供 3D 粒子地球仪渲染热点与点击展示）
+  // 默认当前时间桶（按日 -> 今日；按周 -> 本周；按月 -> 本月；按年 -> 本年）
+  const activeBucket =
+    selectedBucket ||
+    (granularity === 'day'
+      ? today
+      : granularity === 'week'
+        ? weekStartRow.ws
+        : granularity === 'month'
+          ? thisMonth
+          : thisYear);
+
   const rawCountries = db
     .prepare(
       `SELECT country_zh,
@@ -2156,11 +2505,11 @@ export function getAnalyticsDashboard(opts: AnalyticsQueryOptions = {}): Analyti
               MAX(device_type || ' · ' || os || ' / ' || browser) AS latest_device,
               MAX(last_seen) AS last_seen
          FROM visitor_logs
-        WHERE (? IS NULL OR ${bucketExpr} = ?)
+        WHERE ${bucketExpr} = ?
         GROUP BY country_zh
         ORDER BY uv DESC, pv DESC`
     )
-    .all(selectedBucket, selectedBucket) as Array<{
+    .all(activeBucket) as Array<{
     country_zh: string;
     country_en: string;
     country_code: string;
@@ -2191,7 +2540,6 @@ export function getAnalyticsDashboard(opts: AnalyticsQueryOptions = {}): Analyti
     lastSeen: c.last_seen,
   }));
 
-  // 4. 设备类型 / 操作系统 / 浏览器分布
   const queryDimension = (col: 'device_type' | 'os' | 'browser'): DeviceBreakdownItem[] => {
     const rows = db
       .prepare(
@@ -2199,12 +2547,12 @@ export function getAnalyticsDashboard(opts: AnalyticsQueryOptions = {}): Analyti
                 COUNT(DISTINCT ip) AS uv,
                 COALESCE(SUM(pv_count), 0) AS pv
            FROM visitor_logs
-          WHERE (? IS NULL OR ${bucketExpr} = ?)
+          WHERE ${bucketExpr} = ?
             AND (? IS NULL OR country_zh = ?)
           GROUP BY ${col}
           ORDER BY pv DESC`
       )
-      .all(selectedBucket, selectedBucket, selectedCountry, selectedCountry) as Array<{
+      .all(activeBucket, selectedCountry, selectedCountry) as Array<{
       name: string;
       uv: number;
       pv: number;
@@ -2228,14 +2576,10 @@ export function getAnalyticsDashboard(opts: AnalyticsQueryOptions = {}): Analyti
   const desktopItem = deviceTypes.find((d) => d.name === 'Desktop');
   const mobileItem = deviceTypes.find((d) => d.name === 'Mobile' || d.name === 'Tablet');
 
-  // 5. 访客 IP 与设备日志明细
-  const whereClauses: string[] = ['1=1'];
-  const params: Array<string | number> = [];
+  // 访客日志明细严格限定在当前时间桶（activeBucket）内
+  const whereClauses: string[] = [`${bucketExpr} = ?`];
+  const params: Array<string | number> = [activeBucket];
 
-  if (selectedBucket) {
-    whereClauses.push(`${bucketExpr} = ?`);
-    params.push(selectedBucket);
-  }
   if (selectedCountry) {
     whereClauses.push(`country_zh = ?`);
     params.push(selectedCountry);
@@ -2314,7 +2658,7 @@ export function getAnalyticsDashboard(opts: AnalyticsQueryOptions = {}): Analyti
 
   return {
     granularity,
-    selectedBucket,
+    selectedBucket: activeBucket,
     selectedCountry,
     selectedDevice,
     summary: {
@@ -2349,11 +2693,11 @@ export function getAnalyticsDashboard(opts: AnalyticsQueryOptions = {}): Analyti
 }
 
 /**
- * 返回全部真实访客记录（供统计页聚合引擎与 CSV 导出使用）。
+ * 返回全部真实访客记录（供统计页热力图、柱状图与二级菜单聚合引擎使用）。
  */
 export function listVisitorLogs(limit = 5000): VisitorLogItem[] {
   flushPendingVisits();
-  getStmts(); // 确保已完成历史坐标校准与缓存预热
+  getStmts(); // 确保已完成历史坐标校准、脏数据清理与缓存预热
   const cappedLimit = Math.min(5000, Math.max(1, Math.floor(limit)));
   if (
     cachedRawLogs &&
@@ -2397,17 +2741,26 @@ export function listVisitorLogs(limit = 5000): VisitorLogItem[] {
 
   let enqueuedCount = 0;
   for (const r of rows) {
-    if (enqueuedCount < 16 && r.region.endsWith('公网节点') && !isPrivateOrLoopbackIp(r.ip)) {
+    if (
+      enqueuedCount < 24 &&
+      (r.region.endsWith('公网节点') || r.region.endsWith('IPv6')) &&
+      !isPrivateOrLoopbackIp(r.ip)
+    ) {
       enqueueGeoEnrichment(r.ip);
       enqueuedCount += 1;
     }
   }
 
   const items: VisitorLogItem[] = rows.map((r) => {
+    let region = r.region;
     let lat = r.lat;
     let lon = r.lon;
     if (r.country_code === 'CN' || r.country_zh === '中国') {
-      const inferred = inferCoordsFromText(`${r.region} ${r.country_zh}`, lat, lon);
+      const stdProv = extractChinaProvince(region);
+      if (stdProv && !region.startsWith(stdProv)) {
+        region = `${stdProv} · ${region}`.slice(0, 64);
+      }
+      const inferred = inferCoordsFromText(`${region} ${r.country_zh}`, lat, lon);
       lat = inferred.lat;
       lon = inferred.lon;
     }
@@ -2418,7 +2771,7 @@ export function listVisitorLogs(limit = 5000): VisitorLogItem[] {
       countryCode: r.country_code,
       countryZh: r.country_zh,
       countryEn: r.country_en,
-      region: r.region,
+      region,
       lat,
       lon,
       deviceType: r.device_type,

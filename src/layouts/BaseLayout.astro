@@ -7,7 +7,7 @@ import FloatingMenu from '../components/FloatingMenu.astro';
 import { faviconInfo, getSiteConfig } from '../server/site';
 import { copy, getPageValues } from '../server/pages';
 import { cjkSpacing } from '../utils/typography';
-import { THEME_BOOT } from '../utils/theme';
+import { TELEMETRY_BEACON, THEME_BOOT } from '../utils/theme';
 
 interface Props {
   title?: string;
@@ -115,6 +115,7 @@ const canonical = new URL(Astro.url.pathname, Astro.site);
       import { initInfinityLoader } from '../utils/loader';
       initInfinityLoader({ durationMs: 1050 });
     </script>
+    <script is:inline set:html={TELEMETRY_BEACON}></script>
   </body>
 </html>
 

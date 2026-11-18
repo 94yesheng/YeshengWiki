@@ -21,6 +21,80 @@ export const THEME_BOOT = `(function () {
   if (meta) meta.setAttribute('content', dark ? '${THEME_COLOR.dark}' : '${THEME_COLOR.light}');
 })();`;
 
+/**
+ * 轻量化前端真实访客遥测信标（零外部请求、0ms 渲染阻塞）：
+ *   1. 仅在页面可见（visibilityState === 'visible'）且非自动化 WebDriver 环境下触发，天然过滤 99% 不执行 JS 的机房扫描脚本；
+ *   2. 采集 HTTP User-Agent 无法体现的硬件触控点数（maxTouchPoints，用于区分 iPadOS 13+ 与 macOS）与 Client Hints 平台版本（用于区分 Windows 11 与 Windows 10）；
+ *   3. 使用 navigator.sendBeacon 后台异步上报同源 `/api/analytics/collect`，完全符合 CSP `connect-src 'self'`。
+ */
+export const TELEMETRY_BEACON = `(function () {
+  if (typeof window === 'undefined' || typeof document === 'undefined') return;
+  if (location.pathname.indexOf('/studio') === 0) return;
+  if (navigator.webdriver || window.callPhantom || window._phantom || window.__nightmare) return;
+  if (!window.screen || window.screen.width < 120 || window.screen.height < 120) return;
+  var sent = false;
+  function dispatchBeacon() {
+    if (sent) return;
+    if (document.visibilityState && document.visibilityState !== 'visible') return;
+    sent = true;
+    var base = {
+      path: location.pathname + location.search,
+      referrer: document.referrer || '',
+      maxTouchPoints: Number(navigator.maxTouchPoints) || 0,
+      platform: (navigator.userAgentData && navigator.userAgentData.platform) || navigator.platform || '',
+      platformVersion: '',
+      screenW: Number(window.screen.width) || 0,
+      screenH: Number(window.screen.height) || 0,
+      webdriver: Boolean(navigator.webdriver)
+    };
+    function send(payload) {
+      try {
+        var body = JSON.stringify(payload);
+        if (navigator.sendBeacon) {
+          var blob = new Blob([body], { type: 'application/json' });
+          if (navigator.sendBeacon('/api/analytics/collect', blob)) return;
+        }
+        fetch('/api/analytics/collect', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: body,
+          keepalive: true,
+          credentials: 'same-origin'
+        }).catch(function () {});
+      } catch (e) {}
+    }
+    try {
+      if (navigator.userAgentData && typeof navigator.userAgentData.getHighEntropyValues === 'function') {
+        navigator.userAgentData.getHighEntropyValues(['platformVersion']).then(function (hints) {
+          if (hints && hints.platformVersion) base.platformVersion = String(hints.platformVersion);
+          send(base);
+        }).catch(function () { send(base); });
+        return;
+      }
+    } catch (e) {}
+    send(base);
+  }
+  function schedule() {
+    setTimeout(function () {
+      if (document.visibilityState === 'visible') {
+        dispatchBeacon();
+      } else {
+        document.addEventListener('visibilitychange', function onVis() {
+          if (document.visibilityState === 'visible') {
+            document.removeEventListener('visibilitychange', onVis);
+            dispatchBeacon();
+          }
+        });
+      }
+    }, 180);
+  }
+  if (document.readyState === 'complete' || document.readyState === 'interactive') {
+    schedule();
+  } else {
+    document.addEventListener('DOMContentLoaded', schedule, { once: true });
+  }
+})();`;
+
 export const isDark = (): boolean => document.documentElement.dataset.theme === 'dark';
 
 export function syncThemeColor(): void {

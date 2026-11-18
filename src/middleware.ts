@@ -16,6 +16,10 @@ import { recordVisit } from './server/repositories/analytics';
 
 bootstrap();
 
+// 默认采用前端 JS 信标（POST /api/analytics/collect）确认真实浏览器访问，彻底过滤不执行 JS 的机房脚本；
+// 如需同时开启 SSR 裸 GET 记数，可设置环境变量 BLOG_SSR_RAW_VISIT=1。
+const ENABLE_SSR_RAW_VISIT = process.env.BLOG_SSR_RAW_VISIT === '1';
+
 const STATIC_EXT_RE =
   /\.(?:xml|js|mjs|css|png|jpe?g|webp|avif|gif|svg|ico|woff2?|ttf|otf|eot|mp3|wav|ogg|m4a|flac|aac|opus|webm|json|txt|map|webmanifest|php|asp|aspx|jsp|cgi|env|git|sql|bak|zip|tar|gz|rar)$/i;
 
@@ -73,14 +77,11 @@ export const onRequest = defineMiddleware(async (context, next) => {
     context.url.protocol === 'https:' ||
     context.request.headers.get('x-forwarded-proto') === 'https';
 
-  // 后台配了自定义图标时，让 /favicon.ico 也跳到它（书签/后台页兜底）
   if (pathname === '/favicon.ico') {
     const fav = faviconInfo(getSiteConfig());
     if (fav.href !== '/favicon.svg') return context.redirect(fav.href, 302);
   }
 
-  // 旧 WordPress 链接（?p=ID / 中文 percent-encoded slug / ?page_id=ID）→ 新站 301。
-  // 动手前先看 src/server/legacy-redirects.ts 的注释：只做精确匹配。
   if (context.request.method === 'GET' || context.request.method === 'HEAD') {
     const legacyTarget = legacyRedirectTarget(context.url);
     if (legacyTarget) {
@@ -93,7 +94,6 @@ export const onRequest = defineMiddleware(async (context, next) => {
     }
   }
 
-  // /artifact/artifact.css 与 /artifact/artifact.js：支持带 ?v=<hash> 的长缓存与 ETag 304 响应
   if (
     (context.request.method === 'GET' || context.request.method === 'HEAD') &&
     (pathname === '/artifact/artifact.css' || pathname === '/artifact/artifact.js')
@@ -134,13 +134,11 @@ export const onRequest = defineMiddleware(async (context, next) => {
     return res200;
   }
 
-  // /uploads/*：本地/staging 兜底；生产 Nginx 会直接服务
   if (pathname.startsWith('/uploads/')) {
     const upload = await serveUpload(context);
     if (upload) return upload;
   }
 
-  // /api/* 由我们自己的 router 处理（静态构建时不会用到）
   const apiResponse = await handleApi(context);
   if (apiResponse) {
     applySecurityHeaders(apiResponse.headers, pathname, isHttps);
@@ -148,7 +146,6 @@ export const onRequest = defineMiddleware(async (context, next) => {
     return apiResponse;
   }
 
-  // 公开 HTML 页面极速内存缓存层（0ms TTFB + 后台修改实时失效 + 每次访问照常异步记录访客统计）
   const canUsePageCache =
     (context.request.method === 'GET' || context.request.method === 'HEAD') &&
     isCacheablePublicRoute(pathname);
@@ -157,7 +154,7 @@ export const onRequest = defineMiddleware(async (context, next) => {
   if (canUsePageCache) {
     const cached = getCachedPage(cacheKey);
     if (cached) {
-      if (context.request.method === 'GET') {
+      if (ENABLE_SSR_RAW_VISIT && context.request.method === 'GET') {
         recordVisit(context);
       }
       if (etagMatches(context.request.headers.get('if-none-match'), cached.etag)) {
@@ -184,14 +181,12 @@ export const onRequest = defineMiddleware(async (context, next) => {
     }
   }
 
-  // 先完成页面渲染，不在请求前做任何阻塞动作
   const response = await next();
 
   const contentType = response.headers.get('content-type') ?? '';
   const isHtml200 = response.status === 200 && contentType.includes('text/html');
 
-  // 仅当公开 HTML 页面成功返回（200 text/html）时，异步将真实访问推入内存缓冲队列
-  if (context.request.method === 'GET' && isHtml200) {
+  if (ENABLE_SSR_RAW_VISIT && context.request.method === 'GET' && isHtml200) {
     recordVisit(context);
   }
 

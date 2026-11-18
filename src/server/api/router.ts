@@ -55,6 +55,8 @@ import {
   getAnalyticsDashboard,
   getTodayUvSummary,
   listVisitorLogs,
+  recordVisitBeacon,
+  type ClientBeaconPayload,
   type StatsGranularity,
 } from '../repositories/analytics';
 import { handleFs } from './fs';
@@ -126,8 +128,15 @@ export async function handleApi(context: APIContext): Promise<Response | null> {
     }
   }
 
-  // /api/analytics：后台「统计」模块接口（仅保留真实数据读取与清空，移除模拟与样本生成接口）
+  // /api/analytics：访客统计信标上报与后台「统计」模块接口
   if (parts[0] === 'analytics') {
+    // 公开前端遥测信标入口（sendBeacon 异步非阻塞，立即返回 204）
+    if (parts.length === 2 && parts[1] === 'collect' && method === 'POST') {
+      const payload = await readJson<ClientBeaconPayload>(context.request);
+      await recordVisitBeacon(context, payload);
+      return new Response(null, { status: 204 });
+    }
+
     const auth = getAuth(context);
     if (!auth) return fail('未登录', 401);
 
@@ -383,7 +392,6 @@ function health(context: APIContext): Response {
     db.prepare('SELECT 1').get();
     const auth = getAuth(context);
     if (!auth) {
-      // 未登录探针仅返回存活状态，不对外暴露草稿总数、schema 版本号与服务器时钟
       return json({ ok: true });
     }
     const schema = db.prepare('SELECT MAX(version) AS version FROM schema_migrations').get() as {
@@ -458,7 +466,6 @@ async function login(context: APIContext): Promise<Response> {
   clearFailures(userKey);
   clearFailures(acctKey);
 
-  // 登录成功时先销毁当前浏览器可能残留的旧会话，防止会话固定
   const oldToken = context.cookies.get(SESSION_COOKIE)?.value;
   if (oldToken) {
     destroySession(oldToken);
@@ -554,7 +561,6 @@ async function changeAccount(context: APIContext): Promise<Response> {
         passwordHash,
         auth.user.id
       );
-      // 无论改密还是改账号，均彻底销毁该用户所有旧会话并在下方重新签发全新 Session + CSRF
       destroyUserSessions(auth.user.id);
     })();
   } catch (error) {
